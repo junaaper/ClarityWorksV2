@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(python:*)",
+      "Bash(venvScriptsactivate.bat)",
+      "Bash(.venvScriptspython.exe train_model.py)",
+      "Bash(./venv/Scripts/python.exe train_model.py)",
+      "Bash(./venv/Scripts/python.exe:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(curl:*)",
+      "Bash(find:*)",
+      "Bash(dir /s /b \"c:\\Programming\\clarityworksv2\")",
+      "Bash(psql:*)",
+      "Bash(node -e:*)",
+      "Bash(\"c:/Programming/clarityworksv2/ml-service/venv/Scripts/python.exe\":*)",
+      "Bash(powershell:*)",
+      "Bash(venv/Scripts/python.exe:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

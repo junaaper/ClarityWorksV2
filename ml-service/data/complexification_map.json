@@ -1,0 +1,212 @@
+{
+  "use": {
+    "complex": ["utilize", "employ", "leverage", "implement"],
+    "grade": 8,
+    "reason": "More formal and technical alternatives"
+  },
+  "help": {
+    "complex": ["assist", "aid", "facilitate", "support"],
+    "grade": 7,
+    "reason": "More formal synonyms"
+  },
+  "show": {
+    "complex": ["demonstrate", "illustrate", "exhibit", "indicate"],
+    "grade": 8,
+    "reason": "More academic alternatives"
+  },
+  "get": {
+    "complex": ["obtain", "acquire", "procure", "secure"],
+    "grade": 8,
+    "reason": "More formal verbs"
+  },
+  "need": {
+    "complex": ["require", "necessitate", "demand"],
+    "grade": 8,
+    "reason": "More formal alternatives"
+  },
+  "start": {
+    "complex": ["commence", "initiate", "begin"],
+    "grade": 7,
+    "reason": "More formal verbs"
+  },
+  "end": {
+    "complex": ["terminate", "conclude", "finalize"],
+    "grade": 8,
+    "reason": "More formal alternatives"
+  },
+  "try": {
+    "complex": ["attempt", "endeavor", "strive"],
+    "grade": 7,
+    "reason": "More formal verbs"
+  },
+  "buy": {
+    "complex": ["purchase", "acquire", "procure"],
+    "grade": 7,
+    "reason": "More formal alternatives"
+  },
+  "have": {
+    "complex": ["possess", "own", "maintain"],
+    "grade": 7,
+    "reason": "More formal verbs"
+  },
+  "look at": {
+    "complex": ["examine", "observe", "inspect", "scrutinize"],
+    "grade": 8,
+    "reason": "More academic verbs"
+  },
+  "build": {
+    "complex": ["construct", "erect", "fabricate"],
+    "grade": 7,
+    "reason": "More technical alternatives"
+  },
+  "keep": {
+    "complex": ["maintain", "preserve", "retain"],
+    "grade": 7,
+    "reason": "More formal verbs"
+  },
+  "save": {
+    "complex": ["preserve", "conserve", "protect"],
+    "grade": 7,
+    "reason": "More formal alternatives"
+  },
+  "find": {
+    "complex": ["discover", "locate", "identify", "determine"],
+    "grade": 7,
+    "reason": "More formal verbs"
+  },
+  "watch": {
+    "complex": ["observe", "monitor", "scrutinize"],
+    "grade": 8,
+    "reason": "More academic alternatives"
+  },
+  "think about": {
+    "complex": ["consider", "contemplate", "deliberate"],
+    "grade": 8,
+    "reason": "More formal phrases"
+  },
+  "give": {
+    "complex": ["provide", "furnish", "supply", "contribute"],
+    "grade": 7,
+    "reason": "More formal verbs"
+  },
+  "more": {
+    "complex": ["additional", "supplementary", "further"],
+    "grade": 8,
+    "reason": "More formal adjectives"
+  },
+  "about": {
+    "complex": ["approximately", "roughly"],
+    "grade": 7,
+    "reason": "More precise alternatives"
+  },
+  "important": {
+    "complex": ["significant", "crucial", "vital", "essential"],
+    "grade": 8,
+    "reason": "Stronger academic alternatives"
+  },
+  "later": {
+    "complex": ["subsequently", "thereafter", "afterwards"],
+    "grade": 8,
+    "reason": "More formal temporal words"
+  },
+  "so": {
+    "complex": ["therefore", "consequently", "thus", "hence"],
+    "grade": 8,
+    "reason": "More formal connectors"
+  },
+  "but": {
+    "complex": ["however", "nevertheless", "nonetheless"],
+    "grade": 7,
+    "reason": "More formal conjunctions"
+  },
+  "also": {
+    "complex": ["furthermore", "moreover", "additionally"],
+    "grade": 7,
+    "reason": "More formal connectors"
+  },
+  "large": {
+    "complex": ["substantial", "considerable", "extensive"],
+    "grade": 8,
+    "reason": "More formal adjectives"
+  },
+  "person": {
+    "complex": ["individual", "entity"],
+    "grade": 7,
+    "reason": "More formal nouns"
+  },
+  "take part": {
+    "complex": ["participate", "engage", "partake"],
+    "grade": 8,
+    "reason": "More formal verbs"
+  },
+  "look into": {
+    "complex": ["investigate", "examine", "explore"],
+    "grade": 8,
+    "reason": "More formal alternatives"
+  },
+  "talk": {
+    "complex": ["communicate", "converse", "discourse"],
+    "grade": 8,
+    "reason": "More formal verbs"
+  },
+  "right": {
+    "complex": ["appropriate", "suitable", "proper"],
+    "grade": 7,
+    "reason": "More formal adjectives"
+  },
+  "needed": {
+    "complex": ["necessary", "required", "essential"],
+    "grade": 7,
+    "reason": "More formal adjectives"
+  },
+  "like": {
+    "complex": ["similar", "comparable", "analogous"],
+    "grade": 8,
+    "reason": "More formal comparatives"
+  },
+  "different": {
+    "complex": ["various", "diverse", "disparate"],
+    "grade": 8,
+    "reason": "More formal alternatives"
+  },
+  "make": {
+    "complex": ["create", "produce", "generate", "fabricate"],
+    "grade": 7,
+    "reason": "More formal verbs"
+  },
+  "change": {
+    "complex": ["modify", "alter", "transform"],
+    "grade": 7,
+    "reason": "More formal alternatives"
+  },
+  "explain": {
+    "complex": ["elucidate", "clarify", "expound"],
+    "grade": 9,
+    "reason": "More academic verbs"
+  },
+  "improve": {
+    "complex": ["enhance", "ameliorate", "refine"],
+    "grade": 8,
+    "reason": "More formal alternatives"
+  },
+  "lessen": {
+    "complex": ["diminish", "reduce", "mitigate"],
+    "grade": 8,
+    "reason": "More formal verbs"
+  },
+  "worsen": {
+    "complex": ["deteriorate", "exacerbate", "aggravate"],
+    "grade": 9,
+    "reason": "More formal alternatives"
+  },
+  "speed up": {
+    "complex": ["accelerate", "expedite", "hasten"],
+    "grade": 8,
+    "reason": "More formal verbs"
+  },
+  "slow down": {
+    "complex": ["decelerate", "retard", "impede"],
+    "grade": 8,
+    "reason": "More formal alternatives"
+  }
+}

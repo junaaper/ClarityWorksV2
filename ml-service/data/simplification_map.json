@@ -1,0 +1,380 @@
+{
+  "utilize": {
+    "simple": "use",
+    "grade": 3,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "More common word with fewer syllables"
+  },
+  "assistance": {
+    "simple": "help",
+    "grade": 3,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "Shorter and more familiar"
+  },
+  "demonstrate": {
+    "simple": "show",
+    "grade": 4,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "More direct and fewer syllables"
+  },
+  "comprehensive": {
+    "simple": "complete",
+    "grade": 6,
+    "syllables_before": 4,
+    "syllables_after": 2,
+    "reason": "Shorter and more commonly used"
+  },
+  "methodology": {
+    "simple": "method",
+    "grade": 8,
+    "syllables_before": 5,
+    "syllables_after": 2,
+    "reason": "Base form without suffix"
+  },
+  "facilitate": {
+    "simple": "help",
+    "grade": 4,
+    "syllables_before": 4,
+    "syllables_after": 1,
+    "reason": "Much simpler everyday word"
+  },
+  "implement": {
+    "simple": "use",
+    "grade": 4,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "More direct action word"
+  },
+  "acquire": {
+    "simple": "get",
+    "grade": 3,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "Simple everyday word"
+  },
+  "sufficient": {
+    "simple": "enough",
+    "grade": 4,
+    "syllables_before": 3,
+    "syllables_after": 2,
+    "reason": "More common in everyday speech"
+  },
+  "numerous": {
+    "simple": "many",
+    "grade": 3,
+    "syllables_before": 3,
+    "syllables_after": 2,
+    "reason": "Shorter and more common"
+  },
+  "commence": {
+    "simple": "start",
+    "grade": 3,
+    "syllables_before": 2,
+    "syllables_after": 1,
+    "reason": "More direct and common"
+  },
+  "terminate": {
+    "simple": "end",
+    "grade": 3,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "Simple everyday word"
+  },
+  "endeavor": {
+    "simple": "try",
+    "grade": 3,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "Much simpler and direct"
+  },
+  "purchase": {
+    "simple": "buy",
+    "grade": 3,
+    "syllables_before": 2,
+    "syllables_after": 1,
+    "reason": "Common everyday word"
+  },
+  "possess": {
+    "simple": "have",
+    "grade": 3,
+    "syllables_before": 2,
+    "syllables_after": 1,
+    "reason": "Basic everyday word"
+  },
+  "require": {
+    "simple": "need",
+    "grade": 3,
+    "syllables_before": 2,
+    "syllables_after": 1,
+    "reason": "More direct and common"
+  },
+  "indicate": {
+    "simple": "show",
+    "grade": 4,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "Simpler and more direct"
+  },
+  "examine": {
+    "simple": "look at",
+    "grade": 4,
+    "syllables_before": 3,
+    "syllables_after": 2,
+    "reason": "More familiar phrase"
+  },
+  "construct": {
+    "simple": "build",
+    "grade": 4,
+    "syllables_before": 2,
+    "syllables_after": 1,
+    "reason": "Common everyday word"
+  },
+  "attempt": {
+    "simple": "try",
+    "grade": 3,
+    "syllables_before": 2,
+    "syllables_after": 1,
+    "reason": "Simple and direct"
+  },
+  "obtain": {
+    "simple": "get",
+    "grade": 3,
+    "syllables_before": 2,
+    "syllables_after": 1,
+    "reason": "Basic everyday word"
+  },
+  "maintain": {
+    "simple": "keep",
+    "grade": 4,
+    "syllables_before": 2,
+    "syllables_after": 1,
+    "reason": "Shorter and more common"
+  },
+  "preserve": {
+    "simple": "save",
+    "grade": 4,
+    "syllables_before": 2,
+    "syllables_after": 1,
+    "reason": "Simpler everyday word"
+  },
+  "determine": {
+    "simple": "find out",
+    "grade": 5,
+    "syllables_before": 3,
+    "syllables_after": 2,
+    "reason": "More familiar phrase"
+  },
+  "observe": {
+    "simple": "watch",
+    "grade": 4,
+    "syllables_before": 2,
+    "syllables_after": 1,
+    "reason": "Simpler and more direct"
+  },
+  "consider": {
+    "simple": "think about",
+    "grade": 5,
+    "syllables_before": 3,
+    "syllables_after": 3,
+    "reason": "More familiar phrase"
+  },
+  "provide": {
+    "simple": "give",
+    "grade": 3,
+    "syllables_before": 2,
+    "syllables_after": 1,
+    "reason": "Basic everyday word"
+  },
+  "continue": {
+    "simple": "keep going",
+    "grade": 5,
+    "syllables_before": 3,
+    "syllables_after": 3,
+    "reason": "More familiar phrase"
+  },
+  "establish": {
+    "simple": "set up",
+    "grade": 5,
+    "syllables_before": 3,
+    "syllables_after": 2,
+    "reason": "Simpler phrase"
+  },
+  "discover": {
+    "simple": "find",
+    "grade": 4,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "Shorter and more direct"
+  },
+  "additional": {
+    "simple": "more",
+    "grade": 3,
+    "syllables_before": 4,
+    "syllables_after": 1,
+    "reason": "Much simpler"
+  },
+  "approximately": {
+    "simple": "about",
+    "grade": 4,
+    "syllables_before": 5,
+    "syllables_after": 2,
+    "reason": "Shorter and more common"
+  },
+  "significant": {
+    "simple": "important",
+    "grade": 6,
+    "syllables_before": 4,
+    "syllables_after": 3,
+    "reason": "More familiar word"
+  },
+  "subsequently": {
+    "simple": "later",
+    "grade": 5,
+    "syllables_before": 4,
+    "syllables_after": 2,
+    "reason": "Much simpler"
+  },
+  "consequently": {
+    "simple": "so",
+    "grade": 4,
+    "syllables_before": 4,
+    "syllables_after": 1,
+    "reason": "Much shorter and simpler"
+  },
+  "nevertheless": {
+    "simple": "but",
+    "grade": 4,
+    "syllables_before": 4,
+    "syllables_after": 1,
+    "reason": "Much simpler conjunction"
+  },
+  "furthermore": {
+    "simple": "also",
+    "grade": 4,
+    "syllables_before": 3,
+    "syllables_after": 2,
+    "reason": "Simpler connector"
+  },
+  "therefore": {
+    "simple": "so",
+    "grade": 4,
+    "syllables_before": 2,
+    "syllables_after": 1,
+    "reason": "Shorter and more common"
+  },
+  "however": {
+    "simple": "but",
+    "grade": 4,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "Simpler conjunction"
+  },
+  "moreover": {
+    "simple": "also",
+    "grade": 4,
+    "syllables_before": 3,
+    "syllables_after": 2,
+    "reason": "More familiar connector"
+  },
+  "alternative": {
+    "simple": "other choice",
+    "grade": 6,
+    "syllables_before": 4,
+    "syllables_after": 3,
+    "reason": "Clearer phrase"
+  },
+  "equivalent": {
+    "simple": "equal",
+    "grade": 6,
+    "syllables_before": 4,
+    "syllables_after": 2,
+    "reason": "Simpler and shorter"
+  },
+  "fundamental": {
+    "simple": "basic",
+    "grade": 6,
+    "syllables_before": 4,
+    "syllables_after": 2,
+    "reason": "Shorter and clearer"
+  },
+  "substantial": {
+    "simple": "large",
+    "grade": 5,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "Simpler and more direct"
+  },
+  "individual": {
+    "simple": "person",
+    "grade": 5,
+    "syllables_before": 5,
+    "syllables_after": 2,
+    "reason": "Shorter and clearer"
+  },
+  "participate": {
+    "simple": "take part",
+    "grade": 6,
+    "syllables_before": 4,
+    "syllables_after": 2,
+    "reason": "More familiar phrase"
+  },
+  "investigate": {
+    "simple": "look into",
+    "grade": 6,
+    "syllables_before": 4,
+    "syllables_after": 3,
+    "reason": "Simpler phrase"
+  },
+  "illustrate": {
+    "simple": "show",
+    "grade": 5,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "Much simpler"
+  },
+  "communicate": {
+    "simple": "talk",
+    "grade": 5,
+    "syllables_before": 4,
+    "syllables_after": 1,
+    "reason": "Much shorter and simpler"
+  },
+  "appropriate": {
+    "simple": "right",
+    "grade": 5,
+    "syllables_before": 4,
+    "syllables_after": 1,
+    "reason": "Simpler and shorter"
+  },
+  "necessary": {
+    "simple": "needed",
+    "grade": 5,
+    "syllables_before": 4,
+    "syllables_after": 2,
+    "reason": "More direct"
+  },
+  "particular": {
+    "simple": "specific",
+    "grade": 6,
+    "syllables_before": 4,
+    "syllables_after": 3,
+    "reason": "Clearer meaning"
+  },
+  "similar": {
+    "simple": "like",
+    "grade": 4,
+    "syllables_before": 3,
+    "syllables_after": 1,
+    "reason": "Much simpler"
+  },
+  "various": {
+    "simple": "different",
+    "grade": 5,
+    "syllables_before": 3,
+    "syllables_after": 3,
+    "reason": "More common word"
+  }
+}

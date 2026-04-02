@@ -1,0 +1,11 @@
+# Grade 5 Test Text
+# Expected: Grade 5, Flesch 80-85, Basic academic vocabulary
+# Purpose: Demonstration of accurate Grade 5 prediction
+
+Water moves through nature in a pattern called the water cycle. The sun heats lakes and oceans until some water turns into vapor. This vapor rises into the sky and forms clouds. When the clouds hold enough water it falls back down as rain or snow.
+
+Rain water flows into streams and rivers that carry it to the ocean. Some water soaks into the ground between rocks and soil. Plants use this water through their roots to grow and stay healthy. Animals also drink from streams and ponds along the way.
+
+People need the water cycle to keep working for clean drinking water. Farmers depend on regular rainfall to keep their crops growing. Towns build holding ponds to collect and store water for their residents. Without enough rain the crops can fail and people may run short.
+
+Scientists study the water cycle to predict when storms might come. They also look at how dry spells affect different parts of the country. This helps communities plan ahead and save water when needed.

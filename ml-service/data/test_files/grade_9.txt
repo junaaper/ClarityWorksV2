@@ -1,0 +1,9 @@
+# Grade 9 Test Text
+# Expected: Grade 9, Flesch 55-62, Technical vocabulary with longer sentences
+# Purpose: Demonstration of accurate Grade 9 prediction
+
+Power flows through wires and circuits to drive many of the tools and devices that people depend on in their daily lives. The movement of tiny charged bits through a metal wire creates a steady stream of working power between any two linked points. Copper wire is widely chosen as a wiring metal because the charged bits travel through it with very little slowing of their forward motion. Knowing how this power flow acts in different circuit setups is quite useful for the people who design and build working power systems.
+
+Voltage gives the driving push that moves the charged bits forward through a full circuit from the source to the load and back again. Higher levels of voltage cause a greater amount of current to flow through the same length of wire between any two given points along the path. The opposing trait that limits how freely the bits can move through the wire and controls how much current will pass through is known as the load. These three linked traits follow a basic rule that trained workers use on a steady basis when they design and put together working power circuits.
+
+Force fields show up around a wire when current passes through it and these fields can be put to use in making motion and turning force. This key link between such force fields and the flow of current forms the basic working idea behind both turning machines and power making devices. Turning machines change incoming current into a spinning motion that can drive heavy tools and many common home devices found in most houses. The reverse type of device works the other way by changing spinning motion back into a steady flow of current for wider use across the power grid.

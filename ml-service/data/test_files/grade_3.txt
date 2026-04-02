@@ -1,0 +1,9 @@
+# Grade 3 Test Text
+# Expected: Grade 3, Flesch 90-95, Simple vocabulary
+# Purpose: Demonstration of accurate Grade 3 prediction
+
+Tom had a small brown dog named Max who liked to run and play all day. Every day after lunch Tom and Max would go to the big park near their house. Tom threw a red ball far across the green grass for Max to fetch. Max would run as fast as he could to bring the ball back to Tom.
+
+One warm day they took a long walk down to the old pond near the farm. They saw some fat ducks on the clear blue water by the tall grass. Max barked at the ducks but they did not seem to care at all about him. Tom held Max back so he would not jump in the cold water after them.
+
+After their walk they went home and Tom gave Max some food and cool water. Max ate all of his food and then lay down on his soft warm bed to rest. That night Tom sat next to Max and read a new book about ships and the deep blue sea. Max slept on the rug near his feet while the fire kept them warm.

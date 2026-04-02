@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-gray-50 text-gray-900;
+}
+
+.dark body,
+.dark {
+  @apply bg-gray-900 text-gray-100;
+}
+
+/* Dark mode overrides for common elements */
+.dark .bg-white {
+  @apply !bg-gray-800;
+}
+
+.dark .bg-gray-50 {
+  @apply !bg-gray-900;
+}
+
+.dark .bg-gray-100 {
+  @apply !bg-gray-700;
+}
+
+.dark .text-gray-800 {
+  @apply !text-gray-100;
+}
+
+.dark .text-gray-700 {
+  @apply !text-gray-200;
+}
+
+.dark .text-gray-600 {
+  @apply !text-gray-300;
+}
+
+.dark .text-gray-500 {
+  @apply !text-gray-400;
+}
+
+.dark .border-gray-200 {
+  @apply !border-gray-700;
+}
+
+.dark .border-gray-300 {
+  @apply !border-gray-600;
+}
+
+.dark .shadow-sm {
+  @apply !shadow-gray-900/50;
+}
+
+.dark .shadow-lg {
+  @apply !shadow-gray-900/60;
+}
+
+.dark input,
+.dark textarea,
+.dark select {
+  @apply bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400;
+}
+
+.dark .hover\:bg-gray-50:hover {
+  @apply !bg-gray-700;
+}
+
+.dark .hover\:bg-gray-100:hover {
+  @apply !bg-gray-600;
+}
+
+.highlight-difficult-word {
+  @apply text-red-600 font-medium cursor-help underline decoration-dotted;
+}
+
+.highlight-difficult-sentence {
+  @apply bg-red-50 border-l-2 border-red-400 pl-2;
+}
+
+.dark .highlight-difficult-sentence {
+  @apply bg-red-900/30;
+}

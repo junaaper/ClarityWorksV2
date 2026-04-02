@@ -1,0 +1,11 @@
+# Grade 4 Test Text
+# Expected: Grade 4, Flesch 82-88, Simple vocabulary with some longer words
+# Purpose: Demonstration of accurate Grade 4 prediction
+
+My dad keeps a small garden behind our house where we grow fresh food each year. He helps us dig rows in the soft brown dirt before we plant the tiny seeds. We put them in the ground about one inch deep and press the dirt down flat over them. Then we give each row a good long drink of water from the green hose.
+
+After about two weeks small green shoots start to push up through the dirt. We have to pull the weeds out so they do not crowd our tender young plants. The leaves get bigger as the days grow longer and the warm sun shines down on them. Bugs try to eat the leaves but we pick them off by hand each morning before school.
+
+By the end of summer we can pick food right from our own back yard garden plot. Mom makes a fresh salad from the green beans and ripe red fruits that we grew over the season. Dad likes to grill the corn on the cob that grows tall along the back fence of the yard. We always share some of our extra food with the kind folks who live next door to us.
+
+Growing food takes a lot of care but the fresh taste makes it all worth the hard work we put in.

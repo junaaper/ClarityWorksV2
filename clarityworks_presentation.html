@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClarityWorks - 30% Project Evaluation</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-blue: #2563eb;
+            --accent-teal: #06b6d4;
+            --dark-bg: #0f172a;
+            --darker-bg: #020617;
+            --card-bg: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --success-green: #10b981;
+            --warning-orange: #f59e0b;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--darker-bg);
+            color: var(--text-primary);
+            overflow-x: hidden;
+        }
+
+        .slide {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 4rem 2rem;
+            position: relative;
+            opacity: 0;
+            animation: fadeInSlide 0.8s ease-out forwards;
+        }
+
+        @keyframes fadeInSlide {
+            to {
+                opacity: 1;
+            }
+        }
+
+        /* Background decorations */
+        .slide::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 20% 30%, rgba(37, 99, 235, 0.1) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 70%, rgba(6, 182, 212, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .slide-content {
+            max-width: 1400px;
+            width: 100%;
+            z-index: 1;
+            position: relative;
+        }
+
+        /* Title Slide */
+        .title-slide {
+            background: linear-gradient(135deg, var(--darker-bg) 0%, #1e293b 100%);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 3rem;
+            animation: slideInLeft 0.6s ease-out 0.2s backwards;
+        }
+
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .logo svg {
+            width: 60px;
+            height: 60px;
+        }
+
+        .logo-text {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary-blue), var(--accent-teal));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        h1 {
+            font-size: 4rem;
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            line-height: 1.1;
+            animation: slideInLeft 0.6s ease-out 0.4s backwards;
+        }
+
+        .subtitle {
+            font-size: 1.5rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            animation: slideInLeft 0.6s ease-out 0.6s backwards;
+        }
+
+        .evaluation-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--primary-blue), var(--accent-teal));
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 50px;
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-top: 2rem;
+            animation: slideInLeft 0.6s ease-out 0.8s backwards, pulse 2s ease-in-out 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+
+        /* Content Slide */
+        .content-slide {
+            background: var(--dark-bg);
+        }
+
+        .slide-header {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 3px solid var(--primary-blue);
+            animation: slideInTop 0.6s ease-out 0.2s backwards;
+        }
+
+        @keyframes slideInTop {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .slide-header .accent-bar {
+            width: 6px;
+            height: 60px;
+            background: linear-gradient(180deg, var(--primary-blue), var(--accent-teal));
+            border-radius: 3px;
+        }
+
+        h2 {
+            font-size: 3rem;
+            font-weight: 800;
+        }
+
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: start;
+        }
+
+        .module-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 2.5rem;
+            border: 2px solid rgba(37, 99, 235, 0.2);
+            transition: all 0.3s ease;
+            animation: fadeInUp 0.6s ease-out backwards;
+        }
+
+        .module-card:nth-child(1) {
+            animation-delay: 0.4s;
+        }
+
+        .module-card:nth-child(2) {
+            animation-delay: 0.6s;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .module-card:hover {
+            transform: translateY(-8px);
+            border-color: var(--primary-blue);
+            box-shadow: 0 20px 40px rgba(37, 99, 235, 0.3);
+        }
+
+        .module-number {
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary-blue), var(--accent-teal));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+            font-family: 'Space Mono', monospace;
+        }
+
+        .module-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .module-description {
+            font-size: 1.1rem;
+            line-height: 1.7;
+            color: var(--text-secondary);
+        }
+
+        /* Module Implementation Slides */
+        .module-slide {
+            background: var(--dark-bg);
+        }
+
+        .feature-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            animation: fadeInUp 0.6s ease-out 0.6s backwards;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 1.5rem;
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 15px;
+            border-left: 4px solid var(--success-green);
+            transition: all 0.3s ease;
+        }
+
+        .feature-item:hover {
+            transform: translateX(10px);
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.2);
+        }
+
+        .feature-icon {
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+            background: var(--success-green);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .feature-icon svg {
+            width: 20px;
+            height: 20px;
+            fill: white;
+        }
+
+        .feature-content h3 {
+            font-size: 1.4rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .feature-content p {
+            font-size: 1.05rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* Screenshot styling */
+        .screenshot-container {
+            animation: fadeInUp 0.6s ease-out 0.8s backwards;
+        }
+
+        .screenshot {
+            width: 100%;
+            border-radius: 20px;
+            border: 3px solid rgba(37, 99, 235, 0.3);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        .screenshot:hover {
+            transform: scale(1.02);
+            border-color: var(--primary-blue);
+            box-shadow: 0 25px 70px rgba(37, 99, 235, 0.4);
+        }
+
+        /* Pipeline Flow */
+        .pipeline-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .pipeline-step {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 2.5rem 2rem;
+            text-align: center;
+            position: relative;
+            border: 2px solid rgba(37, 99, 235, 0.2);
+            animation: fadeInUp 0.6s ease-out backwards;
+            transition: all 0.3s ease;
+        }
+
+        .pipeline-step:nth-child(1) { animation-delay: 0.4s; }
+        .pipeline-step:nth-child(2) { animation-delay: 0.6s; }
+        .pipeline-step:nth-child(3) { animation-delay: 0.8s; }
+
+        .pipeline-step:hover {
+            transform: translateY(-10px);
+            border-color: var(--primary-blue);
+        }
+
+        .pipeline-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1.5rem;
+            background: linear-gradient(135deg, var(--primary-blue), var(--accent-teal));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pipeline-icon svg {
+            width: 40px;
+            height: 40px;
+            fill: white;
+        }
+
+        .step-number {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--accent-teal);
+            margin-bottom: 1rem;
+            font-family: 'Space Mono', monospace;
+        }
+
+        .step-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .step-description {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* Arrow between steps */
+        .pipeline-step:not(:last-child)::after {
+            content: '→';
+            position: absolute;
+            right: -2.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 2rem;
+            color: var(--primary-blue);
+            font-weight: 700;
+        }
+
+        /* Q&A Slide */
+        .qa-slide {
+            background: linear-gradient(135deg, var(--dark-bg) 0%, #1e293b 100%);
+            text-align: center;
+        }
+
+        .qa-content {
+            animation: fadeInUp 0.6s ease-out 0.4s backwards;
+        }
+
+        .qa-content h2 {
+            font-size: 5rem;
+            margin-bottom: 2rem;
+        }
+
+        .thank-you-text {
+            font-size: 2rem;
+            color: var(--text-secondary);
+        }
+
+        /* Navigation dots */
+        .slide-nav {
+            position: fixed;
+            right: 2rem;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            z-index: 100;
+        }
+
+        .nav-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-dot.active {
+            background: var(--primary-blue);
+            transform: scale(1.3);
+        }
+
+        .nav-dot:hover {
+            background: var(--accent-teal);
+            transform: scale(1.2);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .two-column {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+
+            .pipeline-container {
+                grid-template-columns: 1fr;
+            }
+
+            .pipeline-step::after {
+                content: '↓';
+                right: auto;
+                bottom: -2.5rem;
+                top: auto;
+                transform: none;
+            }
+
+            h1 {
+                font-size: 3rem;
+            }
+
+            h2 {
+                font-size: 2.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Title Slide -->
+    <section class="slide title-slide">
+        <div class="slide-content">
+            <div class="logo">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="url(#gradient1)"/>
+                    <path d="M2 17L12 22L22 17V12L12 17L2 12V17Z" fill="url(#gradient2)"/>
+                    <defs>
+                        <linearGradient id="gradient1" x1="2" y1="2" x2="22" y2="12" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#2563eb"/>
+                            <stop offset="1" stop-color="#06b6d4"/>
+                        </linearGradient>
+                        <linearGradient id="gradient2" x1="2" y1="12" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#06b6d4"/>
+                            <stop offset="1" stop-color="#2563eb"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <span class="logo-text">ClarityWorks</span>
+            </div>
+            <h1>30% Project Evaluation<br/>& Progress Report</h1>
+            <p class="subtitle">Text Readability Analysis & AI-Powered Simplification Platform</p>
+            <div class="evaluation-badge">Admin Dashboard | Text Extraction | Text Scoring</div>
+        </div>
+    </section>
+
+    <!-- Evaluation Scope Slide -->
+    <section class="slide content-slide">
+        <div class="slide-content">
+            <div class="slide-header">
+                <div class="accent-bar"></div>
+                <h2>Evaluation Scope (30%)</h2>
+            </div>
+            <div class="two-column">
+                <div class="module-card">
+                    <div class="module-number">01</div>
+                    <h3 class="module-title">Admin Dashboard Implementation</h3>
+                    <p class="module-description">
+                        Development of a comprehensive admin panel using React and TypeScript for platform oversight, 
+                        user management, and system analytics monitoring.
+                    </p>
+                </div>
+                <div class="module-card">
+                    <div class="module-number">02</div>
+                    <h3 class="module-title">Text Extraction Module</h3>
+                    <p class="module-description">
+                        Implementation of multi-format document processing with PDF, DOCX, TXT parsing capabilities 
+                        and OCR integration for image-based text extraction.
+                    </p>
+                </div>
+            </div>
+            <div style="margin-top: 2rem;">
+                <div class="module-card" style="animation-delay: 0.8s;">
+                    <div class="module-number">03</div>
+                    <h3 class="module-title">Text Scoring & Readability Analysis</h3>
+                    <p class="module-description">
+                        Core NLP pipeline utilizing spaCy for comprehensive readability analysis with multiple metrics 
+                        including Flesch Reading Ease, Flesch-Kincaid Grade Level, SMOG Index, Coleman-Liau Index, 
+                        and ARI with advanced visualization and grade-level classification.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Admin Dashboard Implementation -->
+    <section class="slide module-slide">
+        <div class="slide-content">
+            <div class="slide-header">
+                <div class="accent-bar"></div>
+                <h2>Admin Dashboard Implementation</h2>
+            </div>
+            <div class="two-column">
+                <div>
+                    <h3 style="font-size: 2rem; color: var(--accent-teal); margin-bottom: 2rem; animation: slideInLeft 0.6s ease-out 0.4s backwards;">User Management</h3>
+                    <p style="font-size: 1.2rem; color: var(--text-secondary); margin-bottom: 2rem; line-height: 1.7; animation: slideInLeft 0.6s ease-out 0.5s backwards;">
+                        The admin panel provides a secured dashboard to oversee the platform's user base with comprehensive management capabilities.
+                    </p>
+                    <div class="feature-list">
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                                </svg>
+                            </div>
+                            <div class="feature-content">
+                                <h3>View All Users</h3>
+                                <p>Access a complete registry of all registered users with detailed profile information and activity statistics.</p>
+                            </div>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                                </svg>
+                            </div>
+                            <div class="feature-content">
+                                <h3>System Analytics</h3>
+                                <p>Monitor platform statistics including total analyses, average readability scores, user engagement, and grade level distribution.</p>
+                            </div>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                                </svg>
+                            </div>
+                            <div class="feature-content">
+                                <h3>Activity Tracking</h3>
+                                <p>Real-time monitoring of user activities, recent analyses, and top users with comprehensive activity logs.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="screenshot-container">
+                    <img src="admin.jpeg" alt="Admin Dashboard" class="screenshot">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Text Extraction Module -->
+    <section class="slide module-slide">
+        <div class="slide-content">
+            <div class="slide-header">
+                <div class="accent-bar"></div>
+                <h2>Text Extraction Module</h2>
+            </div>
+            <div class="two-column">
+                <div class="screenshot-container">
+                    <img src="new_analysis.jpeg" alt="Text Extraction Interface" class="screenshot">
+                </div>
+                <div>
+                    <h3 style="font-size: 2rem; color: var(--accent-teal); margin-bottom: 2rem; animation: slideInLeft 0.6s ease-out 0.4s backwards;">Multi-Format Processing</h3>
+                    <p style="font-size: 1.2rem; color: var(--text-secondary); margin-bottom: 2rem; line-height: 1.7; animation: slideInLeft 0.6s ease-out 0.5s backwards;">
+                        Advanced document processing pipeline supporting multiple input methods for flexible text analysis.
+                    </p>
+                    <div class="feature-list">
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                                </svg>
+                            </div>
+                            <div class="feature-content">
+                                <h3>Direct Text Input</h3>
+                                <p>Type or paste text directly into the analysis interface with real-time character and word counting.</p>
+                            </div>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                                </svg>
+                            </div>
+                            <div class="feature-content">
+                                <h3>Document Upload</h3>
+                                <p>Support for PDF, DOC/DOCX, and TXT file uploads up to 10MB with automatic text extraction and preprocessing.</p>
+                            </div>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                                </svg>
+                            </div>
+                            <div class="feature-content">
+                                <h3>OCR Integration</h3>
+                                <p>Tesseract-powered OCR for extracting text from images with high accuracy and multi-language support.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Text Scoring Module -->
+    <section class="slide module-slide">
+        <div class="slide-content">
+            <div class="slide-header">
+                <div class="accent-bar"></div>
+                <h2>Text Scoring & Readability Analysis</h2>
+            </div>
+            <div class="two-column">
+                <div>
+                    <h3 style="font-size: 2rem; color: var(--accent-teal); margin-bottom: 2rem; animation: slideInLeft 0.6s ease-out 0.4s backwards;">Comprehensive NLP Pipeline</h3>
+                    <p style="font-size: 1.2rem; color: var(--text-secondary); margin-bottom: 2rem; line-height: 1.7; animation: slideInLeft 0.6s ease-out 0.5s backwards;">
+                        Advanced text analysis using spaCy NLP models with multiple readability metrics and intelligent grade-level classification.
+                    </p>
+                    <div class="feature-list">
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                                </svg>
+                            </div>
+                            <div class="feature-content">
+                                <h3>Multiple Readability Metrics</h3>
+                                <p>Flesch Reading Ease, Flesch-Kincaid Grade, SMOG Index, Coleman-Liau, and ARI scores with radar chart visualization.</p>
+                            </div>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                                </svg>
+                            </div>
+                            <div class="feature-content">
+                                <h3>Grade Level Classification</h3>
+                                <p>Automatic classification from Grade 3 to College level with visual gauge representation and difficulty indicators.</p>
+                            </div>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                                </svg>
+                            </div>
+                            <div class="feature-content">
+                                <h3>Detailed Text Statistics</h3>
+                                <p>Word count, sentence analysis, difficult word identification (36.1% of total), and word difficulty distribution with interactive charts.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="screenshot-container">
+                    <img src="metrics.jpeg" alt="Text Scoring Results" class="screenshot">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Analysis Pipeline -->
+    <section class="slide content-slide">
+        <div class="slide-content">
+            <div class="slide-header">
+                <div class="accent-bar"></div>
+                <h2>Analysis Pipeline Flow</h2>
+            </div>
+            <div class="pipeline-container">
+                <div class="pipeline-step">
+                    <div class="pipeline-icon">
+                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                        </svg>
+                    </div>
+                    <div class="step-number">1. Input</div>
+                    <h3 class="step-title">Text Extraction</h3>
+                    <p class="step-description">Multiple input methods: direct text, document upload (PDF/DOC/TXT), or OCR from images</p>
+                </div>
+                <div class="pipeline-step">
+                    <div class="pipeline-icon">
+                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/>
+                        </svg>
+                    </div>
+                    <div class="step-number">2. Processing</div>
+                    <h3 class="step-title">NLP Analysis</h3>
+                    <p class="step-description">spaCy tokenization, sentence parsing, word difficulty classification, and syllable counting</p>
+                </div>
+                <div class="pipeline-step">
+                    <div class="pipeline-icon">
+                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+                        </svg>
+                    </div>
+                    <div class="step-number">3. Output</div>
+                    <h3 class="step-title">Results Display</h3>
+                    <p class="step-description">Comprehensive metrics, visualizations, grade-level classification, and export to PDF/DOCX</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Q&A Slide -->
+    <section class="slide qa-slide">
+        <div class="slide-content">
+            <div class="qa-content">
+                <h2>Q&A</h2>
+                <p class="thank-you-text">Thank you for your attention.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Navigation Dots -->
+    <div class="slide-nav">
+        <div class="nav-dot active" onclick="scrollToSlide(0)"></div>
+        <div class="nav-dot" onclick="scrollToSlide(1)"></div>
+        <div class="nav-dot" onclick="scrollToSlide(2)"></div>
+        <div class="nav-dot" onclick="scrollToSlide(3)"></div>
+        <div class="nav-dot" onclick="scrollToSlide(4)"></div>
+        <div class="nav-dot" onclick="scrollToSlide(5)"></div>
+        <div class="nav-dot" onclick="scrollToSlide(6)"></div>
+    </div>
+
+    <script>
+        // Smooth scroll to slide
+        function scrollToSlide(index) {
+            const slides = document.querySelectorAll('.slide');
+            slides[index].scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Update active nav dot on scroll
+        let isScrolling = false;
+        window.addEventListener('scroll', () => {
+            if (!isScrolling) {
+                window.requestAnimationFrame(() => {
+                    const slides = document.querySelectorAll('.slide');
+                    const dots = document.querySelectorAll('.nav-dot');
+                    const scrollPosition = window.scrollY + window.innerHeight / 2;
+
+                    slides.forEach((slide, index) => {
+                        const slideTop = slide.offsetTop;
+                        const slideBottom = slideTop + slide.offsetHeight;
+
+                        if (scrollPosition >= slideTop && scrollPosition < slideBottom) {
+                            dots.forEach(dot => dot.classList.remove('active'));
+                            dots[index].classList.add('active');
+                        }
+                    });
+
+                    isScrolling = false;
+                });
+
+                isScrolling = true;
+            }
+        });
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            const slides = document.querySelectorAll('.slide');
+            const currentSlide = Math.round(window.scrollY / window.innerHeight);
+            
+            if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                if (currentSlide < slides.length - 1) {
+                    scrollToSlide(currentSlide + 1);
+                }
+            } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                if (currentSlide > 0) {
+                    scrollToSlide(currentSlide - 1);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

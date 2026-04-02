@@ -1,0 +1,11 @@
+# Grade 7 Test Text
+# Expected: Grade 7, Flesch 68-73, Academic vocabulary emerging
+# Purpose: Demonstration of accurate Grade 7 prediction
+
+The human body relies on several major systems that work closely together to maintain good health. The heart pumps blood through a network of vessels that carry needed air and food to every living cell. The lungs take in clean air and remove the waste gas that builds up when cells break down food. These two vital systems depend on each other to keep the whole body running the right way.
+
+The system that handles food begins its work in the mouth where the teeth crush each bite into smaller parts. This process then moves down to the stomach where stronger acids break apart the tougher portions of each meal. The useful parts of the food pass into the blood and travel through the body to reach the cells. Each cell uses these building blocks for growth and repair of worn or damaged tissue over time.
+
+The brain serves as the main control center that sends signals through a network of nerves across the body. These signals direct the actions we choose to perform such as running or writing words on paper. They also manage things that happen without our thinking about them like breathing and heart rate. Sensory input from the eyes and ears flows into the brain where it gets sorted and turned into responses.
+
+When one system in the body becomes weak it can reduce the working power of other linked systems.

@@ -1,0 +1,11 @@
+# Grade 8 Test Text
+# Expected: Grade 8, Flesch 62-68, Moderate academic vocabulary
+# Purpose: Demonstration of accurate Grade 8 prediction
+
+Weather patterns across the planet are driven by the way the sun heats the surface of land and water. Places closer to the middle of the globe get stronger sunlight and tend to have warmer weather than the polar zones. This gap in warmth between the regions creates broad movements of air and moisture that form the major wind patterns. Ocean currents also carry warmer and cooler water between the different climate zones around the world.
+
+Water vapor plays a key role in creating storms and the rainfall that shapes the weather in each region of the world. When moist air rises and starts to cool the vapor turns into tiny water drops that cluster and form clouds in the sky above. If enough moisture gathers in one area then the heavy clouds release their water as rain or sometimes as frozen snow. The amount of rainfall that a region gets during a normal year helps decide what kind of climate and plant life the area will support.
+
+Pressure systems are another major factor in shaping local weather patterns from one day to the next. Higher pressure zones often produce clear skies and calm settled weather that can last for several days at a time. Lower pressure draws in moist air from nearby and often brings cloudy skies along with stormy weather and strong winds. The line where two pressure systems meet is called a front and it often brings rapid and sudden changes to the weather.
+
+Modern weather science uses data from the sky and machine models to predict what is coming next for each area.
