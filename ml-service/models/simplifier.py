@@ -18,6 +18,22 @@ except ImportError:
 
 nlp = spacy.load('en_core_web_sm')
 
+# Minimum Zipf frequency improvement required for a synonym to be accepted.
+# Candidate must be at least this many Zipf units more common than the original.
+# Prevents borderline or semantically wrong replacements.
+MIN_FREQ_IMPROVEMENT = 0.8
+
+# Words that must NEVER be used as synonyms regardless of frequency.
+# Includes vulgar terms, slang that would be inappropriate or semantically wrong.
+BLOCKED_SYNONYMS = {
+    # Vulgar / offensive
+    'dick', 'dicks', 'cock', 'ass', 'arse', 'bastard', 'bitch', 'shit',
+    'crap', 'damn', 'hell', 'prick', 'twat', 'wanker', 'bollocks',
+    # Common wrong replacements seen in the wild
+    'lamb', 'lambs', 'stool', 'stools', 'tool',
+    # Single-letter or very short that are meaningless in context
+}
+
 # Zipf frequency thresholds for grade estimation
 # Higher zipf = more common word. Scale is roughly 0-7.
 # 7 = "the", 6 = "is", 5 = "know", 4 = "allow", 3 = "magnificent", 2 = "trepidation"
@@ -32,7 +48,34 @@ GRADE_ZIPF_THRESHOLDS = {
     10: 3.4,
     11: 3.1,
     12: 2.8,
+    13: 2.5,  # College: allows rare academic terminology
 }
+
+# Precise target metrics per grade — these are the two levers that drive the ML model.
+# The ML model formula approximates: grade ≈ -21.16 + 14.33*(avg_syl) + 0.6*(avg_wps)
+# Values are empirically calibrated: Grade 5 (syl=1.32, wps=12) and Grade 9 (syl=1.45, wps=19)
+# have been validated to predict correctly. Others are interpolated.
+#
+#   target_syl  - target average syllables per word
+#   target_wps  - target average words per sentence
+#   min_wps     - minimum sentence length to avoid choppy text
+#   max_wps     - maximum sentence length
+GRADE_TARGET_METRICS = {
+    3:  {'target_syl': 1.20, 'target_wps': 8,  'min_wps': 5,  'max_wps': 10},
+    4:  {'target_syl': 1.26, 'target_wps': 10, 'min_wps': 7,  'max_wps': 13},
+    5:  {'target_syl': 1.32, 'target_wps': 12, 'min_wps': 8,  'max_wps': 16},
+    6:  {'target_syl': 1.35, 'target_wps': 14, 'min_wps': 10, 'max_wps': 18},
+    7:  {'target_syl': 1.38, 'target_wps': 16, 'min_wps': 11, 'max_wps': 21},
+    8:  {'target_syl': 1.41, 'target_wps': 17, 'min_wps': 12, 'max_wps': 22},
+    9:  {'target_syl': 1.45, 'target_wps': 19, 'min_wps': 13, 'max_wps': 25},
+    10: {'target_syl': 1.48, 'target_wps': 21, 'min_wps': 14, 'max_wps': 28},
+    11: {'target_syl': 1.51, 'target_wps': 23, 'min_wps': 16, 'max_wps': 30},
+    12: {'target_syl': 1.55, 'target_wps': 25, 'min_wps': 18, 'max_wps': 33},
+    13: {'target_syl': 1.60, 'target_wps': 28, 'min_wps': 20, 'max_wps': 38},
+}
+
+# Kept for backward-compat with upgrade complexification code
+GRADE_TARGET_SYLLABLES = {g: m['target_syl'] for g, m in GRADE_TARGET_METRICS.items()}
 
 
 class TextSimplifier:
@@ -49,18 +92,10 @@ class TextSimplifier:
         if GROQ_AVAILABLE and os.getenv('GROQ_API_KEY'):
             self.groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
-        # Grade-specific constraints for sentence length
+        # Grade-specific constraints derived from GRADE_TARGET_METRICS
         self.grade_constraints = {
-            3: {'max_words': 10, 'max_syllables': 2},
-            4: {'max_words': 12, 'max_syllables': 2},
-            5: {'max_words': 15, 'max_syllables': 2},
-            6: {'max_words': 18, 'max_syllables': 3},
-            7: {'max_words': 20, 'max_syllables': 3},
-            8: {'max_words': 20, 'max_syllables': 3},
-            9: {'max_words': 22, 'max_syllables': 3},
-            10: {'max_words': 25, 'max_syllables': 4},
-            11: {'max_words': 28, 'max_syllables': 4},
-            12: {'max_words': 30, 'max_syllables': 4}
+            g: {'max_words': m['max_wps'], 'max_syllables': 4}
+            for g, m in GRADE_TARGET_METRICS.items()
         }
 
         # Cache for synonym lookups (word -> best simple synonym)
@@ -70,9 +105,16 @@ class TextSimplifier:
     #  Main entry point
     # ------------------------------------------------------------------ #
 
-    def simplify_to_grade(self, text, target_grade):
+    def simplify_to_grade(self, text, target_grade, mode='auto'):
         """
-        Main simplification function with hybrid synonym finding + Groq validation.
+        Main rewrite function: bidirectional rule-based rewrite, then optional Groq polish.
+
+        Direction-aware:
+          - DOWNGRADE (target < estimated current): aggressive word simplification + sentence splitting
+          - UPGRADE (target > estimated current): vocabulary complexification + sentence combining
+
+        mode='auto'       — apply all changes automatically; try Groq if available
+        mode='interactive' — rule-based only, individual changes for user to accept/deny
 
         Returns:
             {
@@ -85,41 +127,50 @@ class TextSimplifier:
         changes = []
         current_text = text
 
-        # Step 1: Replace difficult words with simpler synonyms
-        # Uses: curated map -> WordNet+Lesk -> Datamuse API fallback
-        current_text, word_changes = self._replace_difficult_words(current_text, target_grade)
-        changes.extend(word_changes)
+        # Measure current metrics and determine direction
+        estimated_grade, current_syl, current_wps = self._measure_text_metrics(text)
+        target_metrics = GRADE_TARGET_METRICS.get(target_grade, GRADE_TARGET_METRICS[8])
+        going_up = target_grade > estimated_grade + 0.5
 
-        # Step 2: Split long sentences
-        current_text, split_changes = self._split_long_sentences(current_text, target_grade)
-        changes.extend(split_changes)
+        print(f"[rewrite] estimated={estimated_grade:.1f} (syl={current_syl:.2f}, wps={current_wps:.1f}) "
+              f"-> target={target_grade} (syl={target_metrics['target_syl']:.2f}, wps={target_metrics['target_wps']}) "
+              f"going_up={going_up}")
 
-        # Step 3: Groq validation (sanity check on rule-based changes)
-        validation = self.groq_validator.validate_changes(
-            text, current_text, changes
-        )
+        if going_up:
+            # UPGRADE: add syllable complexity first, then lengthen sentences
+            current_text, word_changes = self._complexify_text(current_text, target_grade)
+            changes.extend(word_changes)
+            # Combine short sentences to hit target_wps
+            current_text, combine_changes = self._combine_short_sentences(current_text, target_grade)
+            changes.extend(combine_changes)
+        else:
+            # DOWNGRADE: simplify vocabulary to hit target_syl, then split sentences to hit target_wps
+            current_text, word_changes = self._replace_difficult_words(current_text, target_grade)
+            changes.extend(word_changes)
+            current_text, split_changes = self._split_long_sentences(current_text, target_grade)
+            changes.extend(split_changes)
 
-        # Step 4: If validation found issues, let Groq fix them
-        if not validation['valid'] and validation['issues']:
-            print(f"Validation found issues: {validation['issues']}")
-            fixed_text = self.groq_validator.fix_with_groq(
-                current_text, target_grade, validation['issues']
-            )
-            if fixed_text != current_text:
-                changes.append({
-                    'type': 'groq_correction',
-                    'original': current_text,
-                    'simplified': fixed_text,
-                    'position': 0,
-                    'reason': f"AI corrected issues: {', '.join(validation['issues'])}",
-                    'id': len(changes)
-                })
-                current_text = fixed_text
+        validation = {'valid': True, 'issues': [], 'suggestions': []}
 
-        # Step 5: Groq fallback for remaining complexity
-        if self._needs_groq_help(current_text, target_grade):
-            current_text, api_changes = self.groq_fallback(current_text, target_grade)
-            changes.extend(api_changes)
+        if mode == 'auto':
+            # Try Groq full rewrite for best quality.
+            # When Groq succeeds, it completely replaces the text — return ONLY the
+            # ai_rewrite change so the UI doesn't try to highlight rule-based changes
+            # inside Groq-generated text (they won't match and cause false highlights).
+            groq_text, groq_changes = self._groq_full_rewrite(text, target_grade, going_up)
+            if groq_text:
+                return {
+                    'simplified_text': groq_text,
+                    'changes': groq_changes,  # Only the single ai_rewrite change
+                    'original_text': text,
+                    'validation': {'valid': True, 'issues': [], 'suggestions': []}
+                }
+            # Groq unavailable: rule-based result stands
+        else:
+            # Interactive: light validation only, keep individual changes for user review
+            validation = self.groq_validator.validate_changes(text, current_text, changes)
+            if not validation['valid'] and validation['issues']:
+                print(f"[interactive] Validation issues (not auto-fixing): {validation['issues']}")
 
         return {
             'simplified_text': current_text,
@@ -127,6 +178,32 @@ class TextSimplifier:
             'original_text': text,
             'validation': validation
         }
+
+    def _measure_text_metrics(self, text):
+        """
+        Measure actual text metrics and estimate grade.
+        Returns: (estimated_grade, avg_syllables_per_word, avg_words_per_sentence)
+
+        Uses the model approximation formula: grade ≈ -21.16 + 14.33*syl + 0.6*wps
+        """
+        doc = nlp(text)
+        words = [t for t in doc if t.is_alpha]
+        sentences = list(doc.sents)
+
+        if not words or not sentences:
+            return 8.0, 1.4, 15.0  # safe defaults
+
+        total_syl = sum(self.text_processor.count_syllables(w.text.lower()) for w in words)
+        avg_syl = total_syl / len(words)
+        avg_wps = len(words) / len(sentences)
+
+        predicted = -21.16 + 14.33 * avg_syl + 0.6 * avg_wps
+        return max(3.0, min(14.0, predicted)), avg_syl, avg_wps
+
+    def _estimate_current_grade(self, text):
+        """Backward-compat wrapper."""
+        grade, _, _ = self._measure_text_metrics(text)
+        return grade
 
     # ------------------------------------------------------------------ #
     #  Word difficulty assessment (data-driven)
@@ -226,12 +303,19 @@ class TextSimplifier:
                     )
 
         # Datamuse API fallback (only if WordNet found nothing)
+        # Datamuse uses "means like" which can return phonetically similar but semantically
+        # unrelated words (e.g., "zone" -> "sun"). Apply much stricter checks:
+        #   1. Must be significantly more common (>=1.5 Zipf units, not just 0.8)
+        #   2. Must be in the Dale-Chall 3000 easy words list (proven simple vocabulary)
         if not candidates:
             datamuse_result = self.datamuse_finder.get_simpler_synonym(lemma)
             if datamuse_result:
                 dm_freq = zipf_frequency(datamuse_result, 'en')
                 dm_syl = self.text_processor.count_syllables(datamuse_result)
-                if dm_freq > original_freq and dm_syl <= original_syllables:
+                dm_is_easy = self.synonym_lookup.is_easy_word(datamuse_result)
+                if (dm_freq >= original_freq + 1.5 and
+                        dm_syl <= original_syllables and
+                        dm_is_easy):
                     candidates.append((datamuse_result, dm_freq, dm_syl))
 
         if not candidates:
@@ -315,19 +399,28 @@ class TextSimplifier:
                 if synset not in cand_synsets[:max_senses]:
                     continue
 
+            # Never use blocked/inappropriate synonyms
+            if candidate in BLOCKED_SYNONYMS:
+                continue
+
             cand_freq = zipf_frequency(candidate, 'en')
             cand_syllables = self.text_processor.count_syllables(candidate)
 
-            # Must be BOTH more frequent AND fewer/equal syllables
-            if cand_freq > original_freq and cand_syllables <= original_syllables:
+            # Must be significantly more frequent (MIN_FREQ_IMPROVEMENT Zipf units) AND fewer/equal syllables.
+            # The minimum improvement threshold prevents borderline or semantically wrong replacements.
+            if cand_freq >= original_freq + MIN_FREQ_IMPROVEMENT and cand_syllables <= original_syllables:
                 candidates.append((candidate, cand_freq, cand_syllables))
 
     def _pos_matches(self, spacy_pos, wordnet_pos):
-        """Map spaCy POS to WordNet POS for filtering."""
+        """Map spaCy POS to WordNet POS for filtering.
+        Note: many English adjectives in WordNet use ADJ_SAT ('s'), not ADJ ('a').
+        Both must match for spaCy ADJ tokens.
+        """
+        if spacy_pos == 'ADJ':
+            return wordnet_pos in (wn.ADJ, wn.ADJ_SAT)  # 'a' or 's'
         mapping = {
             'NOUN': wn.NOUN,
             'VERB': wn.VERB,
-            'ADJ': wn.ADJ,
             'ADV': wn.ADV,
         }
         return mapping.get(spacy_pos) == wordnet_pos
@@ -437,7 +530,11 @@ class TextSimplifier:
         elif token.pos_ == 'NOUN':
             if 'Number=Plur' in str(morph):
                 last = simple_word.split()[-1] if ' ' in simple_word else simple_word
-                if last.endswith(('s', 'sh', 'ch', 'x', 'z')):
+                # If the word already ends in 's', it is likely already in plural/invariant form.
+                # Adding another 's' or 'es' would create non-words like "mechanicses".
+                if last.endswith('s'):
+                    plural = last  # already looks plural — use as-is
+                elif last.endswith(('sh', 'ch', 'x', 'z')):
                     plural = last + 'es'
                 elif last.endswith('y') and len(last) > 2 and last[-2] not in 'aeiou':
                     plural = last[:-1] + 'ies'
@@ -451,9 +548,19 @@ class TextSimplifier:
 
         elif token.pos_ == 'ADJ':
             if tag == 'JJR':
-                return simple_word + ('r' if simple_word.endswith('e') else 'er')
+                if simple_word.endswith('e'):
+                    return simple_word + 'r'
+                elif self._should_double_final(simple_word):
+                    return simple_word + simple_word[-1] + 'er'
+                else:
+                    return simple_word + 'er'
             elif tag == 'JJS':
-                return simple_word + ('st' if simple_word.endswith('e') else 'est')
+                if simple_word.endswith('e'):
+                    return simple_word + 'st'
+                elif self._should_double_final(simple_word):
+                    return simple_word + simple_word[-1] + 'est'
+                else:
+                    return simple_word + 'est'
 
         return simple_word
 
@@ -495,6 +602,10 @@ class TextSimplifier:
             if token.pos_ == 'PROPN':
                 continue
 
+            # Skip ALL_CAPS tokens — these are acronyms/abbreviations (e.g., IDPS, TCP, HTML)
+            if token.text.isupper() and len(token.text) > 1:
+                continue
+
             word_lower = token.text.lower()
 
             # Skip short words
@@ -520,7 +631,12 @@ class TextSimplifier:
             # Check the synonym is actually simpler (guard rail)
             orig_freq = zipf_frequency(word_lower, 'en')
             syn_freq = zipf_frequency(base_synonym.split()[0], 'en')
-            if syn_freq <= orig_freq:
+            if syn_freq < orig_freq + MIN_FREQ_IMPROVEMENT:
+                continue
+
+            # Never use blocked synonyms at the final step either
+            base_lower = base_synonym.lower().split()[0]
+            if base_lower in BLOCKED_SYNONYMS:
                 continue
 
             # Apply inflection to match original form
@@ -555,13 +671,195 @@ class TextSimplifier:
         return new_text, changes
 
     # ------------------------------------------------------------------ #
+    #  Upgrade path: complexification
+    # ------------------------------------------------------------------ #
+
+    def _complexify_text(self, text, target_grade):
+        """
+        Replace simple/common words with more formal/academic alternatives.
+        Used when upgrading text to a higher grade level.
+
+        Strategy:
+        1. Check complexification_map first (curated quality mappings)
+        2. Use WordNet to find synonyms with MORE syllables + appropriate Zipf frequency
+        3. Skip stop words, proper nouns, acronyms, very short words
+        """
+        changes = []
+        doc = nlp(text)
+        new_text = text
+        offset = 0
+
+        target_syl = GRADE_TARGET_SYLLABLES.get(target_grade, 1.55)
+        target_threshold = GRADE_ZIPF_THRESHOLDS.get(target_grade, 3.0)
+
+        for token in doc:
+            if not token.is_alpha or token.is_stop:
+                continue
+            if token.pos_ in ('PROPN', 'NUM'):
+                continue
+            if token.text.isupper() and len(token.text) > 1:
+                continue
+            if len(token.text) < 3:
+                continue
+
+            word_lower = token.text.lower()
+
+            orig_freq = zipf_frequency(word_lower, 'en')
+            orig_syl = self.text_processor.count_syllables(word_lower)
+
+            # Skip words that are already complex enough for the target grade:
+            #   - already has 3+ syllables, OR
+            #   - already rare enough (freq below target threshold + small buffer)
+            if orig_syl >= 3:
+                continue
+            if orig_freq <= target_threshold + 0.5:
+                continue
+
+            complex_syn = self._find_complex_synonym(token, target_grade, target_threshold, target_syl)
+            if not complex_syn:
+                continue
+
+            # Check it's actually more complex (more syllables or lower freq)
+            syn_freq = zipf_frequency(complex_syn.split()[0], 'en')
+            syn_syl = self.text_processor.count_syllables(complex_syn)
+            if syn_syl <= orig_syl and syn_freq >= orig_freq:
+                continue  # Not actually more complex
+
+            # Apply inflection
+            inflected = self._apply_inflection(complex_syn, token)
+
+            # Preserve capitalization
+            if token.text[0].isupper():
+                inflected = inflected[0].upper() + inflected[1:]
+
+            # Replace in text
+            start = token.idx + offset
+            end = start + len(token.text)
+            new_text = new_text[:start] + inflected + new_text[end:]
+            offset += len(inflected) - len(token.text)
+
+            changes.append({
+                'type': 'word_upgrade',
+                'original': token.text,
+                'simplified': inflected,
+                'position': token.idx,
+                'reason': f"'{token.text}' → '{inflected}': More formal vocabulary for Grade {target_grade}.",
+                'id': len(changes)
+            })
+
+        return new_text, changes
+
+    def _find_complex_synonym(self, token, target_grade, target_threshold, target_syl):
+        """
+        Find a more complex/formal synonym for vocabulary upgrading.
+
+        Primarily uses the curated complexification_map. Falls back to WordNet
+        only with strict POS matching and sanity checks to avoid nonsensical output.
+        """
+        word_lower = token.text.lower()
+        lemma = token.lemma_.lower()
+        orig_freq = zipf_frequency(word_lower, 'en')
+        orig_syl = self.text_processor.count_syllables(word_lower)
+
+        # --- Strategy 1: Curated complexification_map ---
+        complex_options = (self.synonym_lookup.get_complex_synonyms(lemma) or
+                           self.synonym_lookup.get_complex_synonyms(word_lower))
+        if complex_options:
+            # POS validation: curated map doesn't store POS, so verify the
+            # complex synonym can function as the same POS as the original token.
+            wn_pos_map = {'VERB': wn.VERB, 'NOUN': wn.NOUN, 'ADV': wn.ADV}
+            wn_pos = wn_pos_map.get(token.pos_)  # ADJ checked separately (ADJ_SAT)
+
+            best = None
+            best_dist = float('inf')
+            for opt in complex_options:
+                first_word = opt.split()[0]
+                freq = zipf_frequency(first_word, 'en')
+                # Must be more formal (lower freq) and reasonably accessible
+                if freq >= orig_freq - 0.1 or freq < target_threshold - 0.5:
+                    continue
+                # POS sanity: complex synonym must exist with same POS in WordNet
+                if wn_pos and not wn.synsets(first_word, pos=wn_pos):
+                    continue  # e.g. rejects "comparable" for a VERB token
+                if token.pos_ == 'ADJ':
+                    if not (wn.synsets(first_word, pos=wn.ADJ) or
+                            wn.synsets(first_word, pos=wn.ADJ_SAT)):
+                        continue
+                dist = abs(freq - target_threshold)
+                if dist < best_dist:
+                    best_dist = dist
+                    best = opt
+            if best:
+                return best
+
+        # Strategy 2: not used for upgrade — curated map is higher quality than
+        # unconstrained WordNet reverse lookup, which produces semantic errors.
+        # Groq handles vocabulary upgrade for words not in the curated map.
+        return None
+
+    def _combine_short_sentences(self, text, target_grade):
+        """
+        Combine consecutive short sentences to reach target avg words-per-sentence.
+        Used for upgrading text to higher grades where longer sentences are expected.
+        """
+        metrics = GRADE_TARGET_METRICS.get(target_grade, GRADE_TARGET_METRICS[8])
+        target_wps = metrics['target_wps']
+        max_wps = metrics['max_wps']
+        min_words = metrics['min_wps']  # Combine if sentence is shorter than this
+
+        changes = []
+        doc = nlp(text)
+        sentences = list(doc.sents)
+        result_sentences = []
+        i = 0
+
+        while i < len(sentences):
+            sent = sentences[i]
+            word_count = len([t for t in sent if t.is_alpha])
+
+            # Combine if sentence is shorter than grade's min_wps AND a next sentence exists
+            if word_count < min_words and i + 1 < len(sentences):
+                next_sent = sentences[i + 1]
+                next_words = len([t for t in next_sent if t.is_alpha])
+                combined_words = word_count + next_words
+
+                # Only combine if result is within the grade's max_wps
+                if combined_words <= max_wps:
+                    text1 = sent.text.rstrip('.!?')
+                    text2 = next_sent.text[0].lower() + next_sent.text[1:]
+                    combined = f"{text1}, and {text2}"
+
+                    original_pair = sent.text + ' ' + next_sent.text
+                    changes.append({
+                        'type': 'sentence_combine',
+                        'original': original_pair,
+                        'simplified': combined,
+                        'position': sent.start_char,
+                        'reason': (f"Combined short sentences ({word_count} + {next_words} = {combined_words} words). "
+                                   f"Grade {target_grade} target: avg {target_wps} words/sentence."),
+                        'id': len(changes)
+                    })
+                    result_sentences.append(combined)
+                    i += 2
+                    continue
+
+            result_sentences.append(sent.text)
+            i += 1
+
+        return ' '.join(result_sentences), changes
+
+    # ------------------------------------------------------------------ #
     #  Sentence splitting (conservative, NLP-based)
     # ------------------------------------------------------------------ #
 
     def _split_long_sentences(self, text, target_grade):
-        """Split sentences too long for target grade. Uses spaCy dep parsing."""
-        constraints = self.grade_constraints.get(target_grade, {'max_words': 20})
-        max_words = constraints['max_words']
+        """
+        Split sentences that exceed target_wps for the grade.
+        Uses target_wps (not max_wps) so we actually hit the target metric.
+        """
+        metrics = GRADE_TARGET_METRICS.get(target_grade, GRADE_TARGET_METRICS[8])
+        target_wps = metrics['target_wps']
+        max_wps = metrics['max_wps']
 
         changes = []
         doc = nlp(text)
@@ -571,11 +869,12 @@ class TextSimplifier:
             words = [t for t in sent if t.is_alpha]
             word_count = len(words)
 
-            if word_count <= max_words + 5:
+            # Split any sentence that exceeds max_wps
+            if word_count <= max_wps:
                 new_sentences.append(sent.text)
                 continue
 
-            split_result = self._try_split_sentence(sent, max_words)
+            split_result = self._try_split_sentence(sent, target_wps)
 
             if split_result and len(split_result) > 1:
                 new_sentences.extend(split_result)
@@ -584,7 +883,7 @@ class TextSimplifier:
                     'original': sent.text,
                     'simplified': ' '.join(split_result),
                     'position': sent.start_char,
-                    'reason': f"Split long sentence ({word_count} words) into {len(split_result)} shorter sentences. Target for Grade {target_grade}: max {max_words} words.",
+                    'reason': f"Split long sentence ({word_count} words) into {len(split_result)} shorter sentences. Target for Grade {target_grade}: avg {target_wps} words/sentence.",
                     'id': len(changes)
                 })
             else:
@@ -787,6 +1086,326 @@ class TextSimplifier:
                 subtree = sorted(list(token.subtree), key=lambda t: t.i)
                 return ' '.join(t.text for t in subtree if t.dep_ not in ('relcl', 'acl', 'advcl'))
         return None
+
+    # ------------------------------------------------------------------ #
+    #  Change diffing: extract word-level changes from rewritten text
+    # ------------------------------------------------------------------ #
+
+    def _diff_changes(self, original_text, rewritten_text, target_grade, going_up):
+        """
+        Compare original vs rewritten text and extract meaningful changes WITHOUT
+        any AI/Groq branding. Shown in the changes panel in auto mode.
+
+        Strategy:
+        - Single-word substitutions: show original → replacement with freq/syllable info
+        - Sentence structure changes (splits/combines): summarized as a single entry
+        - Multi-word chunk replacements are skipped to avoid noisy diffs
+        """
+        import difflib
+        import re
+
+        def strip_punct(w):
+            # Keep internal apostrophes (contractions, possessives) but strip other punctuation
+            return re.sub(r"^[^\w']+|[^\w']+$", '', w)
+
+        def word_for_freq(w):
+            # Strip everything including apostrophes for frequency lookup
+            return re.sub(r"[^\w]", '', w).lower()
+
+        orig_words = original_text.split()
+        new_words = rewritten_text.split()
+
+        matcher = difflib.SequenceMatcher(
+            None,
+            [strip_punct(w).lower() for w in orig_words],
+            [strip_punct(w).lower() for w in new_words],
+            autojunk=False
+        )
+
+        word_changes = []
+        has_structural_changes = False
+
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'equal':
+                continue
+            if len(word_changes) >= 25:
+                break
+
+            orig_raw = orig_words[i1:i2]
+            new_raw = new_words[j1:j2]
+
+            if tag == 'replace' and i2 - i1 == 1 and j2 - j1 == 1:
+                # ---- Single word substitution — extract freq/syllable detail ----
+                orig_word = strip_punct(orig_raw[0])
+                new_word = strip_punct(new_raw[0])
+                if not orig_word or not new_word or orig_word.lower() == new_word.lower():
+                    continue
+
+                # Skip if BOTH words are very high-frequency function words (stop words).
+                # difflib alignment artifacts commonly swap articles/conjunctions/prepositions
+                # when sentence structure changes — these are NOT real vocabulary substitutions.
+                # e.g., "The" ↔ "and", "a" ↔ "the", "in" ↔ "of" are all false positives.
+                _o = word_for_freq(orig_word)
+                _n = word_for_freq(new_word)
+                if zipf_frequency(_o, 'en') >= 6.5 and zipf_frequency(_n, 'en') >= 6.5:
+                    has_structural_changes = True
+                    continue
+
+                # Also skip if either word is shorter than 2 characters (e.g., "a", "I")
+                if len(_o) < 2 or len(_n) < 2:
+                    has_structural_changes = True
+                    continue
+
+                orig_freq = zipf_frequency(word_for_freq(orig_word), 'en')
+                new_freq = zipf_frequency(word_for_freq(new_word), 'en')
+                orig_syl = self.text_processor.count_syllables(word_for_freq(orig_word))
+                new_syl = self.text_processor.count_syllables(word_for_freq(new_word))
+
+                if going_up:
+                    reason = (f"'{orig_word}' ({orig_syl} syl, freq {orig_freq:.1f}) "
+                              f"\u2192 '{new_word}' ({new_syl} syl, freq {new_freq:.1f}). "
+                              f"More formal vocabulary for Grade {target_grade}.")
+                else:
+                    reason = (f"'{orig_word}' ({orig_syl} syl, freq {orig_freq:.1f}) "
+                              f"\u2192 '{new_word}' ({new_syl} syl, freq {new_freq:.1f}). "
+                              f"Simpler word for Grade {target_grade}.")
+
+                word_changes.append({
+                    'type': 'word_replacement',
+                    'original': orig_raw[0],
+                    'simplified': new_raw[0],
+                    'position': i1,
+                    'reason': reason,
+                    'id': len(word_changes)
+                })
+            else:
+                # Multi-word structural change — flag for the summary entry
+                has_structural_changes = True
+
+        # Add one structural summary entry (avoids noisy partial-chunk diffs)
+        if has_structural_changes:
+            metrics = GRADE_TARGET_METRICS.get(target_grade, GRADE_TARGET_METRICS[8])
+            if going_up:
+                word_changes.append({
+                    'type': 'sentence_combine',
+                    'original': 'Short sentences',
+                    'simplified': 'Combined sentences',
+                    'position': 999,
+                    'reason': (f"Short sentences combined to reach Grade {target_grade} target "
+                               f"({metrics['target_wps']} words/sentence, range {metrics['min_wps']}–{metrics['max_wps']})."),
+                    'id': len(word_changes)
+                })
+            else:
+                word_changes.append({
+                    'type': 'sentence_split',
+                    'original': 'Long sentences',
+                    'simplified': 'Split sentences',
+                    'position': 999,
+                    'reason': (f"Long sentences split to reach Grade {target_grade} target "
+                               f"({metrics['target_wps']} words/sentence, range {metrics['min_wps']}–{metrics['max_wps']})."),
+                    'id': len(word_changes)
+                })
+
+        return word_changes
+
+    # ------------------------------------------------------------------ #
+    #  Groq full rewrite (auto mode — always runs)
+    # ------------------------------------------------------------------ #
+
+    def _groq_full_rewrite(self, original_text, target_grade, going_up=False):
+        """
+        Rewrite the entire text at the target grade level using Groq.
+        Direction-aware: uses a different prompt for upgrade vs downgrade.
+
+        Includes a metric verification pass: if the first rewrite misses the targets
+        by too much, a correction prompt is sent with the actual vs target metrics.
+
+        Returns (rewritten_text, [change_obj]) or (None, []) if Groq unavailable.
+        """
+        if not self.groq_client:
+            return None, []
+
+        try:
+            metrics = GRADE_TARGET_METRICS.get(target_grade, GRADE_TARGET_METRICS[8])
+            target_wps = metrics['target_wps']
+            min_wps = metrics['min_wps']
+            max_wps = metrics['max_wps']
+            target_syl = metrics['target_syl']
+            grade_label = 'College' if target_grade >= 13 else f'Grade {target_grade}'
+
+            def _build_upgrade_prompt(text_to_rewrite):
+                if target_grade <= 6:
+                    vocab_level = "slightly more formal words with some two-syllable terms"
+                    clause_rule = "Write clear, simple sentences. Use 'and', 'but', 'so' to combine ideas. AVOID complex clause nesting."
+                elif target_grade <= 8:
+                    vocab_level = "formal vocabulary with academic terms (utilize, demonstrate, significant, establish)"
+                    clause_rule = "Use AT MOST one subordinate clause per sentence (e.g. one 'which', 'because', or 'while'). Keep sentences clear and direct."
+                elif target_grade <= 10:
+                    vocab_level = "academic vocabulary with clear transitions and logical connectors"
+                    clause_rule = "You may use subordinate clauses and transitions. Aim for 1–2 clauses per sentence maximum."
+                elif target_grade <= 12:
+                    vocab_level = "sophisticated academic vocabulary with argument structure"
+                    clause_rule = "Complex sentences with multiple clauses are appropriate at this level."
+                else:
+                    vocab_level = "professional academic prose with domain-specific terminology"
+                    clause_rule = "Use full academic sentence complexity with multiple clauses and transitions."
+
+                return f"""Rewrite the following text at exactly {grade_label} writing level.
+
+THIS IS AN UPGRADE — make it MORE COMPLEX than the original.
+
+STRICT METRIC TARGETS (the readability grade depends on hitting these precisely):
+  - Average words per sentence: {target_wps}  (HARD LIMIT: each sentence must be {min_wps}–{max_wps} words)
+  - Average syllables per word: {target_syl:.2f}
+
+RULES:
+1. SENTENCE LENGTH: Every sentence must be {min_wps}–{max_wps} words. NO sentence may exceed {max_wps} words. Combine short sentences using conjunctions and connectors.
+2. VOCABULARY: Use {vocab_level}. Replace simple words with formal 2-syllable alternatives:
+   "use" → "utilize"  |  "show" → "demonstrate"  |  "need" → "require"
+   "big" → "significant"  |  "start" → "begin" or "establish"  |  "help" → "support"
+   "get" → "obtain"  |  "find" → "discover"  |  "make" → "create" or "produce"
+3. CLAUSE COMPLEXITY: {clause_rule}
+4. SYLLABLE COUNT: Aim for avg {target_syl:.2f} syllables/word. Use 2-syllable words (per-son, com-plete, for-mal, dai-ly, of-ten).
+5. PRESERVE MEANING: Keep all facts. Do not omit any information.
+6. NAMES & ACRONYMS: Keep all proper nouns and abbreviations exactly as written.
+7. NO REPETITION: Each idea appears once only.
+8. OUTPUT: Write ONLY the rewritten text. No labels, headings, or commentary.
+
+ORIGINAL TEXT:
+{text_to_rewrite}
+
+REWRITTEN TEXT ({grade_label}):"""
+
+            def _build_downgrade_prompt(text_to_rewrite):
+                if target_grade <= 4:
+                    vocab_level = "only very simple 1-syllable everyday words a young child knows"
+                elif target_grade <= 6:
+                    vocab_level = "simple common words (mostly 1 syllable), no jargon"
+                elif target_grade <= 8:
+                    vocab_level = "common vocabulary, avoid technical or academic terms"
+                else:
+                    vocab_level = "standard vocabulary"
+
+                return f"""Rewrite the following text at exactly {grade_label} reading level.
+
+THIS IS A SIMPLIFICATION — make it EASIER than the original.
+
+STRICT METRIC TARGETS (the ML model grade is determined ONLY by these two numbers):
+  - Average words per sentence: {target_wps}  (HARD LIMIT: each sentence must be {min_wps}–{max_wps} words)
+  - Average syllables per word: {target_syl:.2f}  (use short, common words)
+
+RULES:
+1. SENTENCE LENGTH: Every sentence must be {min_wps}–{max_wps} words. Split any longer sentence into two shorter ones. Use a period, not a semicolon.
+2. VOCABULARY: Use {vocab_level}. Replace difficult words with simpler ones that mean THE SAME THING:
+   "utilize" → "use"  |  "demonstrate" → "show"  |  "require" → "need"
+   "obtain" → "get"  |  "substantial" → "large"  |  "facilitate" → "help"
+   NEVER change word meaning: "zones" → "areas" is OK, "zones" → "suns" is WRONG.
+3. SYLLABLE COUNT: Aim for avg {target_syl:.2f} syllables/word. Prefer short words.
+4. PRESERVE MEANING: Keep ALL facts. Do not skip any paragraphs.
+5. NAMES & ACRONYMS: Keep all proper nouns and abbreviations exactly as written.
+6. NO REPETITION: Do NOT repeat any sentence or paragraph.
+7. OUTPUT: Write ONLY the simplified text. No labels or commentary.
+
+ORIGINAL TEXT:
+{text_to_rewrite}
+
+SIMPLIFIED TEXT ({grade_label}):"""
+
+            def _strip_preamble(text):
+                for prefix in ["REWRITTEN TEXT:", "UPGRADED TEXT:", "SIMPLIFIED TEXT:", "Here is", "Grade", "College"]:
+                    if text.startswith(prefix) and '\n' in text:
+                        text = text[text.index('\n') + 1:].strip()
+                return text
+
+            # ---- First pass ----
+            prompt = _build_upgrade_prompt(original_text) if going_up else _build_downgrade_prompt(original_text)
+            response = self.groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=4000
+            )
+            rewritten = _strip_preamble(response.choices[0].message.content.strip())
+
+            # ---- Metric verification ----
+            actual_grade, actual_syl, actual_wps = self._measure_text_metrics(rewritten)
+
+            # Primary check: is the estimated grade close enough to the target?
+            # Small grade jumps (e.g., Grade 4→6) need tight tolerance.
+            grade_ok = abs(actual_grade - target_grade) <= 1.0
+            # Secondary checks for individual metric violations
+            wps_ok = min_wps <= actual_wps <= max_wps + 3
+            syl_ok_up = not going_up or actual_syl >= target_syl - 0.10
+            syl_ok_dn = going_up or actual_syl <= target_syl + 0.10
+
+            print(f"[groq] pass1: actual grade={actual_grade:.1f}, syl={actual_syl:.2f}, wps={actual_wps:.1f} "
+                  f"(targets: grade={target_grade}, syl={target_syl:.2f}, wps={target_wps}, range {min_wps}-{max_wps})")
+
+            # ---- Correction pass if grade or metrics are off ----
+            if not (grade_ok and wps_ok and syl_ok_up and syl_ok_dn):
+                issues = []
+                if not grade_ok:
+                    if going_up and actual_grade < target_grade - 1:
+                        issues.append(
+                            f"result is Grade {actual_grade:.0f} but target is Grade {target_grade} — "
+                            f"use more multi-syllable words and longer sentences"
+                        )
+                    elif not going_up and actual_grade > target_grade + 1:
+                        issues.append(
+                            f"result is Grade {actual_grade:.0f} but target is Grade {target_grade} — "
+                            f"use shorter simpler words and split long sentences"
+                        )
+                if actual_wps > max_wps + 3:
+                    issues.append(f"sentences averaged {actual_wps:.0f} words — must be {min_wps}–{max_wps} words EACH")
+                elif actual_wps < min_wps - 2:
+                    issues.append(f"sentences averaged only {actual_wps:.0f} words — must be {min_wps}–{max_wps} words EACH")
+                if going_up and not syl_ok_up:
+                    issues.append(f"vocabulary too simple ({actual_syl:.2f} syl/word) — need ~{target_syl:.2f}, use more 2–3 syllable words")
+                elif not going_up and not syl_ok_dn:
+                    issues.append(f"vocabulary too complex ({actual_syl:.2f} syl/word) — need ~{target_syl:.2f}, use shorter simpler words")
+
+                if issues:
+                    issue_str = '; '.join(issues)
+                    correction_note = f"IMPORTANT — your previous attempt had these problems: {issue_str}. Fix them this time.\n\n"
+                    base_prompt = _build_upgrade_prompt(original_text) if going_up else _build_downgrade_prompt(original_text)
+                    correction_prompt = correction_note + base_prompt
+
+                    resp2 = self.groq_client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[{"role": "user", "content": correction_prompt}],
+                        temperature=0.2,
+                        max_tokens=4000
+                    )
+                    corrected = _strip_preamble(resp2.choices[0].message.content.strip())
+                    c_grade, c_syl, c_wps = self._measure_text_metrics(corrected)
+                    print(f"[groq] pass2: actual grade={c_grade:.1f}, syl={c_syl:.2f}, wps={c_wps:.1f}")
+
+                    # Use the correction if it brings the grade closer to target
+                    if abs(c_grade - target_grade) < abs(actual_grade - target_grade):
+                        rewritten = corrected
+                        actual_grade = c_grade
+
+            # Extract granular word/sentence changes by diffing original vs rewritten.
+            # These are shown in the changes panel without any AI branding.
+            diff_changes = self._diff_changes(original_text, rewritten, target_grade, going_up)
+
+            # If the diff found nothing meaningful (total rewrite), add one summary entry
+            if not diff_changes:
+                direction_label = 'upgraded' if going_up else 'simplified'
+                diff_changes = [{
+                    'type': 'sentence_combine' if going_up else 'sentence_split',
+                    'original': original_text[:70] + ('...' if len(original_text) > 70 else ''),
+                    'simplified': rewritten[:70] + ('...' if len(rewritten) > 70 else ''),
+                    'position': 0,
+                    'reason': f'Text {direction_label} to {grade_label} level (avg {GRADE_TARGET_METRICS[target_grade]["target_wps"]} words/sentence, {GRADE_TARGET_METRICS[target_grade]["target_syl"]:.2f} syl/word).',
+                    'id': 0
+                }]
+
+            return rewritten, diff_changes
+
+        except Exception as e:
+            print(f"Groq full rewrite error: {e}")
+            return None, []
 
     # ------------------------------------------------------------------ #
     #  Groq fallback (optional)

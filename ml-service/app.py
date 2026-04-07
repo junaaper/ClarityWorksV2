@@ -9,7 +9,6 @@ import pytesseract
 import tempfile
 
 import uuid
-import pymupdf4llm
 
 from models import ReadabilityModel
 from models.simplifier import TextSimplifier
@@ -219,17 +218,23 @@ def train_model():
         return jsonify({'error': str(e)}), 500
 
 def extract_text_from_pdf(file):
-    """Extract text from a PDF file using pymupdf4llm for clean Markdown output.
-    Preserves headings, bullets, tables, and document structure."""
+    """Extract text from a PDF file using pdfplumber."""
+    import gc, time
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
         file.save(tmp.name)
         tmp_path = tmp.name
-
     try:
-        md_text = pymupdf4llm.to_markdown(tmp_path)
-        return md_text
+        with pdfplumber.open(tmp_path) as pdf:
+            pages = [page.extract_text() or '' for page in pdf.pages]
+        return '\n\n'.join(p for p in pages if p.strip())
     finally:
-        os.unlink(tmp_path)
+        gc.collect()
+        for _ in range(5):
+            try:
+                os.unlink(tmp_path)
+                break
+            except OSError:
+                time.sleep(0.2)
 
 
 def extract_text_from_docx(file):
@@ -295,7 +300,9 @@ def upload_rag_document():
         })
 
     except Exception as e:
+        import traceback
         print(f"RAG upload error: {e}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
@@ -343,11 +350,12 @@ def analyze_for_simplification():
         data = request.get_json()
         text = data.get('text', '')
         target_grade = int(data.get('target_grade', 6))
+        mode = data.get('mode', 'auto')  # 'auto' or 'interactive'
 
         if not text or len(text.strip()) < 10:
             return jsonify({'error': 'Text must be at least 10 characters'}), 400
 
-        result = simplifier.simplify_to_grade(text, target_grade)
+        result = simplifier.simplify_to_grade(text, target_grade, mode=mode)
 
         return jsonify({
             'original_text': text,

@@ -8,10 +8,6 @@ import {
   calculateReadingTime
 } from './readingTime';
 import {
-  generateImprovementSuggestions,
-  SuggestionInput
-} from './improvementSuggestions';
-import {
   analyzeVocabulary
 } from './vocabularyAnalysis';
 
@@ -190,71 +186,7 @@ export async function generateDetailedReport(input: DetailedReportInput) {
     styles: { fontSize: 10 }
   });
 
-  // ===== PAGE 3: IMPROVEMENT SUGGESTIONS =====
-  doc.addPage();
-  yPos = 20;
-
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Improvement Suggestions', 20, yPos);
-  yPos += 15;
-
-  const suggestions = generateImprovementSuggestions(input as unknown as SuggestionInput);
-
-  suggestions.forEach((suggestion) => {
-    if (yPos > pageHeight - 50) {
-      doc.addPage();
-      yPos = 20;
-    }
-
-    // Suggestion box
-    doc.setFillColor(245, 247, 250);
-    const boxHeight = 40 + (suggestion.details ? 10 : 0);
-    doc.roundedRect(20, yPos, pageWidth - 40, boxHeight, 3, 3, 'F');
-
-    yPos += 8;
-
-    // Priority badge
-    const priorityColor = suggestion.priority === 'high' ? [239, 68, 68] :
-                         suggestion.priority === 'medium' ? [251, 191, 36] :
-                         [59, 130, 246];
-    doc.setFillColor(priorityColor[0], priorityColor[1], priorityColor[2]);
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(8);
-    doc.rect(25, yPos - 3, 30, 5, 'F');
-    doc.text(suggestion.priority.toUpperCase(), 27, yPos);
-
-    // Title
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`${suggestion.icon} ${suggestion.title}`, 60, yPos);
-    yPos += 8;
-
-    // Description
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    const descLines = doc.splitTextToSize(suggestion.description, pageWidth - 50);
-    doc.text(descLines, 25, yPos);
-    yPos += descLines.length * 5;
-
-    // Action
-    doc.setFont('helvetica', 'bold');
-    doc.text('Action: ', 25, yPos);
-    doc.setFont('helvetica', 'normal');
-    const actionLines = doc.splitTextToSize(suggestion.action, pageWidth - 60);
-    doc.text(actionLines, 42, yPos);
-    yPos += actionLines.length * 5;
-
-    // Impact
-    doc.setTextColor(59, 130, 246);
-    doc.setFont('helvetica', 'italic');
-    doc.text(`Impact: ${suggestion.estimatedImpact}`, 25, yPos);
-
-    yPos += boxHeight - 25 + 10;
-  });
-
-  // ===== PAGE 4: VOCABULARY ANALYSIS =====
+  // ===== PAGE 3: VOCABULARY ANALYSIS =====
   doc.addPage();
   yPos = 20;
 
@@ -389,5 +321,5 @@ function getFleschInterpretation(score: number): string {
   if (score >= 60) return 'Standard (Grades 8-9)';
   if (score >= 50) return 'Fairly Difficult (Grades 10-12)';
   if (score >= 30) return 'Difficult (College)';
-  return 'Very Difficult (College Graduate)';
+  return 'Very Difficult (College+)';
 }

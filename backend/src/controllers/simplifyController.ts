@@ -7,7 +7,7 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'http://localhost:5
 
 export const analyzeForSimplification = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { analysisId, targetGrade, text } = req.body;
+    const { analysisId, targetGrade, text, mode } = req.body;
 
     let originalText = text;
 
@@ -34,7 +34,8 @@ export const analyzeForSimplification = async (req: AuthRequest, res: Response):
     // Call Python ML service
     const response = await axios.post(`${PYTHON_SERVICE_URL}/simplify/analyze`, {
       text: originalText,
-      target_grade: targetGrade
+      target_grade: targetGrade,
+      mode: mode || 'auto'
     });
 
     res.json(response.data);

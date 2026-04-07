@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, Save, Wand2, Check, X, Download, FileText, TrendingDown } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Wand2, Check, X, Download, FileText, TrendingDown, TrendingUp } from 'lucide-react';
 import { analysisApi, simplifyApi } from '../../services/api';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { exportSimplificationPDF, exportSimplificationDOCX } from '../../utils/exportSimplification';
@@ -56,6 +56,7 @@ const SimplifyPage: React.FC = () => {
       const response = await simplifyApi.analyze({
         analysisId: parseInt(analysisId),
         targetGrade,
+        mode,
       });
 
       const newChanges: Change[] = (response.suggested_changes || []).map((c: any) => ({
@@ -114,10 +115,12 @@ const SimplifyPage: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (!analysisId) return;
+    if (!analysisId || !simplifiedText) return;
     setSaving(true);
     try {
       const acceptedChanges = changes.filter((c) => c.accepted === true);
+
+      // Save to simplification history
       await simplifyApi.save({
         analysisId: parseInt(analysisId),
         simplifiedText,
@@ -125,11 +128,21 @@ const SimplifyPage: React.FC = () => {
         changes: acceptedChanges,
         mode,
       });
-      alert('Simplification saved successfully!');
-      navigate(`/analysis/${analysisId}`);
+
+      // Create a new analysis from the rewritten text so the user can see the new grade
+      const gradeLabel = targetGrade === 13 ? 'College' : `Grade ${targetGrade}`;
+      const newResult = await analysisApi.analyze(
+        simplifiedText,
+        `Rewritten to ${gradeLabel}`
+      );
+
+      // Navigate to the newly created analysis
+      navigate(`/analysis/${newResult.analysisId}`, {
+        state: { analysis: newResult, originalText: simplifiedText },
+      });
     } catch (error) {
       console.error('Save error:', error);
-      alert('Failed to save simplification');
+      alert('Failed to save. Please try again.');
     }
     setSaving(false);
   };
@@ -157,7 +170,7 @@ const SimplifyPage: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto">
-      {loading && <LoadingSpinner message="Simplifying text..." fullScreen />}
+      {loading && <LoadingSpinner message="Rewriting text..." fullScreen />}
       {/* Header */}
       <div className="mb-6">
         <Link
@@ -167,7 +180,7 @@ const SimplifyPage: React.FC = () => {
           <ArrowLeft className="w-4 h-4" />
           Back to Analysis
         </Link>
-        <h1 className="text-3xl font-bold text-gray-800">Text Simplification</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Text Rewrite</h1>
       </div>
 
       {/* Controls */}
@@ -182,9 +195,9 @@ const SimplifyPage: React.FC = () => {
               onChange={(e) => setTargetGrade(+e.target.value)}
               className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             >
-              {[3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((g) => (
+              {[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((g) => (
                 <option key={g} value={g}>
-                  Grade {g}
+                  {g === 13 ? 'College' : `Grade ${g}`}
                 </option>
               ))}
             </select>
@@ -227,7 +240,7 @@ const SimplifyPage: React.FC = () => {
               ) : (
                 <Wand2 className="w-4 h-4" />
               )}
-              {loading ? 'Processing...' : 'Simplify'}
+              {loading ? 'Processing...' : 'Rewrite'}
             </button>
 
             {simplifiedText && (
@@ -275,8 +288,8 @@ const SimplifyPage: React.FC = () => {
 
         <p className="text-sm text-gray-500 mt-4">
           {mode === 'auto'
-            ? 'Auto Mode: All changes applied automatically. Hover over highlighted words to see reasons.'
-            : 'Interactive Mode: Hover over each change to see the reason, then Accept or Deny it.'}
+            ? 'Auto Mode: AI rewrites the text to the target grade. Rule-based changes are listed below for reference.'
+            : 'Interactive Mode: Rule-based changes only — hover over highlighted words to see the reason, then Accept or Deny each change.'}
         </p>
       </div>
 
@@ -306,7 +319,10 @@ const SimplifyPage: React.FC = () => {
       {(originalGrade || simplifiedGrade) && simplifiedText && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
           <div className="flex items-center gap-4">
-            <TrendingDown className="w-5 h-5 text-primary-600" />
+            {targetGrade >= 13 || (originalGrade && simplifiedGrade && simplifiedGrade > originalGrade)
+              ? <TrendingUp className="w-5 h-5 text-purple-600" />
+              : <TrendingDown className="w-5 h-5 text-primary-600" />
+            }
             <span className="text-sm font-medium text-gray-700">Grade Preview:</span>
             <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-semibold">
               {originalGrade || '...'}
@@ -321,7 +337,7 @@ const SimplifyPage: React.FC = () => {
             )}
             {originalGrade && simplifiedGrade && !gradeLoading && (
               <span className="text-xs text-gray-500 ml-2">
-                (Target: Grade {targetGrade})
+                (Target: {targetGrade === 13 ? 'College' : `Grade ${targetGrade}`})
               </span>
             )}
           </div>
@@ -343,7 +359,7 @@ const SimplifyPage: React.FC = () => {
         {/* Simplified */}
         <div className="bg-green-50 border border-green-200 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-green-800 mb-4">
-            Simplified Text (Grade {targetGrade})
+            Rewritten Text ({targetGrade === 13 ? 'College' : `Grade ${targetGrade}`})
           </h3>
           {simplifiedText ? (
             <div className="prose max-w-none leading-relaxed">
@@ -359,7 +375,7 @@ const SimplifyPage: React.FC = () => {
             </div>
           ) : (
             <p className="text-gray-400 italic">
-              Click "Simplify" to generate a simplified version...
+              Click "Rewrite" to generate a rewritten version...
             </p>
           )}
         </div>
@@ -435,9 +451,9 @@ const SimplifyPage: React.FC = () => {
                       <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs font-medium">
                         {change.type === 'word_replacement'
                           ? 'Word'
-                          : change.type === 'sentence_split'
+                          : change.type === 'sentence_split' || change.type === 'sentence_combine'
                           ? 'Sentence'
-                          : 'AI'}
+                          : 'Structure'}
                       </span>
                       <span className="text-sm text-red-600 line-through">
                         {change.original}
@@ -517,8 +533,10 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
   // For word replacements, find them in the simplified text
   const wordChanges = relevantChanges.filter((c) => c.type === 'word_replacement');
 
-  // For sentence splits, we also need to highlight them
-  const sentenceChanges = relevantChanges.filter((c) => c.type === 'sentence_split');
+  // For sentence splits/combines, we also need to highlight them
+  const sentenceChanges = relevantChanges.filter(
+    (c) => c.type === 'sentence_split' || c.type === 'sentence_combine'
+  );
 
   if (wordChanges.length === 0 && sentenceChanges.length === 0) {
     return <span className="text-gray-800 whitespace-pre-wrap">{text}</span>;

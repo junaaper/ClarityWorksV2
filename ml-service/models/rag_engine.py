@@ -42,10 +42,14 @@ class RAGEngine:
 
         # Initialize FlashRank re-ranker (~4MB, CPU-only, no PyTorch needed)
         print("Loading re-ranker model...")
-        self.ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir=os.path.join(
-            os.path.dirname(__file__), '..', 'data', 'flashrank_cache'
-        ))
-        print("Re-ranker loaded!")
+        try:
+            self.ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir=os.path.join(
+                os.path.dirname(__file__), '..', 'data', 'flashrank_cache'
+            ))
+            print("Re-ranker loaded!")
+        except Exception as e:
+            print(f"FlashRank init failed, will use embedding similarity fallback: {e}")
+            self.ranker = None
 
         # Initialize Groq client for answer generation (True RAG)
         self.groq_client = None
@@ -218,20 +222,38 @@ class RAGEngine:
             "collection": c['collection']
         }} for i, c in enumerate(all_candidates)]
 
-        rerank_request = RerankRequest(query=query_text, passages=passages)
-        reranked = self.ranker.rerank(rerank_request)
+        if self.ranker is not None:
+            try:
+                rerank_request = RerankRequest(query=query_text, passages=passages)
+                reranked = self.ranker.rerank(rerank_request)
+                use_reranked = True
+            except Exception as e:
+                print(f"FlashRank re-ranking failed, falling back to embedding similarity: {e}")
+                use_reranked = False
+        else:
+            use_reranked = False
 
-        # Build final results from re-ranked order
+        # Build final results from re-ranked order (or embedding similarity fallback)
         final_results = []
-        for item in reranked[:top_k]:
-            meta = item.get("meta", {})
-            final_results.append({
-                'text': item['text'],
-                'metadata': meta.get('metadata', {}),
-                'similarity_score': meta.get('similarity_score', 0),
-                'rerank_score': round(item['score'], 4),
-                'collection': meta.get('collection', '')
-            })
+        if use_reranked:
+            for item in reranked[:top_k]:
+                meta = item.get("meta", {})
+                final_results.append({
+                    'text': item['text'],
+                    'metadata': meta.get('metadata', {}),
+                    'similarity_score': float(meta.get('similarity_score', 0)),
+                    'rerank_score': round(float(item['score']), 4),
+                    'collection': meta.get('collection', '')
+                })
+        else:
+            for c in all_candidates[:top_k]:
+                final_results.append({
+                    'text': c['text'],
+                    'metadata': c['metadata'],
+                    'similarity_score': float(c['similarity_score']),
+                    'rerank_score': float(c['similarity_score']),
+                    'collection': c['collection']
+                })
 
         print(f"Returning top {len(final_results)} re-ranked results")
 

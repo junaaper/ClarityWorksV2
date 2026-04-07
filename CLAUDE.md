@@ -1,6 +1,6 @@
 # CLAUDE.md - ClarityWorks Project Context
 
-> **Last Updated:** 2026-03-08
+> **Last Updated:** 2026-04-07
 > This file must be updated after every code change.
 
 ---
@@ -831,6 +831,26 @@ The thinc library (spaCy dependency) tries to import torch, which may fail with 
 - Files created: `complexityScore.ts`, `readingTime.ts`, `improvementSuggestions.ts`, `vocabularyAnalysis.ts`, `detailedReport.ts`, `ComplexityScoreCard.tsx`, `ImprovementSuggestions.tsx`, `VocabularyAnalysis.tsx`
 - Files modified: `AnalysisResults.tsx` (added imports, 5th summary card, ComplexityScoreCard, ImprovementSuggestions, VocabularyAnalysis, Detailed Report button)
 
+### Post-Prompt 10: Bidirectional Rewrite Engine Overhaul - COMPLETED
+- **Bidirectional rewrite**: `simplify_to_grade` now detects direction (upgrade vs downgrade) using `_measure_text_metrics()` which estimates grade from `avg_syl` + `avg_wps` using formula `grade ≈ -21.16 + 14.33*(syl) + 0.6*(wps)`
+- **GRADE_TARGET_METRICS dict**: Defines exact `target_syl`, `target_wps`, `min_wps`, `max_wps` per grade 3-13. These are the two primary metric levers for grade prediction.
+- **Upgrade path**: `_complexify_text()` (curated complexification_map + POS-validated synonyms) + `_combine_short_sentences()` (combines shorter-than-min_wps sentences)
+- **Downgrade path**: `_replace_difficult_words()` + `_split_long_sentences()` (splits sentences exceeding max_wps)
+- **Groq full rewrite**: Direction-aware prompts include exact `target_syl`, `target_wps`, `min_wps`, `max_wps`. Separate upgrade vs downgrade prompts with clause complexity guidance (e.g., "AT MOST one subordinate clause per sentence" for Grade 8).
+- **Groq metric verification + correction pass**: After Groq generates output, actual metrics are measured. If syl or wps is off by >tolerance, a correction prompt is sent (with the full original prompt + issue description). Best of two passes returned.
+- **Auto mode returns ONLY ai_rewrite change**: Rule-based changes are not mixed into Groq output (prevents highlighting mismatch in UI)
+- **Save → New Analysis**: `SimplifyPage.tsx` `handleSave` now creates a new analysis from the rewritten text via `analysisApi.analyze()` and navigates to the new analysis result page
+- **Bug fixes**:
+  - `_pos_matches()`: ADJ tokens now match both `wn.ADJ` ('a') and `wn.ADJ_SAT` ('s') — fixes adjective synonym lookups
+  - `_apply_inflection()`: Added CVC doubling for ADJ comparatives/superlatives (hot→hotter, big→biggest)
+  - Datamuse: Requires `dm_freq >= original_freq + 1.5` AND Dale-Chall membership (prevents "zones"→"suns" semantic drift)
+  - `_find_complex_synonym()`: POS validation for curated map — rejects synonyms that don't exist in WordNet with the same POS (prevents "liked"→"comparabled")
+- **Test results** (Grade 3 Tom/Max narrative):
+  - Grade 3 → Grade 6: ML predicts Grade 5 ✅
+  - Grade 3 → Grade 8: ML predicts Grade 9 ✅ (1 grade off due to subordinate clause density feature)
+  - Grade 3 → Grade 10: ML predicts Grade 10 ✅ exact
+- Files modified: `simplifier.py` (major overhaul), `SimplifyPage.tsx` (save → new analysis)
+
 ---
 
 ## Performance Metrics (After Prompt 5 Retraining)
@@ -1200,7 +1220,7 @@ No external APIs are used for the core ML prediction pipeline — all models run
 | `clear_corpus/clear_corpus.csv` | CLEAR Corpus dataset (~5,000 samples, grades 3-12) |
 | `dale_chall_3000.txt` | Dale-Chall list of 3,000 easy words (Grade 4 baseline) |
 | `simplification_map.json` | Curated complex→simple word mappings (~50 entries, highest quality) |
-| `complexification_map.json` | Simple→complex word mappings (unused in current pipeline) |
+| `complexification_map.json` | Simple→complex word mappings (~42 entries, used by `_complexify_text()` for vocabulary upgrade) |
 | `coca_frequency.csv` | COCA frequency rankings (~200 words, used by SynonymLookup for word_frequency_rank) |
 | `academic_word_list.txt` | 570 academic words (Grade 10+ terms, used in difficulty detection) |
 | `test_files/grade_3.txt` through `grade_12.txt` + `college.txt` | 11 calibrated test files (Prompt 2+7, all validated 11/11 pass) |

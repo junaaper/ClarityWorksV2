@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useLocation, Link, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Download, BarChart3, FileText, AlertTriangle, Target, Loader2, Wand2, Clock
+  ArrowLeft, BarChart3, FileText, AlertTriangle, Target, Wand2, Clock
 } from 'lucide-react';
 import { analysisApi } from '../../services/api';
 import type { SavedAnalysis, Analysis } from '../../types';
@@ -17,9 +17,7 @@ import HighlightedText from './HighlightedText';
 import GradeExplanation from './GradeExplanation';
 import TextHeatmap from './TextHeatmap';
 import ComplexityScoreCard from './ComplexityScoreCard';
-import ImprovementSuggestions from './ImprovementSuggestions';
 import VocabularyAnalysis from './VocabularyAnalysis';
-import { exportAnalysisToPdf } from '../../utils/exportPdf';
 import { calculateReadingTime, getReadingTimeColor, getReadingPaceDescription } from '../../utils/readingTime';
 import { generateDetailedReport } from '../../utils/detailedReport';
 
@@ -30,10 +28,10 @@ const AnalysisResults: React.FC = () => {
   const [data, setData] = useState<SavedAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isExporting, setIsExporting] = useState(false);
 
   // Check if we have fresh analysis data from navigation
   const freshAnalysis = location.state?.analysis as { analysis: Analysis; analysisId: number } | undefined;
+  const freshOriginalText = (location.state?.originalText as string | undefined) || '';
 
   useEffect(() => {
     const fetchAnalysis = async () => {
@@ -55,7 +53,7 @@ const AnalysisResults: React.FC = () => {
       setData({
         id: freshAnalysis.analysisId,
         title: `Analysis ${new Date().toLocaleDateString()}`,
-        originalText: '',
+        originalText: freshOriginalText,
         createdAt: new Date().toISOString(),
         analysis: freshAnalysis.analysis,
       });
@@ -108,25 +106,6 @@ const AnalysisResults: React.FC = () => {
     }
   };
 
-  const handleExportPdf = async () => {
-    if (!data) return;
-
-    setIsExporting(true);
-    try {
-      exportAnalysisToPdf({
-        title: data.title,
-        createdAt: data.createdAt,
-        analysis: data.analysis,
-        originalText: data.originalText,
-      });
-    } catch (err) {
-      console.error('Export failed:', err);
-      alert('Failed to export PDF. Please try again.');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   return (
     <div className="max-w-6xl mx-auto">
       {/* Header */}
@@ -150,7 +129,7 @@ const AnalysisResults: React.FC = () => {
             className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
           >
             <Wand2 className="w-5 h-5" />
-            Simplify Text
+            Rewrite Text
           </button>
           <button
             onClick={() => generateDetailedReport({
@@ -179,18 +158,6 @@ const AnalysisResults: React.FC = () => {
           >
             <FileText className="w-5 h-5" />
             Detailed Report (PDF)
-          </button>
-          <button
-            onClick={handleExportPdf}
-            disabled={isExporting}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isExporting ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <Download className="w-5 h-5" />
-            )}
-            {isExporting ? 'Exporting...' : 'Export PDF'}
           </button>
         </div>
       </div>
@@ -366,23 +333,6 @@ const AnalysisResults: React.FC = () => {
           <CommonWordsChart text={data.originalText} />
         </div>
       )}
-
-      {/* Improvement Suggestions */}
-      <div className="mb-8">
-        <ImprovementSuggestions
-          analysis={{
-            predicted_grade_level: analysis.predictions.predicted_grade_level,
-            flesch_reading_ease: analysis.readability_scores.flesch_reading_ease,
-            avg_sentence_length: analysis.basic_metrics.avg_sentence_length,
-            avg_syllables_per_word: analysis.basic_metrics.avg_syllables_per_word,
-            difficult_words_count: analysis.statistics.difficult_words_count,
-            difficult_words_percentage: analysis.statistics.difficult_words_percentage,
-            difficult_sentences: analysis.difficult_elements.difficult_sentences,
-            sentence_count: analysis.basic_metrics.sentence_count,
-            word_count: analysis.basic_metrics.word_count,
-          }}
-        />
-      </div>
 
       {/* Vocabulary Level Analysis */}
       {data.originalText && (

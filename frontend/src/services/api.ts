@@ -71,7 +71,7 @@ export const authApi = {
     const formData = new FormData();
     formData.append('profilePicture', file);
     const response = await api.post('/api/auth/profile-picture', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     });
     return response.data;
   },
@@ -120,7 +120,7 @@ export const textApi = {
     const formData = new FormData();
     formData.append('file', file);
     const response = await api.post('/api/text/extract-pdf', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     });
     return response.data;
   },
@@ -129,7 +129,7 @@ export const textApi = {
     const formData = new FormData();
     formData.append('file', file);
     const response = await api.post('/api/text/extract-doc', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     });
     return response.data;
   },
@@ -138,7 +138,7 @@ export const textApi = {
     const formData = new FormData();
     formData.append('file', file);
     const response = await api.post('/api/text/extract-image', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     });
     return response.data;
   },
@@ -146,7 +146,7 @@ export const textApi = {
 
 // Simplification API
 export const simplifyApi = {
-  analyze: async (data: { analysisId?: number; targetGrade: number; text?: string }): Promise<{
+  analyze: async (data: { analysisId?: number; targetGrade: number; text?: string; mode?: 'auto' | 'interactive' }): Promise<{
     original_text: string;
     suggested_changes: any[];
     preview_text: string;
@@ -178,7 +178,7 @@ export const ragApi = {
     const formData = new FormData();
     formData.append('file', file);
     const response = await api.post('/api/rag/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
       timeout: 300000,
     });
     return response.data;
