@@ -1,6 +1,6 @@
 # CLAUDE.md - ClarityWorks Project Context
 
-> **Last Updated:** 2026-04-07
+> **Last Updated:** 2026-04-08
 > This file must be updated after every code change.
 
 ---
@@ -223,7 +223,7 @@ clarityworksv2/
 
 1. User uploads PDF/DOCX textbook via RAGUpload page
 2. Backend forwards file to `POST http://localhost:5001/rag/upload`
-3. ML Service extracts text via **pymupdf4llm** (PDF→Markdown) or python-docx (DOCX)
+3. ML Service extracts text via **pdfplumber** (PDF) or python-docx (DOCX)
 4. Text chunked via **RecursiveCharacterTextSplitter** (1000 chars, 200 overlap, paragraph-aware)
 5. Chunks embedded with **E5-small-v2** (384-dim, `"passage: "` prefix) and stored in ChromaDB
 6. Backend saves metadata to rag_documents table
@@ -417,7 +417,7 @@ clarityworksv2/
 - **FlashRank re-ranking** (`ms-marco-MiniLM-L-12-v2`, ~4MB, CPU-only, ONNX): retrieves top-20 candidates via embedding similarity, then re-ranks with cross-encoder to precise top-5
 - **True RAG answer generation** via Groq (`llama-3.3-70b-versatile`, temp=0.2, max_tokens=1500): `_generate_answer()` builds context from top-k chunks with `[Source N]` labels, synthesizes coherent answer with citations
 - **Return format**: `query_documents()` returns `{answer: str|None, sources: list, has_answer: bool}` instead of raw list
-- **pymupdf4llm PDF extraction**: outputs clean Markdown from PDFs, preserving headings/bullets/tables (replaces pdfplumber for RAG upload)
+- **pdfplumber PDF extraction**: used for RAG document upload (replaced pymupdf4llm which caused ONNX int32/int64 conflict via its internal BoxRFDGNN layout model)
 - **Automatic model migration**: detects embedding model change via `.embedding_model` marker file, clears incompatible ChromaDB collections
 - ChromaDB metadata values stored as strings
 - Similarity score: `max(0.0, min(1.0, 1 - (distance / 2)))` (Euclidean distance normalization)
@@ -837,8 +837,9 @@ The thinc library (spaCy dependency) tries to import torch, which may fail with 
 - **Upgrade path**: `_complexify_text()` (curated complexification_map + POS-validated synonyms) + `_combine_short_sentences()` (combines shorter-than-min_wps sentences)
 - **Downgrade path**: `_replace_difficult_words()` + `_split_long_sentences()` (splits sentences exceeding max_wps)
 - **Groq full rewrite**: Direction-aware prompts include exact `target_syl`, `target_wps`, `min_wps`, `max_wps`. Separate upgrade vs downgrade prompts with clause complexity guidance (e.g., "AT MOST one subordinate clause per sentence" for Grade 8).
-- **Groq metric verification + correction pass**: After Groq generates output, actual metrics are measured. If syl or wps is off by >tolerance, a correction prompt is sent (with the full original prompt + issue description). Best of two passes returned.
-- **Auto mode returns ONLY ai_rewrite change**: Rule-based changes are not mixed into Groq output (prevents highlighting mismatch in UI)
+- **Groq metric verification + correction pass**: After Groq generates output, actual metrics are measured. If `abs(actual_grade - target_grade) > 1.0` or wps out of range, a correction prompt is sent (full base prompt + issue description). Best of two passes returned.
+- **`_diff_changes()` method**: Extracts clean word-level diffs between original and Groq-rewritten text using `difflib.SequenceMatcher`. Single-word substitutions show freq/syllable data. Stop words (zipf ≥ 6.5) filtered out (difflib alignment artifacts). All structural changes collapsed into ONE summary entry. No AI/Groq/Llama mentions anywhere in UI.
+- **Auto mode returns diff changes**: `_groq_full_rewrite()` calls `_diff_changes()` and returns meaningful word replacements + one structural summary, not a single opaque `ai_rewrite` change.
 - **Save → New Analysis**: `SimplifyPage.tsx` `handleSave` now creates a new analysis from the rewritten text via `analysisApi.analyze()` and navigates to the new analysis result page
 - **Bug fixes**:
   - `_pos_matches()`: ADJ tokens now match both `wn.ADJ` ('a') and `wn.ADJ_SAT` ('s') — fixes adjective synonym lookups
@@ -850,6 +851,14 @@ The thinc library (spaCy dependency) tries to import torch, which may fail with 
   - Grade 3 → Grade 8: ML predicts Grade 9 ✅ (1 grade off due to subordinate clause density feature)
   - Grade 3 → Grade 10: ML predicts Grade 10 ✅ exact
 - Files modified: `simplifier.py` (major overhaul), `SimplifyPage.tsx` (save → new analysis)
+
+### Post-Prompt 10 Session 2: RAG Fixes & Infrastructure - COMPLETED
+- **RAG PDF extraction**: Replaced `pymupdf4llm` with `pdfplumber` — pymupdf4llm's internal ONNX layout model (`BoxRFDGNN`) had int32/int64 type conflict with ONNX Runtime ≥1.19 on Windows
+- **FlashRank fail-safe**: `RAGEngine.__init__` wraps `Ranker()` in try/except; sets `self.ranker = None` on failure. Query falls back to embedding similarity scores automatically. FlashRank rerank scores cast to `float()` before JSON serialization (numpy.float32 not JSON-serializable)
+- **FormData Content-Type fix**: axios instance default `Content-Type: application/json` was overriding browser's multipart boundary for all FormData uploads. Fixed by adding `headers: { 'Content-Type': undefined }` to all FormData calls: `extractPdf`, `extractDoc`, `extractImage`, `uploadDocument`, `uploadProfilePicture`
+- **onnxruntime pinned**: `onnxruntime>=1.19.0` added to requirements.txt (needed by pymupdf's layout model and FlashRank). `numpy<2.0` constraint added (scikit-learn 1.3.2 incompatible with numpy 2.x). `pymupdf4llm` removed from requirements.
+- **traceback logging**: Added `traceback.print_exc()` to RAG upload error handler for easier debugging
+- Files modified: `app.py`, `rag_engine.py`, `api.ts`, `requirements.txt`, `.gitignore`
 
 ---
 
@@ -907,16 +916,16 @@ This section provides full technical detail on every library, pipeline, API, mod
 | **textstat** | 0.7.3 | 8 readability formulas: Flesch Reading Ease, Flesch-Kincaid Grade, ARI, SMOG, Coleman-Liau, Dale-Chall, Linsear Write, Gunning Fog |
 | **pyphen** | 0.14.0 | Syllable counting via hyphenation dictionary (`Pyphen(lang='en_US')`) |
 | **pandas** | 2.1.4 | CLEAR Corpus CSV loading and data manipulation during training |
-| **numpy** | 1.26.2 | Array operations, variance calculation, ensemble averaging |
+| **numpy** | <2.0 (1.26.x) | Array operations, variance calculation, ensemble averaging. Must be <2.0 for scikit-learn 1.3.2 compatibility |
 | **joblib** | 1.3.2 | Model serialization/deserialization (.joblib files) |
 | **chromadb** | 0.4.22 | Embedded vector database for RAG. `PersistentClient` stores document embeddings on disk. Uses L2 (Euclidean) distance for similarity search |
 | **sentence-transformers** | 2.3.1 | `SentenceTransformer('intfloat/e5-small-v2')` — 384-dim embeddings for RAG (requires `"query: "` / `"passage: "` prefixes). Upgraded from all-MiniLM-L6-v2 in Prompt 8 |
-| **pymupdf4llm** | 0.3+ | PDF→Markdown extraction for RAG. Preserves headings, bullets, tables, document structure. Replaces pdfplumber for RAG upload |
-| **flashrank** | 0.2+ | Cross-encoder re-ranker (`ms-marco-MiniLM-L-12-v2`, ~4MB ONNX model, CPU-only). Re-ranks top-20 embedding candidates to precise top-5 |
+| **flashrank** | 0.2+ | Cross-encoder re-ranker (`ms-marco-MiniLM-L-12-v2`, ~4MB ONNX model, CPU-only). Re-ranks top-20 embedding candidates to precise top-5. Init wrapped in try/except — falls back to embedding similarity if ONNX issues occur |
+| **onnxruntime** | ≥1.19.0 | ONNX Runtime required by FlashRank and pymupdf layout model. Must be ≥1.19 for pymupdf compatibility on Windows |
 | **langchain-text-splitters** | 0.2+ | `RecursiveCharacterTextSplitter` — splits by `\n\n` → `\n` → `. ` → ` ` → `""`. 1000-char chunks, 200-char overlap |
 | **groq** | 0.11.0 | Groq Cloud API client. Model: `llama-3.3-70b-versatile`. Used for: (1) validation of rule-based simplification changes, (2) auto-fixing issues found by validation, (3) fallback simplification when rule-based methods leave remaining complexity, (4) True RAG answer generation from retrieved chunks (Prompt 8) |
 | **requests** | 2.31.0 | HTTP client for Datamuse API calls (synonym fallback) |
-| **pdfplumber** | 0.10.3 | PDF text extraction (both for analysis input and RAG document upload) |
+| **pdfplumber** | 0.10.3 | PDF text extraction for analysis input AND RAG document upload (replaced pymupdf4llm for RAG after ONNX conflict) |
 | **python-docx** | 1.1.0 | DOCX text extraction (both for analysis input and RAG document upload) |
 | **pytesseract** | 0.3.10 | OCR wrapper for Tesseract (local, no cloud API). Converts images to text |
 | **Pillow** | 10.1.0 | Image processing for OCR (required by pytesseract) |
@@ -1189,10 +1198,10 @@ No external APIs are used for the core ML prediction pipeline — all models run
 
 ### How the RAG System Works (Upgraded in Prompt 8 - True RAG)
 
-**Architecture**: ChromaDB (embedded vector DB) + E5-small-v2 embeddings + FlashRank cross-encoder re-ranking + Groq answer generation + RecursiveCharacterTextSplitter + pymupdf4llm PDF extraction
+**Architecture**: ChromaDB (embedded vector DB) + E5-small-v2 embeddings + FlashRank cross-encoder re-ranking (with embedding similarity fallback) + Groq answer generation + RecursiveCharacterTextSplitter + pdfplumber PDF extraction
 
 **Upload flow** (`rag_engine.py → upload_document`):
-1. Extract text from PDF (pymupdf4llm → Markdown) or DOCX (python-docx)
+1. Extract text from PDF (pdfplumber) or DOCX (python-docx)
 2. Chunk text via RecursiveCharacterTextSplitter: 1000-char chunks, 200-char overlap, splits at `\n\n` → `\n` → `. ` → ` ` → `""`
 3. Generate embeddings: `SentenceTransformer.encode(["passage: " + t for t in chunks])` — E5-small-v2, 384-dimensional float vectors
 4. Store in ChromaDB: one collection per document (`doc_{uuid}`), with metadata (chunk_id, char_count, word_count, document_id)
