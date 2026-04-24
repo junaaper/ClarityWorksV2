@@ -146,6 +146,83 @@ export interface AnalysisResponse {
   analysis: Analysis;
 }
 
+export interface SimplificationChange {
+  type: string;
+  original: string;
+  simplified: string;
+  reason: string;
+  id: number;
+  position: number;
+  start: number;
+  end: number;
+  accepted?: boolean | null;
+  original_text?: string;
+  replacement_text?: string;
+  preview_start?: number;
+  preview_end?: number;
+  review_scope?: 'word' | 'sentence' | 'paragraph';
+  direction?: 'up' | 'down';
+  quality_score?: number;
+  quality_flags?: string[];
+  rule_id?: string;
+  reason_code?: string;
+  evidence?: Record<string, string | number | boolean>;
+  candidate_score?: number;
+  dependency_group_id?: string;
+  validation_flags?: string[];
+  change_origin?: 'rule' | 'final_review' | 'rule+final_review';
+  final_reviewed?: boolean;
+}
+
+export interface SimplificationPreviewMetrics {
+  raw_score: number;
+  predicted_grade_level: string;
+  predicted_complexity: string;
+  avg_syllables_per_word: number;
+  avg_words_per_sentence: number;
+  invalid_sentence_count: number;
+  semantic_similarity_score: number;
+  target_distance: number;
+}
+
+export interface SimplificationSelectionCandidate {
+  index: number;
+  score: number;
+  raw_score: number;
+  target_distance: number;
+  direction_hit: boolean;
+  invalid_sentence_count: number;
+  semantic_similarity_score: number;
+  selection_path: string[];
+  validation_flags: string[];
+}
+
+export interface SimplificationSelectionSummary {
+  policy_bucket: string;
+  beam_width: number;
+  source_grade: number;
+  target_grade: number;
+  selected_score: number;
+  selected_path: string[];
+  direction_hit: boolean;
+  target_distance: number;
+  invalid_sentence_count: number;
+  semantic_similarity_score: number;
+  confidence_label?: string;
+  final_review_applied?: boolean;
+  review_adjusted_change_count?: number;
+  top_candidates: SimplificationSelectionCandidate[];
+}
+
+export interface SimplifyAnalyzeResponse {
+  original_text: string;
+  suggested_changes: SimplificationChange[];
+  preview_text: string;
+  preview_metrics?: SimplificationPreviewMetrics;
+  target_distance?: number;
+  selection_summary?: SimplificationSelectionSummary;
+}
+
 export interface SavedAnalysis {
   id: number;
   title: string;

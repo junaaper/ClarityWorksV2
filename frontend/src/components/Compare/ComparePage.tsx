@@ -35,10 +35,10 @@ const ComparePage: React.FC = () => {
     }
   };
 
-  const getColor = (a: number, b: number, lowerBetter = false) => {
-    if (a === b) return 'text-gray-700';
-    if (lowerBetter) return a < b ? 'text-green-600' : 'text-red-600';
-    return a > b ? 'text-green-600' : 'text-red-600';
+  const getColor = (a: number, b: number, lowerBetter = false): string => {
+    if (a === b) return 'var(--text-2)';
+    if (lowerBetter) return a < b ? 'var(--ok-500)' : 'var(--err-500)';
+    return a > b ? 'var(--ok-500)' : 'var(--err-500)';
   };
 
   const MetricRow = ({ label, valA, valB, lowerBetter = false, suffix = '' }: {
@@ -50,84 +50,123 @@ const ComparePage: React.FC = () => {
   }) => {
     const diff = valB - valA;
     const diffStr = diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1);
+    const diffColor =
+      diff === 0
+        ? 'var(--text-4)'
+        : lowerBetter
+          ? (diff < 0 ? 'var(--ok-500)' : 'var(--err-500)')
+          : (diff > 0 ? 'var(--ok-500)' : 'var(--err-500)');
     return (
-      <tr className="border-b border-gray-100">
-        <td className="py-3 px-4 font-medium text-gray-700">{label}</td>
-        <td className={`py-3 px-4 text-center font-mono ${getColor(valA, valB, lowerBetter)}`}>
+      <tr>
+        <td style={{ color: 'var(--text-2)', fontWeight: 600, fontSize: 12.5 }}>{label}</td>
+        <td style={{
+          textAlign: 'center',
+          fontFamily: 'var(--font-mono)',
+          color: getColor(valA, valB, lowerBetter),
+          fontSize: 12.5,
+        }}>
           {valA.toFixed(1)}{suffix}
         </td>
-        <td className={`py-3 px-4 text-center font-mono ${getColor(valB, valA, lowerBetter)}`}>
+        <td style={{
+          textAlign: 'center',
+          fontFamily: 'var(--font-mono)',
+          color: getColor(valB, valA, lowerBetter),
+          fontSize: 12.5,
+        }}>
           {valB.toFixed(1)}{suffix}
         </td>
-        <td className={`py-3 px-4 text-center font-mono text-sm ${
-          diff === 0 ? 'text-gray-400' : (lowerBetter ? (diff < 0 ? 'text-green-600' : 'text-red-600') : (diff > 0 ? 'text-green-600' : 'text-red-600'))
-        }`}>
-          {diff === 0 ? '-' : diffStr}{suffix}
+        <td style={{
+          textAlign: 'center',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 11.5,
+          color: diffColor,
+        }}>
+          {diff === 0 ? '—' : diffStr}{suffix}
         </td>
       </tr>
     );
   };
 
+  const wordsA = textA.trim().split(/\s+/).filter(Boolean).length;
+  const wordsB = textB.trim().split(/\s+/).filter(Boolean).length;
+
   return (
-    <div className="max-w-6xl mx-auto">
+    <div>
       {loading && <LoadingSpinner message="Analyzing both texts..." fullScreen />}
+
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
-          <ArrowLeftRight className="w-8 h-8 text-primary-600" />
+        <div className="cw-eyebrow mb-2">Workspace</div>
+        <h1 className="cw-hero flex items-center gap-3" style={{ fontSize: 28 }}>
+          <ArrowLeftRight className="w-7 h-7" style={{ color: 'var(--p-700)' }} />
           Compare Texts
         </h1>
-        <p className="text-gray-600 mt-2">
-          Analyze two texts side by side to compare readability metrics
+        <p className="mt-2" style={{ color: 'var(--text-3)', fontSize: 12.5 }}>
+          Analyze two texts side by side to compare readability metrics.
         </p>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+        <div
+          className="mb-5 rounded-md"
+          style={{
+            padding: '12px 16px',
+            background: 'var(--err-50)',
+            border: '1px solid color-mix(in srgb, var(--err-500) 22%, transparent)',
+            color: 'var(--err-700)',
+            fontSize: 12.5,
+          }}
+        >
           {error}
         </div>
       )}
 
       {/* Input Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Text A</label>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+        <div className="cw-card cw-card-pad">
+          <div className="flex items-center justify-between mb-2">
+            <label className="cw-eyebrow" style={{ marginBottom: 0 }}>Text A</label>
+            <span style={{ fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)' }}>
+              {wordsA} words
+            </span>
+          </div>
           <textarea
             value={textA}
             onChange={(e) => setTextA(e.target.value)}
-            placeholder="Paste or type the first text here... (min 50 characters)"
-            className="w-full h-48 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none resize-none"
+            placeholder="Paste or type the first text here… (min 50 characters)"
+            className="cw-textarea"
+            style={{ height: 200, resize: 'vertical' }}
           />
-          <p className="text-xs text-gray-500 mt-1">
-            {textA.trim().split(/\s+/).filter(Boolean).length} words
-          </p>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Text B</label>
+        <div className="cw-card cw-card-pad">
+          <div className="flex items-center justify-between mb-2">
+            <label className="cw-eyebrow" style={{ marginBottom: 0 }}>Text B</label>
+            <span style={{ fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)' }}>
+              {wordsB} words
+            </span>
+          </div>
           <textarea
             value={textB}
             onChange={(e) => setTextB(e.target.value)}
-            placeholder="Paste or type the second text here... (min 50 characters)"
-            className="w-full h-48 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none resize-none"
+            placeholder="Paste or type the second text here… (min 50 characters)"
+            className="cw-textarea"
+            style={{ height: 200, resize: 'vertical' }}
           />
-          <p className="text-xs text-gray-500 mt-1">
-            {textB.trim().split(/\s+/).filter(Boolean).length} words
-          </p>
         </div>
       </div>
 
       <button
         onClick={handleCompare}
         disabled={loading || textA.trim().length < 50 || textB.trim().length < 50}
-        className="w-full py-3 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-8"
+        className="cw-btn cw-btn-primary cw-btn-lg w-full mb-8"
       >
         {loading ? (
           <>
-            <Loader2 className="w-5 h-5 animate-spin" />
-            Comparing...
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Comparing…
           </>
         ) : (
           <>
-            <ArrowLeftRight className="w-5 h-5" />
+            <ArrowLeftRight className="w-4 h-4" />
             Compare
           </>
         )}
@@ -137,41 +176,65 @@ const ComparePage: React.FC = () => {
       {resultA && resultB && (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
-              <h3 className="text-lg font-semibold text-blue-800 mb-2">Text A</h3>
-              <p className="text-3xl font-bold text-blue-600">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+            <div
+              className="cw-card cw-card-pad-lg text-center"
+              style={{
+                background: 'color-mix(in srgb, var(--p-500) 6%, var(--surface-raised))',
+                border: '1px solid color-mix(in srgb, var(--p-500) 20%, transparent)',
+              }}
+            >
+              <div className="cw-eyebrow mb-2" style={{ color: 'var(--p-700)' }}>Text A</div>
+              <p style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 26,
+                fontWeight: 700,
+                color: 'var(--p-900)',
+                lineHeight: 1.2,
+              }}>
                 {resultA.predictions.predicted_grade_level}
               </p>
-              <p className="text-sm text-blue-600 mt-1">
+              <p className="mt-1" style={{ color: 'var(--p-700)', fontSize: 12 }}>
                 {resultA.predictions.predicted_complexity}
               </p>
             </div>
-            <div className="bg-purple-50 border border-purple-200 rounded-xl p-6 text-center">
-              <h3 className="text-lg font-semibold text-purple-800 mb-2">Text B</h3>
-              <p className="text-3xl font-bold text-purple-600">
+            <div
+              className="cw-card cw-card-pad-lg text-center"
+              style={{
+                background: 'color-mix(in srgb, var(--s-500) 7%, var(--surface-raised))',
+                border: '1px solid color-mix(in srgb, var(--s-500) 24%, transparent)',
+              }}
+            >
+              <div className="cw-eyebrow mb-2" style={{ color: 'var(--s-700)' }}>Text B</div>
+              <p style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 26,
+                fontWeight: 700,
+                color: 'var(--s-700)',
+                lineHeight: 1.2,
+              }}>
                 {resultB.predictions.predicted_grade_level}
               </p>
-              <p className="text-sm text-purple-600 mt-1">
+              <p className="mt-1" style={{ color: 'var(--s-700)', fontSize: 12 }}>
                 {resultB.predictions.predicted_complexity}
               </p>
             </div>
           </div>
 
           {/* Detailed Comparison Table */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-primary-600" />
-              Detailed Comparison
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
+          <div className="cw-card cw-card-pad-lg">
+            <div className="flex items-center gap-2 mb-4">
+              <BarChart3 className="w-4 h-4" style={{ color: 'var(--p-700)' }} />
+              <h3 className="cw-section-title">Detailed Comparison</h3>
+            </div>
+            <div className="cw-scroll-x">
+              <table className="cw-table">
                 <thead>
-                  <tr className="border-b-2 border-gray-200">
-                    <th className="py-3 px-4 font-semibold text-gray-600">Metric</th>
-                    <th className="py-3 px-4 text-center font-semibold text-blue-600">Text A</th>
-                    <th className="py-3 px-4 text-center font-semibold text-purple-600">Text B</th>
-                    <th className="py-3 px-4 text-center font-semibold text-gray-600">Diff</th>
+                  <tr>
+                    <th>Metric</th>
+                    <th style={{ textAlign: 'center', color: 'var(--p-700)' }}>Text A</th>
+                    <th style={{ textAlign: 'center', color: 'var(--s-700)' }}>Text B</th>
+                    <th style={{ textAlign: 'center' }}>Diff</th>
                   </tr>
                 </thead>
                 <tbody>

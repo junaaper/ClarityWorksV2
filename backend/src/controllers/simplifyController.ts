@@ -65,11 +65,12 @@ export const applyChanges = async (req: AuthRequest, res: Response): Promise<voi
 export const saveSimplification = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { analysisId, simplifiedText, targetGrade, changes, mode, metricsOriginal, metricsSimplified } = req.body;
+    const targetLabel = targetGrade >= 13 ? 'College' : `Grade ${targetGrade}`;
 
     // Get original text
     const analysis = await pool.query(
-      'SELECT original_text FROM analyses WHERE id = $1',
-      [analysisId]
+      'SELECT original_text FROM analyses WHERE id = $1 AND user_id = $2',
+      [analysisId, req.userId]
     );
 
     if (analysis.rows.length === 0) {
@@ -88,7 +89,7 @@ export const saveSimplification = async (req: AuthRequest, res: Response): Promi
         req.userId,
         analysis.rows[0].original_text,
         simplifiedText,
-        `Grade ${targetGrade}`,
+        targetLabel,
         JSON.stringify(changes),
         mode,
         metricsOriginal ? JSON.stringify(metricsOriginal) : null,

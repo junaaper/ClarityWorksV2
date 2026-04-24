@@ -16,6 +16,30 @@ class SynonymLookup:
         with open(os.path.join(base_path, 'complexification_map.json'), 'r') as f:
             self.complexification_map = json.load(f)
 
+        # Build a conservative reverse view of the curated simplification map so
+        # upgrades can stay rule-based without depending on free-form LLM rewrites.
+        self.reverse_curated_complex_map = {}
+        for complex_word, mapping in self.simplification_map.items():
+            simple_word = (mapping.get('simple') or '').strip().lower()
+            complex_word = complex_word.strip().lower()
+
+            if not simple_word or not complex_word:
+                continue
+            if ' ' in simple_word or ' ' in complex_word:
+                continue
+
+            entry = self.reverse_curated_complex_map.setdefault(
+                simple_word,
+                {
+                    'complex': [],
+                    'grade': mapping.get('grade', 7),
+                    'reason': 'Reverse curated simplification mapping'
+                }
+            )
+            if complex_word not in entry['complex']:
+                entry['complex'].append(complex_word)
+            entry['grade'] = max(entry['grade'], mapping.get('grade', 7))
+
         # Load Dale-Chall easy words (3,000 common words)
         with open(os.path.join(base_path, 'dale_chall_3000.txt'), 'r') as f:
             self.dale_chall_words = set(
@@ -83,6 +107,20 @@ class SynonymLookup:
             list: Complex synonyms
         """
         mapping = self.complexification_map.get(word.lower())
+        return mapping['complex'] if mapping else []
+
+    def get_reverse_curated_complex_synonyms(self, word):
+        """
+        Get conservative reverse mappings derived from the curated
+        simplification map.
+
+        Args:
+            word: Simple word
+
+        Returns:
+            list: Curated complex alternatives
+        """
+        mapping = self.reverse_curated_complex_map.get(word.lower())
         return mapping['complex'] if mapping else []
 
     def get_word_complexity_level(self, word):

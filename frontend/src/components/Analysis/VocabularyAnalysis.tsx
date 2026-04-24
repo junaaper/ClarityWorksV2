@@ -1,19 +1,34 @@
 import React, { useState } from 'react';
-import { analyzeVocabulary, getVocabularyInterpretation } from '../../utils/vocabularyAnalysis';
-import { BookOpen, ChevronDown, ChevronRight } from 'lucide-react';
+import { analyzeVocabulary, getVocabularyInterpretation, getLevelCriteria } from '../../utils/vocabularyAnalysis';
+import { BookOpen, ChevronDown, ChevronRight, Info } from 'lucide-react';
 
 interface Props {
   analysis: {
     original_text: string;
     difficult_words: Array<{ word: string }>;
+    predicted_grade_level?: string;
   };
 }
+
+const LevelInfoHint: React.FC<{ level: string }> = ({ level }) => {
+  const body = getLevelCriteria(level);
+  if (!body) return null;
+  return (
+    <span className="relative inline-flex group" onClick={(e) => e.stopPropagation()}>
+      <Info className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 cursor-help" />
+      <span className="absolute left-0 bottom-full mb-2 w-72 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity z-30 pointer-events-none leading-snug">
+        <span className="block font-semibold mb-1">What counts as {level}?</span>
+        <span className="block font-normal text-gray-200">{body}</span>
+      </span>
+    </span>
+  );
+};
 
 const VocabularyAnalysis: React.FC<Props> = ({ analysis }) => {
   const [expandedLevel, setExpandedLevel] = useState<string | null>(null);
 
   const result = analyzeVocabulary(analysis);
-  const interpretation = getVocabularyInterpretation(result);
+  const interpretation = getVocabularyInterpretation(result, analysis.predicted_grade_level);
 
   return (
     <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg p-6">
@@ -86,8 +101,10 @@ const VocabularyAnalysis: React.FC<Props> = ({ analysis }) => {
                 <div className="flex items-center gap-3">
                   <div className={`w-4 h-4 ${level.color} dark:opacity-80 rounded`} />
                   <div className="text-left">
-                    <p className="font-semibold text-gray-800 dark:text-gray-200">
-                      {level.level} <span className="text-sm text-gray-500 dark:text-gray-400">({level.gradeRange})</span>
+                    <p className="font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                      {level.level}
+                      <span className="text-sm text-gray-500 dark:text-gray-400 font-normal">({level.gradeRange})</span>
+                      <LevelInfoHint level={level.level} />
                     </p>
                     <p className="text-xs text-gray-600 dark:text-gray-400">
                       {level.count.toLocaleString()} words ({level.percentage.toFixed(1)}%)

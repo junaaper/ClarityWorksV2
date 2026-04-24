@@ -11,9 +11,52 @@ interface Props {
   };
 }
 
+const fleschBand = (score: number): string => {
+  if (score >= 90) return 'Very Easy';
+  if (score >= 80) return 'Easy';
+  if (score >= 70) return 'Fairly Easy';
+  if (score >= 60) return 'Standard';
+  if (score >= 50) return 'Fairly Difficult';
+  if (score >= 30) return 'Difficult';
+  return 'Very Confusing';
+};
+
+const parseGradeNumber = (gradeLevel: string): number => {
+  if (/college/i.test(gradeLevel)) return 13;
+  const match = gradeLevel.match(/\d+/);
+  return match ? parseInt(match[0], 10) : 6;
+};
+
 const GradeExplanation: React.FC<Props> = ({ gradeLevel, metrics }) => {
   const [showTechnical, setShowTechnical] = useState(false);
   const explanation = getGradeExplanation(gradeLevel);
+
+  const gradeNum = parseGradeNumber(gradeLevel);
+  const flesch = metrics.fleschReadingEase;
+  const fleschLabel = fleschBand(flesch);
+  const fleschSoundsEasy = flesch >= 70;
+  const fleschSoundsHard = flesch < 50;
+  const gradeIsAdvanced = gradeNum >= 10;
+  const gradeIsEasy = gradeNum <= 6;
+
+  const disagreement: { title: string; body: string } | null =
+    gradeIsAdvanced && fleschSoundsEasy
+      ? {
+          title: `Why does Flesch say "${fleschLabel}" when this is ${gradeLevel}?`,
+          body:
+            `Flesch Reading Ease only looks at two things: sentence length and syllables per word. ` +
+            `This text uses short-to-medium sentences and mostly everyday-length words, so Flesch scores it ${flesch.toFixed(1)} (${fleschLabel}). ` +
+            `The grade prediction looks deeper — subordinate clauses, passive voice, lexical diversity, argument structure — and those features point to ${gradeLevel}. ` +
+            `In short: easy to pronounce, harder to actually follow.`,
+        }
+      : gradeIsEasy && fleschSoundsHard
+      ? {
+          title: `Why does Flesch say "${fleschLabel}" when this is ${gradeLevel}?`,
+          body:
+            `Flesch penalises long sentences and multi-syllable words. This text happens to have a few, so Flesch scores it ${flesch.toFixed(1)} (${fleschLabel}). ` +
+            `The grade prediction looks at overall structure — short clauses, common vocabulary, simple ideas — and still lands at ${gradeLevel}.`,
+        }
+      : null;
 
   return (
     <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
@@ -71,6 +114,18 @@ const GradeExplanation: React.FC<Props> = ({ gradeLevel, metrics }) => {
           <li>Flesch Reading Ease: {metrics.fleschReadingEase.toFixed(1)} / 100</li>
         </ul>
       </div>
+
+      {/* Flesch vs Grade Disagreement Callout */}
+      {disagreement && (
+        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <p className="text-sm font-semibold text-amber-900 mb-1">
+            {disagreement.title}
+          </p>
+          <p className="text-sm text-amber-800 leading-relaxed">
+            {disagreement.body}
+          </p>
+        </div>
+      )}
     </div>
   );
 };

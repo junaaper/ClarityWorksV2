@@ -25,24 +25,20 @@ const BatchPage: React.FC = () => {
     const lines = csvText.split('\n').filter((l) => l.trim());
     if (lines.length === 0) return [];
 
-    // Check if first line is a header
     const firstLine = lines[0].toLowerCase();
     const hasHeader = firstLine.includes('title') || firstLine.includes('text');
     const dataLines = hasHeader ? lines.slice(1) : lines;
 
     return dataLines.map((line, i) => {
-      // Handle CSV with commas inside quotes
       const match = line.match(/^"?([^"]*)"?,\s*"?([\s\S]*?)"?\s*$/);
       if (match) {
         return { title: match[1].trim() || `Text ${i + 1}`, text: match[2].trim() };
       }
-      // Fallback: treat entire line as text
       return { title: `Text ${i + 1}`, text: line.trim() };
     }).filter((item) => item.text.length >= 50);
   };
 
   const parseBulkText = (raw: string): { title: string; text: string }[] => {
-    // Split by "---" separator or double newlines
     const blocks = raw.includes('---')
       ? raw.split(/---+/).map((b) => b.trim()).filter(Boolean)
       : raw.split(/\n{3,}/).map((b) => b.trim()).filter(Boolean);
@@ -123,7 +119,7 @@ const BatchPage: React.FC = () => {
         r.title,
         a.predictions.predicted_grade_level,
         a.predictions.predicted_complexity,
-        a.readability_scores.flesch_reading_ease.toFixed(1),
+        Math.max(0, Math.min(100, a.readability_scores.flesch_reading_ease)).toFixed(1),
         a.readability_scores.flesch_kincaid_grade.toFixed(1),
         a.readability_scores.automated_readability_index.toFixed(1),
         a.readability_scores.smog_readability.toFixed(1),
@@ -143,92 +139,137 @@ const BatchPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const getGradeColor = (grade: string) => {
+  const getGradeBadge = (grade: string): string => {
     const num = grade === 'College' ? 13 : parseInt(grade.replace('Grade ', '')) || 0;
-    if (num <= 5) return 'bg-green-100 text-green-700';
-    if (num <= 8) return 'bg-yellow-100 text-yellow-700';
-    if (num <= 10) return 'bg-orange-100 text-orange-700';
-    return 'bg-red-100 text-red-700';
+    if (num <= 5) return 'cw-badge cw-badge-ok';
+    if (num <= 8) return 'cw-badge cw-badge-warn';
+    if (num <= 10) return 'cw-badge cw-badge-primary';
+    return 'cw-badge cw-badge-err';
   };
 
+  const ModeTab: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }> = ({ active, onClick, icon, children }) => (
+    <button
+      onClick={onClick}
+      className="px-3 py-2 rounded-md text-[12.5px] inline-flex items-center gap-2 transition-colors"
+      style={{
+        background: active ? 'var(--surface-raised)' : 'transparent',
+        color: active ? 'var(--p-900)' : 'var(--text-2)',
+        fontWeight: active ? 600 : 500,
+        boxShadow: active ? 'var(--sh-1)' : 'none',
+      }}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+
   return (
-    <div className="max-w-6xl mx-auto">
+    <div>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
-          <FolderUp className="w-8 h-8 text-primary-600" />
+        <div className="cw-eyebrow mb-2">Workspace</div>
+        <h1 className="cw-hero flex items-center gap-3" style={{ fontSize: 28 }}>
+          <FolderUp className="w-7 h-7" style={{ color: 'var(--p-700)' }} />
           Batch Analysis
         </h1>
-        <p className="text-gray-600 mt-2">
-          Analyze multiple texts at once and get a summary table
+        <p className="mt-2" style={{ color: 'var(--text-3)', fontSize: 12.5 }}>
+          Analyze multiple texts at once and get a summary table.
         </p>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+        <div
+          className="mb-5 rounded-md flex items-center gap-2"
+          style={{
+            padding: '12px 16px',
+            background: 'var(--err-50)',
+            border: '1px solid color-mix(in srgb, var(--err-500) 22%, transparent)',
+            color: 'var(--err-700)',
+            fontSize: 12.5,
+          }}
+        >
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
           {error}
         </div>
       )}
 
       {/* Mode Selection */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex gap-3 mb-4">
-          <button
+      <div className="cw-card cw-card-pad-lg mb-5">
+        <div className="cw-eyebrow mb-3">Input Source</div>
+        <div
+          className="inline-flex p-1 mb-4 rounded-md"
+          style={{ background: 'var(--surface-sunk)', border: '1px solid var(--border)' }}
+        >
+          <ModeTab
+            active={inputMode === 'paste'}
             onClick={() => setInputMode('paste')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              inputMode === 'paste'
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            icon={<FileText className="w-3.5 h-3.5" />}
           >
-            <FileText className="w-4 h-4 inline mr-2" />
             Paste Texts
-          </button>
-          <button
+          </ModeTab>
+          <ModeTab
+            active={inputMode === 'csv'}
             onClick={() => setInputMode('csv')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              inputMode === 'csv'
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            icon={<Upload className="w-3.5 h-3.5" />}
           >
-            <Upload className="w-4 h-4 inline mr-2" />
             Upload CSV
-          </button>
+          </ModeTab>
         </div>
 
         {inputMode === 'paste' ? (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block mb-2" style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 500 }}>
               Paste multiple texts separated by "---" or triple newlines
             </label>
             <textarea
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
               placeholder={"First text goes here. It should be at least 50 characters long.\n\n---\n\nSecond text goes here. It should also be at least 50 characters long.\n\n---\n\nThird text..."}
-              className="w-full h-48 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none resize-none font-mono text-sm"
+              className="cw-textarea"
+              style={{ height: 200, fontFamily: 'var(--font-mono)', fontSize: 12 }}
             />
             <button
               onClick={handleBulkAnalyze}
               disabled={loading || bulkText.trim().length < 50}
-              className="mt-3 px-6 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="cw-btn cw-btn-primary mt-4"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderUp className="w-4 h-4" />}
-              {loading ? `Analyzing ${progress}/${total}...` : 'Analyze All'}
+              {loading ? `Analyzing ${progress}/${total}…` : 'Analyze All'}
             </button>
           </div>
         ) : (
           <div>
-            <p className="text-sm text-gray-600 mb-3">
-              Upload a CSV file with columns: <code className="bg-gray-100 px-1 rounded">title,text</code>
+            <p className="mb-3" style={{ fontSize: 12, color: 'var(--text-3)' }}>
+              Upload a CSV file with columns:{' '}
+              <code style={{
+                background: 'var(--surface-sunk)',
+                padding: '2px 6px',
+                borderRadius: 4,
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                color: 'var(--text-2)',
+              }}>title,text</code>
             </p>
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-primary-400 hover:bg-primary-50 transition-colors"
+              className="rounded-lg p-10 text-center cursor-pointer transition-colors"
+              style={{
+                border: '2px dashed var(--border-strong)',
+                background: 'var(--surface-sunk)',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--p-500)';
+                (e.currentTarget as HTMLDivElement).style.background = 'color-mix(in srgb, var(--p-50) 50%, var(--surface-sunk))';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-strong)';
+                (e.currentTarget as HTMLDivElement).style.background = 'var(--surface-sunk)';
+              }}
             >
-              <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-600 font-medium">Click to upload CSV</p>
-              <p className="text-sm text-gray-500 mt-1">Each row will be analyzed separately</p>
+              <Upload className="w-8 h-8 mx-auto mb-3" style={{ color: 'var(--text-4)' }} />
+              <p style={{ color: 'var(--text-2)', fontWeight: 600, fontSize: 13 }}>Click to upload CSV</p>
+              <p className="mt-1" style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                Each row will be analyzed separately
+              </p>
             </div>
             <input
               ref={fileInputRef}
@@ -243,15 +284,21 @@ const BatchPage: React.FC = () => {
 
       {/* Progress Bar */}
       {loading && (
-        <div className="mb-6">
-          <div className="flex justify-between text-sm text-gray-600 mb-1">
-            <span>Analyzing texts...</span>
-            <span>{progress} / {total}</span>
+        <div className="cw-card cw-card-pad mb-5">
+          <div className="flex justify-between mb-2" style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+            <span>Analyzing texts…</span>
+            <span style={{ fontFamily: 'var(--font-mono)' }}>{progress} / {total}</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div
+            className="w-full rounded-full"
+            style={{ height: 6, background: 'var(--surface-sunk)' }}
+          >
             <div
-              className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(progress / total) * 100}%` }}
+              className="h-full rounded-full transition-all duration-300"
+              style={{
+                width: `${(progress / total) * 100}%`,
+                background: 'linear-gradient(90deg, var(--p-700), var(--p-500))',
+              }}
             />
           </div>
         </div>
@@ -259,53 +306,62 @@ const BatchPage: React.FC = () => {
 
       {/* Results Table */}
       {results.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-              Results ({results.filter((r) => r.analysis).length}/{results.length} successful)
-            </h3>
-            <button
-              onClick={exportCSV}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
-            >
-              <Download className="w-4 h-4" />
+        <div className="cw-card cw-card-pad-lg">
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4" style={{ color: 'var(--ok-500)' }} />
+              <h3 className="cw-section-title">
+                Results ({results.filter((r) => r.analysis).length}/{results.length} successful)
+              </h3>
+            </div>
+            <button onClick={exportCSV} className="cw-btn cw-btn-sm cw-btn-teal">
+              <Download className="w-3.5 h-3.5" />
               Export CSV
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <div className="cw-scroll-x">
+            <table className="cw-table">
               <thead>
-                <tr className="border-b-2 border-gray-200">
-                  <th className="py-2 px-3 font-semibold text-gray-600">#</th>
-                  <th className="py-2 px-3 font-semibold text-gray-600">Title</th>
-                  <th className="py-2 px-3 font-semibold text-gray-600">Grade</th>
-                  <th className="py-2 px-3 font-semibold text-gray-600">Flesch</th>
-                  <th className="py-2 px-3 font-semibold text-gray-600">Words</th>
-                  <th className="py-2 px-3 font-semibold text-gray-600">Sentences</th>
-                  <th className="py-2 px-3 font-semibold text-gray-600">Diff. Words %</th>
+                <tr>
+                  <th style={{ width: 40 }}>#</th>
+                  <th>Title</th>
+                  <th>Grade</th>
+                  <th>Flesch</th>
+                  <th>Words</th>
+                  <th>Sentences</th>
+                  <th>Diff. Words %</th>
                 </tr>
               </thead>
               <tbody>
                 {results.map((r) => (
-                  <tr key={r.index} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-2 px-3 text-gray-500">{r.index}</td>
-                    <td className="py-2 px-3 font-medium text-gray-700 max-w-xs truncate">{r.title}</td>
+                  <tr key={r.index}>
+                    <td style={{ color: 'var(--text-4)', fontFamily: 'var(--font-mono)' }}>{r.index}</td>
+                    <td style={{ color: 'var(--text-1)', fontWeight: 600, fontSize: 12.5, maxWidth: 280 }}>
+                      <div className="truncate">{r.title}</div>
+                    </td>
                     {r.analysis ? (
                       <>
-                        <td className="py-2 px-3">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getGradeColor(r.analysis.predictions.predicted_grade_level)}`}>
+                        <td>
+                          <span className={getGradeBadge(r.analysis.predictions.predicted_grade_level)}>
                             {r.analysis.predictions.predicted_grade_level}
                           </span>
                         </td>
-                        <td className="py-2 px-3 font-mono">{r.analysis.readability_scores.flesch_reading_ease.toFixed(1)}</td>
-                        <td className="py-2 px-3 font-mono">{r.analysis.basic_metrics.word_count}</td>
-                        <td className="py-2 px-3 font-mono">{r.analysis.basic_metrics.sentence_count}</td>
-                        <td className="py-2 px-3 font-mono">{r.analysis.statistics.difficult_words_percentage.toFixed(1)}%</td>
+                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>
+                          {Math.max(0, Math.min(100, r.analysis.readability_scores.flesch_reading_ease)).toFixed(1)}
+                        </td>
+                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>
+                          {r.analysis.basic_metrics.word_count}
+                        </td>
+                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>
+                          {r.analysis.basic_metrics.sentence_count}
+                        </td>
+                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>
+                          {r.analysis.statistics.difficult_words_percentage.toFixed(1)}%
+                        </td>
                       </>
                     ) : (
-                      <td colSpan={5} className="py-2 px-3 text-red-500">{r.error}</td>
+                      <td colSpan={5} style={{ color: 'var(--err-500)', fontSize: 12 }}>{r.error}</td>
                     )}
                   </tr>
                 ))}
@@ -315,9 +371,9 @@ const BatchPage: React.FC = () => {
 
           {/* Summary Stats */}
           {results.filter((r) => r.analysis).length > 1 && (
-            <div className="mt-6 pt-4 border-t border-gray-200">
-              <h4 className="text-sm font-semibold text-gray-600 mb-3">Summary</h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div className="mt-6 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
+              <div className="cw-eyebrow mb-3">Summary</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {(() => {
                   const valid = results.filter((r) => r.analysis).map((r) => r.analysis!);
                   const avgFlesch = valid.reduce((s, a) => s + a.readability_scores.flesch_reading_ease, 0) / valid.length;
@@ -328,24 +384,32 @@ const BatchPage: React.FC = () => {
                   const avgGrade = grades.reduce((s, g) => s + g, 0) / grades.length;
                   const minGrade = Math.min(...grades);
                   const maxGrade = Math.max(...grades);
+                  const statCard = (value: string, label: string, color: string) => (
+                    <div
+                      className="rounded-md p-3 text-center"
+                      style={{
+                        background: 'var(--surface-sunk)',
+                        border: '1px solid var(--border)',
+                      }}
+                    >
+                      <p style={{
+                        fontFamily: 'var(--font-display)',
+                        fontSize: 22,
+                        fontWeight: 700,
+                        color,
+                        lineHeight: 1.2,
+                      }}>
+                        {value}
+                      </p>
+                      <p className="mt-1" style={{ fontSize: 11, color: 'var(--text-3)' }}>{label}</p>
+                    </div>
+                  );
                   return (
                     <>
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-2xl font-bold text-primary-600">{avgFlesch.toFixed(1)}</p>
-                        <p className="text-xs text-gray-500">Avg Flesch Score</p>
-                      </div>
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-2xl font-bold text-blue-600">{avgGrade.toFixed(1)}</p>
-                        <p className="text-xs text-gray-500">Avg Grade Level</p>
-                      </div>
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-2xl font-bold text-green-600">Grade {minGrade}</p>
-                        <p className="text-xs text-gray-500">Easiest</p>
-                      </div>
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-2xl font-bold text-red-600">{maxGrade >= 13 ? 'College' : `Grade ${maxGrade}`}</p>
-                        <p className="text-xs text-gray-500">Hardest</p>
-                      </div>
+                      {statCard(avgFlesch.toFixed(1), 'Avg Flesch Score', 'var(--p-700)')}
+                      {statCard(avgGrade.toFixed(1), 'Avg Grade Level', 'var(--s-700)')}
+                      {statCard(minGrade >= 13 ? 'College' : `Grade ${minGrade}`, 'Easiest', 'var(--ok-500)')}
+                      {statCard(maxGrade >= 13 ? 'College' : `Grade ${maxGrade}`, 'Hardest', 'var(--err-500)')}
                     </>
                   );
                 })()}

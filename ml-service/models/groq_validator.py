@@ -58,9 +58,10 @@ CHANGES MADE:
 {changes_summary}
 
 TASK:
-1. Do the changes preserve the original meaning?
-2. Are the word replacements appropriate?
-3. Are there any errors or awkward phrasings?
+1. Check that the simplified text preserves the original facts, actors, and causality.
+2. Flag any sentence that becomes incomplete, misleading, or unnatural.
+3. Flag any word replacement that changes meaning, even slightly.
+4. Flag subject/object swaps or causal errors such as changing what becomes what.
 
 Respond ONLY with valid JSON (no markdown, no code blocks):
 {{"valid": true or false, "issues": ["issue1", "issue2"], "suggestions": ["suggestion1", "suggestion2"]}}"""
@@ -68,7 +69,7 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
             response = self.client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
+                temperature=0,
                 max_tokens=500
             )
 
@@ -95,6 +96,189 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
                 'issues': [],
                 'suggestions': []
             }
+
+    def _parse_json_response(self, content, fallback):
+        if not content:
+            return fallback
+
+        cleaned = content.strip()
+        if cleaned.startswith('```'):
+            cleaned = cleaned.split('```')[1]
+            if cleaned.startswith('json'):
+                cleaned = cleaned[4:]
+        try:
+            return json.loads(cleaned)
+        except Exception:
+            return fallback
+
+    def critic_candidates(self, original_text, target_grade, candidates):
+        """
+        Review top deterministic candidates and return bounded JSON feedback.
+        Groq is a critic here, not the author.
+        """
+        if not self.client or not candidates:
+            return {
+                'preferred_index': 0,
+                'reviews': [],
+            }
+
+        try:
+            summarized_candidates = []
+            for index, candidate in enumerate(candidates[:3]):
+                summarized_candidates.append({
+                    'index': index,
+                    'score': candidate.get('score', candidate.get('candidate_score')),
+                    'raw_score': candidate.get('raw_score'),
+                    'selection_path': candidate.get('selection_path', candidate.get('rule_history', [])),
+                    'text': candidate.get('text', '')[:1600],
+                })
+
+            prompt = f"""You are reviewing deterministic text rewrite candidates.
+
+ORIGINAL TEXT:
+{original_text[:1800]}
+
+TARGET GRADE:
+{target_grade}
+
+CANDIDATES:
+{json.dumps(summarized_candidates, ensure_ascii=True)}
+
+Return ONLY valid JSON with this shape:
+{{
+  "preferred_index": 0,
+  "reviews": [
+    {{
+      "index": 0,
+      "meaning_drift": false,
+      "awkward_phrase": false,
+      "grade_too_low": false,
+      "grade_too_high": false,
+      "citation_needed": false,
+      "reject_candidate": false,
+      "notes": ["short note"]
+    }}
+  ]
+}}
+
+Rules:
+- Prefer the candidate that best preserves meaning.
+- Reject a candidate if it changes meaning or becomes awkward.
+- Do not propose a new rewrite.
+"""
+
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+                max_tokens=900
+            )
+            content = response.choices[0].message.content
+            return self._parse_json_response(content, {'preferred_index': 0, 'reviews': []})
+        except Exception as e:
+            print(f"Groq critic error: {e}")
+            return {
+                'preferred_index': 0,
+                'reviews': [],
+            }
+
+    def local_repair(self, original_text, candidate_text, target_grade, issues):
+        """
+        Repair only the current candidate. This stays bounded to the current
+        text and fixes semantics/flow without replacing the whole rule-based pass.
+        """
+        if not self.client:
+            return candidate_text
+
+        issue_lines = "\n".join(f"- {issue}" for issue in (issues or [])) or "- Improve local flow only"
+
+        try:
+            prompt = f"""You are repairing a deterministic rewrite candidate.
+
+ORIGINAL TEXT:
+{original_text}
+
+CURRENT CANDIDATE:
+{candidate_text}
+
+ISSUES:
+{issue_lines}
+
+Rules:
+- Keep the repaired text close to the current candidate, but you MAY rewrite the affected sentence
+  or short paragraph when that is required to restore correct grammar or meaning.
+- Fix meaning drift, incomplete sentences, broken references, and awkward phrasing.
+- Preserve the original facts exactly.
+- Do not change who did what, what causes what, or what turns into what.
+- Do not rewrite the full passage from scratch.
+- Keep the grade close to Grade {target_grade}.
+- If the current candidate is already good, return it unchanged.
+- Return ONLY the repaired text.
+"""
+
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+                max_tokens=2200
+            )
+            repaired = response.choices[0].message.content.strip()
+            return repaired or candidate_text
+        except Exception as e:
+            print(f"Groq local repair error: {e}")
+            return candidate_text
+
+    def polish_text(self, original_text, rewritten_text, target_grade, issues=None, going_up=False):
+        """
+        Do the final bounded repair pass on top of a rule-based rewrite.
+        The model may fix semantics, flow, and sentence integrity, including
+        rewriting the affected sentence(s) or short paragraph(s) when needed.
+        """
+        if not self.client:
+            return rewritten_text
+
+        issues = issues or []
+        issue_lines = "\n".join(f"- {issue}" for issue in issues) or "- Improve flow only where needed"
+        direction = "upgrade" if going_up else "simplification"
+
+        try:
+            prompt = f"""You are polishing a RULE-BASED text {direction}.
+
+ORIGINAL TEXT:
+{original_text}
+
+CURRENT REWRITTEN TEXT:
+{rewritten_text}
+
+FOCUS AREAS:
+{issue_lines}
+
+RULES:
+1. Keep the rewritten text close to the current version, but you MAY rewrite the affected sentence(s)
+   or a short paragraph when needed to restore proper English and preserve meaning.
+2. Preserve all facts and meaning from the original text.
+3. Fix semantic drift, incomplete sentences, broken references, and awkward phrasing.
+4. Do NOT change who did what, what carries what, or what turns into what.
+5. Do NOT rewrite the full passage from scratch.
+6. Do NOT add new ideas, examples, or commentary.
+7. Keep the result aligned with Grade {target_grade}.
+8. If the current rewritten text is already good, return it unchanged.
+9. Return ONLY the polished text.
+"""
+
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+                max_tokens=2500
+            )
+
+            polished = response.choices[0].message.content.strip()
+            return polished or rewritten_text
+
+        except Exception as e:
+            print(f"Groq polish error: {e}")
+            return rewritten_text
 
     def fix_with_groq(self, text, target_grade, issues):
         """
@@ -134,7 +318,7 @@ Respond with ONLY the improved text (no explanations):"""
             response = self.client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
+                temperature=0,
                 max_tokens=2000
             )
 

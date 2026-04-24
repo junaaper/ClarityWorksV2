@@ -59,7 +59,7 @@ export function calculateComplexityScore(inputs: ComplexityScoreInputs): Complex
   // Normalize each component to 0-1, then apply weight
 
   // Component 1: Grade Level (40% weight)
-  // Normalize: Grade 3 = 0, College (Grade 13) = 1
+  // Normalize: Grade 3 = 0, College = 1
   const gradeNormalized = Math.max(0, Math.min(1, (gradeNumeric - 3) / 10));
   const gradeContribution = gradeNormalized * 40;
 
@@ -133,21 +133,3 @@ export function getComplexityBgColor(score: number): string {
   return 'bg-red-600';
 }
 
-/**
- * Get detailed explanation of complexity score
- */
-export function getComplexityExplanation(score: number): string {
-  if (score < 20) {
-    return 'This text is very easy to read, suitable for elementary school students (Grades 3-5). Most readers will comprehend it quickly with minimal effort.';
-  }
-  if (score < 40) {
-    return 'This text is easy to read, appropriate for middle school students (Grades 6-8). General audiences can understand it without difficulty.';
-  }
-  if (score < 60) {
-    return 'This text has moderate complexity, suitable for high school students (Grades 9-10). Requires focused reading but is accessible to most educated adults.';
-  }
-  if (score < 80) {
-    return 'This text is difficult, appropriate for advanced high school or early college level (Grades 11-12). Requires strong reading skills and concentration.';
-  }
-  return 'This text is very difficult, written at college or academic level. Requires advanced education and sustained concentration to comprehend.';
-}

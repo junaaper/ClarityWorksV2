@@ -1,0 +1,281 @@
+{
+  "mode": "interactive",
+  "groq_enabled": false,
+  "datamuse_enabled": false,
+  "summary": {
+    "total_cases": 121,
+    "hits": 43,
+    "misses": 78,
+    "hit_rate": 0.355,
+    "upgrade_hits": "15/55",
+    "downgrade_hits": "20/55",
+    "avg_distance_all": 1.39,
+    "avg_distance_misses": 1.87
+  },
+  "by_target": {
+    "3": {
+      "hits": 1,
+      "cases": 11,
+      "avg_distance": 2.71
+    },
+    "4": {
+      "hits": 2,
+      "cases": 11,
+      "avg_distance": 1.84
+    },
+    "5": {
+      "hits": 3,
+      "cases": 11,
+      "avg_distance": 1.48
+    },
+    "6": {
+      "hits": 4,
+      "cases": 11,
+      "avg_distance": 0.94
+    },
+    "7": {
+      "hits": 5,
+      "cases": 11,
+      "avg_distance": 0.73
+    },
+    "8": {
+      "hits": 5,
+      "cases": 11,
+      "avg_distance": 1.15
+    },
+    "9": {
+      "hits": 6,
+      "cases": 11,
+      "avg_distance": 1.27
+    },
+    "10": {
+      "hits": 4,
+      "cases": 11,
+      "avg_distance": 1.06
+    },
+    "11": {
+      "hits": 6,
+      "cases": 11,
+      "avg_distance": 1.16
+    },
+    "12": {
+      "hits": 4,
+      "cases": 11,
+      "avg_distance": 1.19
+    },
+    "13": {
+      "hits": 3,
+      "cases": 11,
+      "avg_distance": 1.76
+    }
+  },
+  "by_source": {
+    "grade_3.txt": {
+      "hits": 2,
+      "cases": 11,
+      "avg_distance": 1.9
+    },
+    "grade_4.txt": {
+      "hits": 1,
+      "cases": 11,
+      "avg_distance": 2.68
+    },
+    "grade_5.txt": {
+      "hits": 6,
+      "cases": 11,
+      "avg_distance": 0.73
+    },
+    "grade_6.txt": {
+      "hits": 3,
+      "cases": 11,
+      "avg_distance": 1.23
+    },
+    "grade_7.txt": {
+      "hits": 1,
+      "cases": 11,
+      "avg_distance": 2.15
+    },
+    "grade_8.txt": {
+      "hits": 3,
+      "cases": 11,
+      "avg_distance": 0.77
+    },
+    "grade_9.txt": {
+      "hits": 5,
+      "cases": 11,
+      "avg_distance": 0.87
+    },
+    "grade_10.txt": {
+      "hits": 6,
+      "cases": 11,
+      "avg_distance": 1.26
+    },
+    "grade_11.txt": {
+      "hits": 7,
+      "cases": 11,
+      "avg_distance": 1.0
+    },
+    "grade_12.txt": {
+      "hits": 5,
+      "cases": 11,
+      "avg_distance": 1.43
+    },
+    "college.txt": {
+      "hits": 4,
+      "cases": 11,
+      "avg_distance": 1.27
+    }
+  },
+  "worst_cases": [
+    {
+      "source": "grade_4.txt",
+      "source_grade": 4,
+      "target": 13,
+      "predicted": 6.55,
+      "predicted_label": "Grade 6",
+      "distance": 6.45,
+      "hit": false,
+      "changes": 19
+    },
+    {
+      "source": "grade_4.txt",
+      "source_grade": 4,
+      "target": 12,
+      "predicted": 6.55,
+      "predicted_label": "Grade 6",
+      "distance": 5.45,
+      "hit": false,
+      "changes": 19
+    },
+    {
+      "source": "grade_3.txt",
+      "source_grade": 3,
+      "target": 9,
+      "predicted": 4.39,
+      "predicted_label": "Grade 4",
+      "distance": 4.61,
+      "hit": false,
+      "changes": 14
+    },
+    {
+      "source": "grade_4.txt",
+      "source_grade": 4,
+      "target": 11,
+      "predicted": 6.55,
+      "predicted_label": "Grade 6",
+      "distance": 4.45,
+      "hit": false,
+      "changes": 19
+    },
+    {
+      "source": "grade_7.txt",
+      "source_grade": 7,
+      "target": 13,
+      "predicted": 8.68,
+      "predicted_label": "Grade 8",
+      "distance": 4.32,
+      "hit": false,
+      "changes": 15
+    },
+    {
+      "source": "grade_7.txt",
+      "source_grade": 7,
+      "target": 3,
+      "predicted": 7.08,
+      "predicted_label": "Grade 7",
+      "distance": 4.08,
+      "hit": false,
+      "changes": 9
+    },
+    {
+      "source": "grade_10.txt",
+      "source_grade": 10,
+      "target": 3,
+      "predicted": 6.95,
+      "predicted_label": "Grade 6",
+      "distance": 3.95,
+      "hit": false,
+      "changes": 4
+    },
+    {
+      "source": "grade_3.txt",
+      "source_grade": 3,
+      "target": 8,
+      "predicted": 4.37,
+      "predicted_label": "Grade 4",
+      "distance": 3.63,
+      "hit": false,
+      "changes": 12
+    },
+    {
+      "source": "college.txt",
+      "source_grade": 13,
+      "target": 3,
+      "predicted": 6.62,
+      "predicted_label": "Grade 6",
+      "distance": 3.62,
+      "hit": false,
+      "changes": 5
+    },
+    {
+      "source": "grade_12.txt",
+      "source_grade": 12,
+      "target": 3,
+      "predicted": 6.54,
+      "predicted_label": "Grade 6",
+      "distance": 3.54,
+      "hit": false,
+      "changes": 3
+    },
+    {
+      "source": "grade_4.txt",
+      "source_grade": 4,
+      "target": 10,
+      "predicted": 6.55,
+      "predicted_label": "Grade 6",
+      "distance": 3.45,
+      "hit": false,
+      "changes": 19
+    },
+    {
+      "source": "grade_11.txt",
+      "source_grade": 11,
+      "target": 3,
+      "predicted": 6.39,
+      "predicted_label": "Grade 6",
+      "distance": 3.39,
+      "hit": false,
+      "changes": 3
+    },
+    {
+      "source": "grade_7.txt",
+      "source_grade": 7,
+      "target": 12,
+      "predicted": 8.68,
+      "predicted_label": "Grade 8",
+      "distance": 3.32,
+      "hit": false,
+      "changes": 15
+    },
+    {
+      "source": "grade_9.txt",
+      "source_grade": 9,
+      "target": 3,
+      "predicted": 6.09,
+      "predicted_label": "Grade 6",
+      "distance": 3.09,
+      "hit": false,
+      "changes": 6
+    },
+    {
+      "source": "grade_7.txt",
+      "source_grade": 7,
+      "target": 4,
+      "predicted": 7.08,
+      "predicted_label": "Grade 7",
+      "distance": 3.08,
+      "hit": false,
+      "changes": 9
+    }
+  ]
+}

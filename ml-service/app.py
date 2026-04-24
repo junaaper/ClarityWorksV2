@@ -13,6 +13,7 @@ import uuid
 from models import ReadabilityModel
 from models.simplifier import TextSimplifier
 from models.rag_engine import RAGEngine
+from utils.change_patches import apply_changes_by_span
 from utils.text_cleaner import TextCleaner
 
 load_dotenv()
@@ -30,7 +31,7 @@ model = ReadabilityModel()
 model.load_models()
 
 # Initialize simplifier
-simplifier = TextSimplifier()
+simplifier = TextSimplifier(readability_model=model)
 
 # Initialize RAG engine
 rag_engine = RAGEngine()
@@ -44,7 +45,10 @@ if not model.is_trained:
 def health():
     return jsonify({
         'status': 'ok',
-        'model_trained': model.is_trained
+        'model_trained': model.is_trained,
+        'wordnet_available': simplifier.wordnet_available,
+        'rag_answer_generation': rag_engine.groq_client is not None,
+        'rag_reranker': rag_engine.ranker is not None
     })
 
 @app.route('/analyze', methods=['POST'])
@@ -249,8 +253,6 @@ def extract_text_from_docx(file):
         return '\n\n'.join(paragraphs)
     finally:
         os.unlink(tmp_path)
-
-
 @app.route('/rag/upload', methods=['POST'])
 def upload_rag_document():
     """Upload and process textbook for RAG"""
@@ -360,7 +362,10 @@ def analyze_for_simplification():
         return jsonify({
             'original_text': text,
             'suggested_changes': result['changes'],
-            'preview_text': result['simplified_text']
+            'preview_text': result['simplified_text'],
+            'preview_metrics': result.get('preview_metrics'),
+            'target_distance': result.get('target_distance'),
+            'selection_summary': result.get('selection_summary'),
         })
 
     except Exception as e:
@@ -376,11 +381,7 @@ def apply_selected_changes():
         accepted_change_ids = data.get('accepted_changes', [])
         all_changes = data.get('all_changes', [])
 
-        # Apply only accepted changes
-        final_text = text
-        for change in all_changes:
-            if change['id'] in accepted_change_ids:
-                final_text = final_text.replace(change['original'], change['simplified'], 1)
+        final_text = apply_changes_by_span(text, all_changes, accepted_change_ids)
 
         return jsonify({'simplified_text': final_text})
 

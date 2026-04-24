@@ -69,18 +69,45 @@ export const queryDocuments = async (req: AuthRequest, res: Response): Promise<v
   try {
     const { query, documentIds } = req.body;
     const userId = req.userId;
+    const requestedIds = Array.isArray(documentIds)
+      ? [...new Set(documentIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0))]
+      : [];
+
+    let docsQuery = 'SELECT chromadb_collection_id FROM rag_documents WHERE user_id = $1';
+    const docsParams: Array<number | string[]> = [userId!];
+
+    if (requestedIds.length > 0) {
+      docsQuery += ' AND chromadb_collection_id = ANY($2)';
+      docsParams.push(requestedIds.map((id) => `doc_${id}`));
+    }
+
+    const docsResult = await pool.query(docsQuery, docsParams);
+
+    if (docsResult.rows.length === 0) {
+      res.status(404).json({ error: 'No accessible RAG documents found for this query' });
+      return;
+    }
+
+    if (requestedIds.length > 0 && docsResult.rows.length !== requestedIds.length) {
+      res.status(403).json({ error: 'One or more selected documents are unavailable' });
+      return;
+    }
+
+    const scopedDocumentIds = docsResult.rows.map((row) =>
+      String(row.chromadb_collection_id).replace(/^doc_/, '')
+    );
 
     // Call Python service
     const response = await axios.post(`${PYTHON_SERVICE_URL}/rag/query`, {
       query,
-      document_ids: documentIds
+      document_ids: scopedDocumentIds
     });
 
     // Save query to history
     await pool.query(
       `INSERT INTO rag_queries (user_id, query_text, document_ids, result_count)
        VALUES ($1, $2, $3, $4)`,
-      [userId, query, documentIds || [], response.data.results_count]
+      [userId, query, scopedDocumentIds, response.data.results_count]
     );
 
     res.json(response.data);

@@ -148,23 +148,69 @@ export function analyzeVocabulary(input: VocabularyAnalysisInput): VocabularyAna
 }
 
 /**
- * Get interpretation of vocabulary distribution
+ * Get interpretation of vocabulary distribution, reconciled with the overall grade prediction
+ * so vocab doesn't claim "elementary" while the text is actually graded Grade 11.
  */
-export function getVocabularyInterpretation(result: VocabularyAnalysisResult): string {
+export function getVocabularyInterpretation(
+  result: VocabularyAnalysisResult,
+  predictedGradeLevel?: string,
+): string {
   const simplePercent = result.levels[0].percentage;
+  const mediumPercent = result.levels[1].percentage;
+  const advancedPercent = result.levels[2].percentage;
   const expertPercent = result.levels[3].percentage;
+  const hardPercent = advancedPercent + expertPercent;
 
-  if (simplePercent > 70) {
-    return 'Your vocabulary is very accessible, suitable for elementary-level readers.';
+  const gradeNum = (() => {
+    if (!predictedGradeLevel) return null;
+    if (/college/i.test(predictedGradeLevel)) return 13;
+    const m = predictedGradeLevel.match(/\d+/);
+    return m ? parseInt(m[0], 10) : null;
+  })();
+
+  const grade = gradeNum ?? 0;
+
+  // Reconcile: vocabulary profile vs. overall grade prediction
+  if (grade >= 10 && simplePercent > 65 && hardPercent < 10) {
+    return `Most words here are everyday vocabulary, yet the text is graded ${predictedGradeLevel}. That's structural — longer sentences, more subordinate clauses and denser ideas push the grade up even though the words themselves stay common.`;
   }
-  if (simplePercent > 50) {
-    return 'Your vocabulary is balanced and appropriate for general audiences.';
+  if (grade <= 6 && hardPercent > 20) {
+    return `Vocabulary leans advanced, but short sentences and simple structure keep the overall grade at ${predictedGradeLevel}.`;
+  }
+  if (grade >= 11 && expertPercent > 10) {
+    return `Both the vocabulary and the structure sit at ${predictedGradeLevel}. Many low-frequency or specialist words combined with dense sentences.`;
+  }
+
+  // Generic fallbacks when grade isn't available or profile matches expectation
+  if (simplePercent > 70) {
+    return 'Most words are common, everyday vocabulary. Sentence structure likely does most of the work for difficulty.';
+  }
+  if (simplePercent > 50 && mediumPercent > 20) {
+    return 'A balanced mix of everyday and mid-range words — appropriate for a general audience.';
   }
   if (expertPercent > 15) {
-    return 'Your vocabulary is advanced, requiring college-level reading skills.';
+    return 'Heavy use of rare or specialist words — readers need strong vocabulary to keep up.';
   }
-  if (expertPercent > 5) {
-    return 'Your vocabulary is sophisticated, suitable for high school or college readers.';
+  if (expertPercent > 5 || advancedPercent > 15) {
+    return 'A noticeable share of advanced words — suits high-school-and-above readers.';
   }
-  return 'Your vocabulary has good variety appropriate for your target audience.';
+  return 'Vocabulary mix is varied without leaning heavily on rare words.';
+}
+
+/**
+ * Human-readable criteria behind each level, shown as info popovers in the UI.
+ */
+export function getLevelCriteria(level: string): string {
+  switch (level) {
+    case 'Simple':
+      return 'Everyday, high-frequency words: stop words (the, and, is…), short words (under 7 letters) that aren\'t flagged as difficult. These are words an elementary reader would already know.';
+    case 'Medium':
+      return 'Longer everyday words (7+ letters) that are not flagged as difficult — still within a typical middle-schooler\'s vocabulary.';
+    case 'Advanced':
+      return 'Words flagged as difficult: 3+ syllables, 4+ letters, not a proper noun, and not in the Dale-Chall list of 3,000 common words. High-school-level vocabulary.';
+    case 'Expert':
+      return 'The hardest slice of the flagged difficult words: same criteria as Advanced, plus 10+ letters — a proxy for rare, technical or specialist vocabulary you\'d expect at college level.';
+    default:
+      return '';
+  }
 }

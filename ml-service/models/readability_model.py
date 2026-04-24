@@ -223,7 +223,7 @@ class ReadabilityModel:
         result = {
             "basic_metrics": full_features["basic_metrics"],
             "readability_scores": {
-                "flesch_reading_ease": round(full_features["readability_scores"]["flesch_reading_ease"], 2),
+                "flesch_reading_ease": round(max(0, min(100, full_features["readability_scores"]["flesch_reading_ease"])), 2),
                 "flesch_kincaid_grade": round(full_features["readability_scores"]["flesch_kincaid_grade"], 2),
                 "automated_readability_index": round(full_features["readability_scores"]["automated_readability_index"], 2),
                 "smog_readability": round(full_features["readability_scores"]["smog_readability"], 2),

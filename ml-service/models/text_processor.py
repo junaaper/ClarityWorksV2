@@ -2,6 +2,7 @@ import re
 import pyphen
 from typing import List, Dict, Tuple
 from models.synonym_lookup import SynonymLookup
+from wordfreq import zipf_frequency
 
 
 class TextProcessor:
@@ -104,14 +105,17 @@ class TextProcessor:
         elif syllable_count == 3:
             reasons.append(f"{syllable_count} syllables (moderately complex)")
 
-        # 2. Word frequency check
-        word_rank = self.synonym_lookup.get_word_frequency_rank(word)
-        if word_rank > 20000:
-            reasons.append(f"extremely rare word (rank #{word_rank:,})")
-        elif word_rank > 10000:
-            reasons.append(f"rare word (rank #{word_rank:,})")
-        elif word_rank > 5000:
-            reasons.append(f"uncommon word (rank #{word_rank:,})")
+        # 2. Word frequency check (Zipf scale, 0-7: 7=extremely common, <3=rare, <2=specialist)
+        zipf = zipf_frequency(word.lower(), 'en')
+        if zipf == 0:
+            # Genuinely unknown to the frequency corpus — don't fabricate a rank
+            reasons.append("very rare word (outside common vocabulary)")
+        elif zipf < 2.5:
+            reasons.append(f"rare / specialist word (Zipf {zipf:.1f})")
+        elif zipf < 3.5:
+            reasons.append(f"uncommon word (Zipf {zipf:.1f})")
+        elif zipf < 4.5:
+            reasons.append(f"mid-frequency word (Zipf {zipf:.1f})")
 
         # 3. Dale-Chall easy words check
         if not self.synonym_lookup.is_easy_word(word):

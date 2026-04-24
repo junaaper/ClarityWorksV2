@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   calculateComplexityScore,
   getComplexityBgColor,
-  getComplexityExplanation,
   ComplexityScoreInputs
 } from '../../utils/complexityScore';
 import { Info } from 'lucide-react';
@@ -16,7 +15,6 @@ const ComplexityScoreCard: React.FC<Props> = ({ analysis }) => {
 
   const result = calculateComplexityScore(analysis);
   const bgColor = getComplexityBgColor(result.score);
-  const explanation = getComplexityExplanation(result.score);
 
   return (
     <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg p-6">
@@ -55,7 +53,8 @@ const ComplexityScoreCard: React.FC<Props> = ({ analysis }) => {
 
       {/* Explanation */}
       <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-        {explanation}
+        A weighted blend of grade level, Flesch score, difficult-word density and sentence length.
+        See the grade-level explanation above for what this text is actually like to read.
       </p>
 
       {/* Breakdown (Collapsible) */}

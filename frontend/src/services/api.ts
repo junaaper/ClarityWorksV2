@@ -1,5 +1,17 @@
 import axios from 'axios';
-import type { AuthResponse, AnalysisResponse, SavedAnalysis, AnalysisListItem, Pagination, StatsResponse, AdminUser, AdminAnalysis, AdminStats } from '../types';
+import type {
+  AuthResponse,
+  AnalysisResponse,
+  SavedAnalysis,
+  AnalysisListItem,
+  Pagination,
+  StatsResponse,
+  AdminUser,
+  AdminAnalysis,
+  AdminStats,
+  SimplificationChange,
+  SimplifyAnalyzeResponse,
+} from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -89,6 +101,11 @@ export const analysisApi = {
     return response.data;
   },
 
+  preview: async (text: string): Promise<{ success: boolean; analysis: AnalysisResponse['analysis'] }> => {
+    const response = await api.post('/api/analyses/preview', { text });
+    return response.data;
+  },
+
   getAnalyses: async (params: {
     page?: number;
     limit?: number;
@@ -146,16 +163,16 @@ export const textApi = {
 
 // Simplification API
 export const simplifyApi = {
-  analyze: async (data: { analysisId?: number; targetGrade: number; text?: string; mode?: 'auto' | 'interactive' }): Promise<{
-    original_text: string;
-    suggested_changes: any[];
-    preview_text: string;
-  }> => {
+  analyze: async (data: { analysisId?: number; targetGrade: number; text?: string; mode?: 'auto' | 'interactive' }): Promise<SimplifyAnalyzeResponse> => {
     const response = await api.post('/api/simplify/analyze', data);
     return response.data;
   },
 
-  apply: async (data: { text: string; acceptedChanges: number[]; allChanges: any[] }): Promise<{ simplified_text: string }> => {
+  apply: async (data: {
+    text: string;
+    acceptedChanges: number[];
+    allChanges: SimplificationChange[];
+  }): Promise<{ simplified_text: string }> => {
     const response = await api.post('/api/simplify/apply', data);
     return response.data;
   },
@@ -164,7 +181,7 @@ export const simplifyApi = {
     analysisId: number;
     simplifiedText: string;
     targetGrade: number;
-    changes: any[];
+    changes: SimplificationChange[];
     mode: 'auto' | 'interactive';
   }): Promise<any> => {
     const response = await api.post('/api/simplify/save', data);
