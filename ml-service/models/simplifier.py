@@ -5564,10 +5564,12 @@ RULES:
    NEVER change word meaning: "zones" → "areas" is OK, "zones" → "suns" is WRONG.
 4. CONTEXTUAL FIT: Every word replacement MUST make sense in the sentence's context. A simpler word must fit naturally where the original word was used. Would a native speaker say this? If not, pick a different simpler word.
 5. SYLLABLE COUNT: Aim for avg {target_syl:.2f} syllables/word. Prefer short words.
-6. PRESERVE MEANING: Keep ALL facts. Do not skip any paragraphs.
-7. NAMES & ACRONYMS: Keep all proper nouns and abbreviations exactly as written.
-8. NO REPETITION: Do NOT repeat any sentence or paragraph.
-9. OUTPUT: Write ONLY the simplified text. No labels or commentary.{metric_hint}{reference_block}
+6. PARAGRAPH SHAPE: Keep the SAME number of paragraphs as the original. Each rewritten paragraph must correspond to the same original paragraph and stay within that paragraph's scope.
+7. ENDING DISCIPLINE: Do NOT add a conclusion, takeaway, moral, reflection, or whole-text summary. Do NOT turn the final paragraph into an academic wrap-up. If the original final paragraph is short, keep it proportionally short unless grammar forces a small adjustment.
+8. PRESERVE MEANING: Keep ALL facts. Do not skip any paragraphs.
+9. NAMES & ACRONYMS: Keep all proper nouns and abbreviations exactly as written.
+10. NO REPETITION: Each idea appears once only. Do NOT generate new content beyond what exists in the original.
+11. OUTPUT: Write ONLY the simplified text. No labels or commentary.{metric_hint}{reference_block}
 
 TEXT TO REWRITE:
 {text_to_rewrite}

@@ -476,9 +476,11 @@ const SimplifyPage: React.FC = () => {
 
   const hoveredChangeData = changes.find((c) => c.id === hoveredChange);
 
-  const acceptedCount = changes.filter((c) => c.accepted === true).length;
-  const deniedCount = changes.filter((c) => c.accepted === false).length;
-  const pendingCount = changes.filter((c) => c.accepted === null).length;
+  const countWithEvidence = (c: Change) => (c.explanation_items?.length || 1);
+  const totalChangeCount = changes.reduce((sum, c) => sum + countWithEvidence(c), 0);
+  const acceptedCount = changes.filter((c) => c.accepted === true).reduce((sum, c) => sum + countWithEvidence(c), 0);
+  const deniedCount = changes.filter((c) => c.accepted === false).reduce((sum, c) => sum + countWithEvidence(c), 0);
+  const pendingCount = changes.filter((c) => c.accepted === null).reduce((sum, c) => sum + countWithEvidence(c), 0);
   const displayedPreviewGrade = previewMetrics?.predicted_grade_level ?? simplifiedGrade;
   const linkedGroupCount = new Set(
     changes
@@ -625,7 +627,7 @@ const SimplifyPage: React.FC = () => {
         <div className="cw-card cw-card-pad mb-5">
           <div className="flex items-center gap-3 flex-wrap" style={{ fontSize: 12 }}>
             <span className="cw-badge cw-badge-neutral">
-              {changes.length} change{changes.length !== 1 ? 's' : ''}
+              {totalChangeCount} change{totalChangeCount !== 1 ? 's' : ''}
             </span>
             <span className="cw-badge cw-badge-ok">{acceptedCount} accepted</span>
             <span className="cw-badge cw-badge-err">{deniedCount} denied</span>
