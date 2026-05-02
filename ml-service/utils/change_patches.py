@@ -1,5 +1,5 @@
 def apply_changes_by_span(text, changes, accepted_change_ids=None):
-    """Apply anchored patches against the original text in descending order."""
+    """Apply anchored patches against the original text using forward-offset tracking."""
     accepted_ids = set(accepted_change_ids) if accepted_change_ids is not None else None
     included_changes = []
 
@@ -18,10 +18,22 @@ def apply_changes_by_span(text, changes, accepted_change_ids=None):
         end = max(start, min(len(text), end))
         included_changes.append((start, end, replacement_text))
 
-    included_changes.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    included_changes.sort(key=lambda item: (item[0], item[1]))
 
-    updated_text = text
-    for start, end, replacement_text in included_changes:
-        updated_text = updated_text[:start] + replacement_text + updated_text[end:]
+    filtered = []
+    prev_end = -1
+    for start, end, replacement in included_changes:
+        if start < prev_end:
+            continue
+        filtered.append((start, end, replacement))
+        prev_end = end
 
-    return updated_text
+    result = []
+    last_end = 0
+    for start, end, replacement in filtered:
+        result.append(text[last_end:start])
+        result.append(replacement)
+        last_end = end
+    result.append(text[last_end:])
+
+    return ''.join(result)

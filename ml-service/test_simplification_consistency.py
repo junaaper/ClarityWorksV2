@@ -178,32 +178,32 @@ def run_grade_12_to_10_case(simplifier):
 
 def run_final_review_reflection_case(simplifier):
     text = load_test_text('grade_12.txt')
-    original_client = simplifier.groq_validator.client
-    original_validate = simplifier.groq_validator.validate_changes
-    original_critic = simplifier.groq_validator.critic_candidates
-    original_polish = simplifier.groq_validator.polish_text
-    original_local_repair = simplifier.groq_validator.local_repair
+    original_client = simplifier.llm_validator.client
+    original_validate = simplifier.llm_validator.validate_changes
+    original_critic = simplifier.llm_validator.critic_candidates
+    original_polish = simplifier.llm_validator.polish_text
+    original_local_repair = simplifier.llm_validator.local_repair
 
     try:
-        simplifier.groq_validator.client = object()
-        simplifier.groq_validator.validate_changes = (
+        simplifier.llm_validator.client = object()
+        simplifier.llm_validator.validate_changes = (
             lambda original_text, simplified_text, changes: {
                 'valid': True,
                 'issues': ["Keep the meaning exact."],
                 'suggestions': [],
             }
         )
-        simplifier.groq_validator.critic_candidates = (
+        simplifier.llm_validator.critic_candidates = (
             lambda original_text, target_grade, candidates: {
                 'preferred_index': 0,
                 'reviews': [],
             }
         )
-        simplifier.groq_validator.polish_text = (
+        simplifier.llm_validator.polish_text = (
             lambda original_text, rewritten_text, target_grade, issues=None, going_up=False:
             rewritten_text.replace('planned study', 'planned research', 1)
         )
-        simplifier.groq_validator.local_repair = (
+        simplifier.llm_validator.local_repair = (
             lambda original_text, candidate_text, target_grade, issues: candidate_text
         )
 
@@ -218,11 +218,11 @@ def run_final_review_reflection_case(simplifier):
         if not any('meaning check' in (change.get('reason') or '').lower() for change in reviewed_changes):
             raise AssertionError("Final review case: expected reviewed changes to get the final meaning-check reason.")
     finally:
-        simplifier.groq_validator.client = original_client
-        simplifier.groq_validator.validate_changes = original_validate
-        simplifier.groq_validator.critic_candidates = original_critic
-        simplifier.groq_validator.polish_text = original_polish
-        simplifier.groq_validator.local_repair = original_local_repair
+        simplifier.llm_validator.client = original_client
+        simplifier.llm_validator.validate_changes = original_validate
+        simplifier.llm_validator.critic_candidates = original_critic
+        simplifier.llm_validator.polish_text = original_polish
+        simplifier.llm_validator.local_repair = original_local_repair
 
 
 def run_water_cycle_grade_3_case(simplifier):
@@ -284,8 +284,8 @@ def main() -> int:
         model.load_models()
 
         simplifier = TextSimplifier(readability_model=model)
-        simplifier.groq_validator.client = None
-        simplifier.groq_client = None
+        simplifier.llm_validator.client = None
+        simplifier.llm_client = None
         simplifier.datamuse_finder.get_simpler_synonym = lambda _word: None
 
         run_case(simplifier, 'grade_12_to_6', load_test_text('grade_12.txt'), 6)

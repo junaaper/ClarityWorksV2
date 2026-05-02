@@ -12,7 +12,7 @@ class RAGEngine:
     Retrieval-Augmented Generation engine for textbook processing
     Uses ChromaDB (local vector database) + E5-small-v2 embeddings
     + FlashRank re-ranking + RecursiveCharacterTextSplitter chunking
-    + Groq LLM for answer generation (True RAG)
+    + Fireworks AI LLM for answer generation (True RAG)
     """
 
     EMBEDDING_MODEL_NAME = 'intfloat/e5-small-v2'
@@ -47,9 +47,11 @@ class RAGEngine:
         print("Embedding model loaded!")
 
         # Initialize text splitter (replaces custom chunking)
+        # Larger chunks (1500 chars) capture more context per retrieval hit,
+        # producing richer answers without losing paragraph coherence.
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
+            chunk_size=1500,
+            chunk_overlap=300,
             separators=["\n\n", "\n", ". ", " ", ""],
             keep_separator=True,
         )
@@ -65,18 +67,21 @@ class RAGEngine:
             print(f"FlashRank init failed, will use embedding similarity fallback: {e}")
             self.ranker = None
 
-        # Initialize Groq client for answer generation (True RAG)
-        self.groq_client = None
-        groq_key = os.getenv('GROQ_API_KEY')
-        if groq_key:
+        # Initialize Fireworks AI client for answer generation (True RAG)
+        self.llm_client = None
+        fireworks_key = os.getenv('FIREWORKS_API_KEY')
+        if fireworks_key:
             try:
-                from groq import Groq
-                self.groq_client = Groq(api_key=groq_key)
-                print("Groq client initialized for RAG answer generation")
+                from openai import OpenAI
+                self.llm_client = OpenAI(
+                    base_url="https://api.fireworks.ai/inference/v1",
+                    api_key=fireworks_key,
+                )
+                print("Fireworks client initialized for RAG answer generation")
             except Exception as e:
-                print(f"Groq initialization failed: {e}")
+                print(f"Fireworks initialization failed: {e}")
         else:
-            print("GROQ_API_KEY not found - answer generation disabled")
+            print("FIREWORKS_API_KEY not found - answer generation disabled")
 
     def _get_embedding_source(self):
         """Prefer repo-local model snapshots to avoid runtime network fetches."""
@@ -171,7 +176,7 @@ class RAGEngine:
         Strategy:
         1. Retrieve top-20 candidates via embedding similarity
         2. Re-rank with FlashRank cross-encoder to get precise top-k
-        3. Generate coherent answer from top-k using Groq LLM
+        3. Generate coherent answer from top-k using Fireworks AI LLM
 
         Args:
             query_text: Natural language query
@@ -286,9 +291,9 @@ class RAGEngine:
 
         print(f"Returning top {len(final_results)} re-ranked results")
 
-        # Stage 3: Generate answer from top results using Groq (True RAG)
+        # Stage 3: Generate answer from top results using Fireworks AI (True RAG)
         answer = None
-        if self.groq_client and final_results:
+        if self.llm_client and final_results:
             answer = self._generate_answer(query_text, final_results)
 
         return {
@@ -299,11 +304,11 @@ class RAGEngine:
 
     def _generate_answer(self, query, top_results):
         """
-        Generate a coherent answer from retrieved chunks using Groq LLM.
+        Generate a coherent answer from retrieved chunks using Fireworks AI LLM.
         This is the "Generation" step in RAG — synthesizes information from
         multiple sources into a single answer with [Source N] citations.
         """
-        if not self.groq_client:
+        if not self.llm_client:
             return None
 
         try:
@@ -316,7 +321,7 @@ class RAGEngine:
 
             context = "\n\n---\n\n".join(context_parts)
 
-            prompt = f"""You are an intelligent textbook assistant. Answer the user's question based ONLY on the provided textbook excerpts.
+            prompt = f"""You are a knowledgeable textbook assistant. Your job is to provide comprehensive, well-structured answers based ONLY on the provided textbook excerpts.
 
 QUESTION:
 {query}
@@ -325,24 +330,26 @@ RELEVANT TEXTBOOK SECTIONS:
 {context}
 
 INSTRUCTIONS:
-1. Start with a short direct answer.
-2. Then add a "Key Points" section if multiple facts are relevant.
-3. Cite sources using [Source N] notation after each claim.
-4. If the question asks for multiple items, use a numbered list.
-5. If the sources don't contain enough information to answer, say: "The provided textbook sections don't contain sufficient information to answer this question."
-6. Do NOT make up information - only use what's in the sources.
-7. Keep the formatting clean and easy to read in plain text.
-8. End with a short "Sources Used" line naming the cited source numbers.
+1. Write a thorough, detailed answer — aim for at least 3-4 substantial paragraphs when the sources contain enough material.
+2. Open with a clear thesis or direct answer to the question in 1-2 sentences.
+3. Then develop each major point in its own paragraph, explaining concepts fully rather than listing bullet points. Use examples, definitions, and elaborations from the source material.
+4. Cite sources inline using [Source N] notation after each claim or paraphrase.
+5. When the sources contain definitions, examples, or data, include them — they make the answer concrete.
+6. If the question asks for a list or comparison, structure it clearly but still explain each item in depth.
+7. End with a brief synthesis or conclusion that ties the key ideas together.
+8. If the sources don't contain enough information, say so honestly, but still share whatever partial information IS available.
+9. Do NOT fabricate information — only use what's in the sources.
+10. Write in clear, flowing prose. Avoid choppy bullet-point lists when a paragraph would be more informative.
 
 ANSWER:"""
 
-            response = self.groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+            response = self.llm_client.chat.completions.create(
+                model="accounts/fireworks/models/llama-v3p3-70b-instruct",
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2,
-                max_tokens=1500,
+                temperature=0.25,
+                max_tokens=2500,
                 top_p=0.9
             )
 

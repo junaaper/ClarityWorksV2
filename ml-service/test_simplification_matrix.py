@@ -24,6 +24,10 @@ def expected_grade(path: Path) -> int:
     return 13 if path.name == 'college.txt' else int(path.stem.split('_')[1])
 
 
+def grade_from_label(label: str) -> int:
+    return 13 if label == 'College' else int(label.replace('Grade ', ''))
+
+
 def load_test_text(path: Path) -> str:
     text = path.read_text(encoding='utf-8')
     return '\n'.join(line for line in text.splitlines() if not line.startswith('#')).strip()
@@ -35,6 +39,19 @@ def grade_label(g: int) -> str:
 
 def passes(predicted: float, target: int, tolerance: float = TOLERANCE) -> bool:
     return abs(predicted - target) <= tolerance
+
+
+def target_band(target: int) -> tuple[float, float]:
+    if target <= 3:
+        return float('-inf'), 4.0
+    if target >= 13:
+        return 13.0, float('inf')
+    return float(target), float(target + 1)
+
+
+def in_target_band(raw_score: float, target: int) -> bool:
+    lower, upper = target_band(target)
+    return lower <= raw_score < upper
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -64,14 +81,24 @@ def build_parser() -> argparse.ArgumentParser:
         help=f'Grade tolerance for pass/fail. Default: {TOLERANCE}.'
     )
     parser.add_argument(
-        '--no-groq',
+        '--no-llm',
         action='store_true',
-        help='Disable Groq (test rule-based fallback only).'
+        help='Disable LLM (test rule-based fallback only).'
     )
     parser.add_argument(
         '--no-datamuse',
         action='store_true',
         help='Disable Datamuse API calls.'
+    )
+    parser.add_argument(
+        '--llm-primary',
+        action='store_true',
+        help='Legacy alias kept for compatibility. Matrix runs are LLM-primary by default when an LLM is available.'
+    )
+    parser.add_argument(
+        '--rule-primary',
+        action='store_true',
+        help='Force deterministic rule-based candidate generation as the primary authoring path.'
     )
     parser.add_argument(
         '--json',
@@ -84,15 +111,21 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help='Run each case N times to check determinism. Default: 1.'
     )
+    parser.add_argument(
+        '--delay',
+        type=float,
+        default=0,
+        help='Seconds to wait between test cases (avoids API rate limits). Default: 0.'
+    )
     return parser
 
 
-def print_table(rows, targets, tolerance, mode, groq_enabled):
+def print_table(rows, targets, tolerance, mode, llm_enabled):
     col_w = 10
-    src_w = 14
+    src_w = max(14, *(len(source_name) for source_name in rows))
 
     print()
-    print(f"  Rewrite Matrix -- mode={mode}, groq={'ON' if groq_enabled else 'OFF'}, tolerance=+/-{tolerance}")
+    print(f"  Rewrite Matrix -- mode={mode}, llm={'ON' if llm_enabled else 'OFF'}, tolerance=+/-{tolerance}")
     print(f"  {'-' * (src_w + len(targets) * col_w + 4)}")
 
     header = f"  {'Source':<{src_w}}"
@@ -138,9 +171,9 @@ def main() -> int:
         model = ReadabilityModel()
         model.load_models()
         simplifier = TextSimplifier(readability_model=model)
-        if args.no_groq:
-            simplifier.groq_validator.client = None
-            simplifier.groq_client = None
+        if args.no_llm:
+            simplifier.llm_validator.client = None
+            simplifier.llm_client = None
         if args.no_datamuse:
             simplifier.datamuse_finder.get_simpler_synonym = lambda _word: None
 
@@ -148,17 +181,43 @@ def main() -> int:
     passed = 0
     failed_cases = []
     table_rows = {}
+    source_baselines = {}
 
     for file_path in files:
-        source_grade = expected_grade(file_path)
+        source_expected_grade = expected_grade(file_path)
         text = load_test_text(file_path)
-        source_label = grade_label(source_grade)
+        with contextlib.redirect_stdout(io.StringIO()):
+            source_prediction = model.predict(text)['predictions']
+        source_raw = float(source_prediction['raw_score'])
+        source_model_label = source_prediction['predicted_grade_level']
+        source_model_grade = grade_from_label(source_model_label)
+        source_label = f"{file_path.name} ({source_model_label} {source_raw:.1f})"
+        source_baselines[source_label] = {
+            'file': file_path.name,
+            'expected_grade': source_expected_grade,
+            'expected_label': grade_label(source_expected_grade),
+            'model_raw_score': source_raw,
+            'model_label': source_model_label,
+            'model_grade': source_model_grade,
+        }
         table_rows[source_label] = {}
 
         for target in targets:
-            if target == source_grade:
-                table_rows[source_label][target] = {'skip': True, 'pass': True, 'predicted': float(target)}
+            if in_target_band(source_raw, target):
+                table_rows[source_label][target] = {
+                    'skip': True,
+                    'pass': True,
+                    'predicted': source_raw,
+                    'label': source_model_label,
+                    'source_file': file_path.name,
+                    'source_expected_grade': source_expected_grade,
+                    'source_model_raw_score': source_raw,
+                    'source_model_label': source_model_label,
+                }
                 continue
+
+            if args.delay and total > 0:
+                time.sleep(args.delay)
 
             total += 1
             predictions = []
@@ -167,8 +226,14 @@ def main() -> int:
                 print(f"  {source_label} -> {grade_label(target)} (run {run + 1}/{args.repeat})...", file=sys.stderr)
                 t0 = time.time()
 
-                result = simplifier.simplify_to_grade(text, target, mode=args.mode)
-                prediction = model.predict(result['simplified_text'])['predictions']
+                with contextlib.redirect_stdout(io.StringIO()):
+                    result = simplifier.simplify_to_grade(
+                        text,
+                        target,
+                        mode=args.mode,
+                        prefer_rule_based=args.rule_primary,
+                    )
+                    prediction = model.predict(result['simplified_text'])['predictions']
                 raw_score = float(prediction['raw_score'])
                 elapsed = time.time() - t0
 
@@ -177,6 +242,8 @@ def main() -> int:
                     'label': prediction['predicted_grade_level'],
                     'elapsed': round(elapsed, 1),
                     'changes': len(result.get('changes', [])),
+                    'target_distance': result.get('target_distance'),
+                    'generation_mode': (result.get('selection_summary') or {}).get('generation_mode'),
                 })
 
                 print(f"    -> predicted {raw_score:.1f} ({prediction['predicted_grade_level']}) "
@@ -194,25 +261,41 @@ def main() -> int:
                 'skip': False,
                 'pass': hit,
                 'predicted': best['raw_score'],
+                'label': best['label'],
                 'distance': round(abs(best['raw_score'] - target), 2),
                 'deterministic': deterministic,
                 'runs': predictions,
+                'source_file': file_path.name,
+                'source_expected_grade': source_expected_grade,
+                'source_model_raw_score': source_raw,
+                'source_model_label': source_model_label,
             }
             table_rows[source_label][target] = entry
 
             if not hit:
                 failed_cases.append({
                     'source': source_label,
+                    'source_file': file_path.name,
+                    'source_expected_grade': source_expected_grade,
+                    'source_model_raw_score': source_raw,
+                    'source_model_label': source_model_label,
                     'target': grade_label(target),
                     'predicted': best['raw_score'],
+                    'predicted_label': best['label'],
                     'distance': entry['distance'],
                 })
 
     if args.json:
         payload = {
             'mode': args.mode,
-            'groq_enabled': not args.no_groq,
+            'llm_enabled': not args.no_llm,
+            'rewrite_authoring': (
+                'llm_disabled' if args.no_llm
+                else 'rule_primary' if args.rule_primary
+                else 'llm_augmented_single_pass'
+            ),
             'tolerance': args.tolerance,
+            'source_baselines': source_baselines,
             'summary': {
                 'total': total,
                 'passed': passed,
@@ -224,7 +307,7 @@ def main() -> int:
         }
         print(json.dumps(payload, indent=2))
     else:
-        print_table(table_rows, targets, args.tolerance, args.mode, not args.no_groq)
+        print_table(table_rows, targets, args.tolerance, args.mode, not args.no_llm)
 
         print()
         print(f"  Results: {passed}/{total} passed (+/-{args.tolerance} tolerance)")

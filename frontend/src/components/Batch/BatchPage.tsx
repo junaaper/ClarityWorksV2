@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { FolderUp, Loader2, Upload, FileText, Download, AlertCircle, CheckCircle } from 'lucide-react';
 import { analysisApi } from '../../services/api';
 import type { Analysis } from '../../types';
@@ -8,6 +9,7 @@ interface BatchResult {
   title: string;
   text: string;
   analysis: Analysis | null;
+  analysisId?: number;
   error?: string;
 }
 
@@ -92,6 +94,7 @@ const BatchPage: React.FC = () => {
           title: items[i].title,
           text: items[i].text.substring(0, 100) + (items[i].text.length > 100 ? '...' : ''),
           analysis: res.analysis,
+          analysisId: res.analysisId,
         });
       } catch (err) {
         batchResults.push({
@@ -337,8 +340,18 @@ const BatchPage: React.FC = () => {
                 {results.map((r) => (
                   <tr key={r.index}>
                     <td style={{ color: 'var(--text-4)', fontFamily: 'var(--font-mono)' }}>{r.index}</td>
-                    <td style={{ color: 'var(--text-1)', fontWeight: 600, fontSize: 12.5, maxWidth: 280 }}>
-                      <div className="truncate">{r.title}</div>
+                    <td style={{ maxWidth: 280 }}>
+                      {r.analysisId ? (
+                        <Link
+                          to={`/analysis/${r.analysisId}`}
+                          className="truncate block hover:underline"
+                          style={{ color: 'var(--text-1)', fontWeight: 600, fontSize: 12.5 }}
+                        >
+                          {r.title}
+                        </Link>
+                      ) : (
+                        <div className="truncate" style={{ color: 'var(--text-1)', fontWeight: 600, fontSize: 12.5 }}>{r.title}</div>
+                      )}
                     </td>
                     {r.analysis ? (
                       <>

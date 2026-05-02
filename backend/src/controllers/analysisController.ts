@@ -157,13 +157,21 @@ export const getAnalyses = async (req: AuthRequest, res: Response): Promise<void
 
     const result = await pool.query(query, params);
 
-    // Get total count
+    // Get total count (must mirror the same filters as the main query)
     let countQuery = 'SELECT COUNT(*) FROM analyses WHERE user_id = $1';
     const countParams: (string | number)[] = [userId!];
+    let countParamIndex = 2;
 
     if (search) {
-      countQuery += ' AND (title ILIKE $2 OR original_text ILIKE $2)';
+      countQuery += ` AND (title ILIKE $${countParamIndex} OR original_text ILIKE $${countParamIndex})`;
       countParams.push(`%${search}%`);
+      countParamIndex++;
+    }
+
+    if (gradeLevel) {
+      countQuery += ` AND predicted_grade_level = $${countParamIndex}`;
+      countParams.push(gradeLevel);
+      countParamIndex++;
     }
 
     const countResult = await pool.query(countQuery, countParams);

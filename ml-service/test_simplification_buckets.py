@@ -58,8 +58,8 @@ def main() -> int:
         model.load_models()
 
         simplifier = TextSimplifier(readability_model=model)
-        simplifier.groq_validator.client = None
-        simplifier.groq_client = None
+        simplifier.llm_validator.client = None
+        simplifier.llm_client = None
         simplifier.datamuse_finder.get_simpler_synonym = lambda _word: None
 
         for file_path in files:

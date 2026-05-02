@@ -1,8 +1,13 @@
 import os
+import re
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 import pdfplumber
+try:
+    import fitz  # PyMuPDF, used as a higher-fidelity PDF fallback when present.
+except ImportError:
+    fitz = None
 from docx import Document
 from PIL import Image
 import pytesseract
@@ -47,9 +52,121 @@ def health():
         'status': 'ok',
         'model_trained': model.is_trained,
         'wordnet_available': simplifier.wordnet_available,
-        'rag_answer_generation': rag_engine.groq_client is not None,
+        'rag_answer_generation': rag_engine.llm_client is not None,
         'rag_reranker': rag_engine.ranker is not None
     })
+
+def _pdf_text_quality_score(text):
+    """Prefer PDF extraction candidates that preserve real words/glyphs."""
+    if not text or not text.strip():
+        return -1_000_000
+
+    normalized = TextCleaner.normalize_unicode_text(text)
+    words = re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", normalized)
+    letter_count = sum(1 for ch in normalized if ch.isalpha())
+    private_use_count = sum(1 for ch in normalized if '\ue000' <= ch <= '\uf8ff')
+    replacement_count = normalized.count('\ufffd')
+    control_count = len(re.findall(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]', normalized))
+    excessive_space_runs = len(re.findall(r' {3,}', normalized))
+    suspicious_vowelless_words = sum(
+        1 for word in words
+        if len(word) >= 5 and not re.search(r'[aeiouyAEIOUY]', word)
+    )
+
+    return (
+        letter_count
+        + len(words) * 4
+        - private_use_count * 80
+        - replacement_count * 80
+        - control_count * 50
+        - suspicious_vowelless_words * 8
+        - excessive_space_runs * 2
+    )
+
+def _best_pdf_text_candidate(candidates):
+    usable = [candidate for candidate in candidates if candidate and candidate.strip()]
+    if not usable:
+        return ''
+    return max(usable, key=_pdf_text_quality_score)
+
+def _extract_pdfplumber_text(pdf_path):
+    """Extract PDF text with several pdfplumber strategies and keep the best page text."""
+    pages = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            page_candidates = []
+            extraction_options = [
+                {'expand_ligatures': True},
+                {'x_tolerance': 1, 'y_tolerance': 3, 'expand_ligatures': True},
+                {'x_tolerance': 2, 'y_tolerance': 3, 'expand_ligatures': True},
+                {
+                    'layout': True,
+                    'x_tolerance': 1,
+                    'y_tolerance': 3,
+                    'expand_ligatures': True,
+                },
+            ]
+
+            for options in extraction_options:
+                try:
+                    page_candidates.append(page.extract_text(**options) or '')
+                except TypeError:
+                    page_candidates.append(page.extract_text() or '')
+
+            try:
+                deduped_page = page.dedupe_chars(tolerance=1)
+                page_candidates.append(deduped_page.extract_text(expand_ligatures=True) or '')
+            except Exception:
+                pass
+
+            pages.append(_best_pdf_text_candidate(page_candidates))
+
+        return '\n\n'.join(page for page in pages if page.strip()), len(pdf.pages)
+
+def _extract_pymupdf_text(pdf_path):
+    """Extract PDF text with PyMuPDF when available, expanding ligatures if possible."""
+    if fitz is None:
+        return '', 0
+
+    pages = []
+    with fitz.open(pdf_path) as doc:
+        text_flags = getattr(fitz, 'TEXTFLAGS_TEXT', 0)
+        preserve_ligatures = getattr(fitz, 'TEXT_PRESERVE_LIGATURES', 0)
+        expanded_ligature_flags = text_flags & ~preserve_ligatures
+
+        for page in doc:
+            page_candidates = []
+            for flags in (expanded_ligature_flags, text_flags):
+                try:
+                    page_candidates.append(page.get_text('text', sort=True, flags=flags) or '')
+                except TypeError:
+                    page_candidates.append(page.get_text('text', sort=True) or '')
+
+            pages.append(_best_pdf_text_candidate(page_candidates))
+
+        return '\n\n'.join(page for page in pages if page.strip()), doc.page_count
+
+def _extract_pdf_text_from_path(pdf_path):
+    """Choose the highest-quality text from available PDF extractors."""
+    extractor_results = []
+
+    try:
+        extractor_results.append(_extract_pdfplumber_text(pdf_path))
+    except Exception as exc:
+        print(f"pdfplumber extraction warning: {exc}")
+
+    try:
+        extractor_results.append(_extract_pymupdf_text(pdf_path))
+    except Exception as exc:
+        print(f"PyMuPDF extraction warning: {exc}")
+
+    candidates = [(text, page_count) for text, page_count in extractor_results if text and text.strip()]
+    if not candidates:
+        return '', max((page_count for _, page_count in extractor_results), default=0)
+
+    best_text, best_page_count = max(candidates, key=lambda item: _pdf_text_quality_score(item[0]))
+    page_count = max((page_count for _, page_count in extractor_results), default=best_page_count)
+    return best_text, page_count
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
@@ -82,20 +199,10 @@ def extract_pdf():
             file.save(tmp.name)
             tmp_path = tmp.name
 
-        text_parts = []
-        page_count = 0
-
         try:
-            with pdfplumber.open(tmp_path) as pdf:
-                page_count = len(pdf.pages)
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text_parts.append(page_text)
+            full_text, page_count = _extract_pdf_text_from_path(tmp_path)
         finally:
             os.unlink(tmp_path)
-
-        full_text = '\n\n'.join(text_parts)
 
         # Clean the extracted text
         full_text = TextCleaner.remove_images_markers(full_text)
@@ -222,15 +329,14 @@ def train_model():
         return jsonify({'error': str(e)}), 500
 
 def extract_text_from_pdf(file):
-    """Extract text from a PDF file using pdfplumber."""
+    """Extract text from a PDF file using the highest-quality available extractor."""
     import gc, time
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
         file.save(tmp.name)
         tmp_path = tmp.name
     try:
-        with pdfplumber.open(tmp_path) as pdf:
-            pages = [page.extract_text() or '' for page in pdf.pages]
-        return '\n\n'.join(p for p in pages if p.strip())
+        text, _ = _extract_pdf_text_from_path(tmp_path)
+        return text
     finally:
         gc.collect()
         for _ in range(5):

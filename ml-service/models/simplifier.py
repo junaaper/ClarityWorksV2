@@ -1,13 +1,14 @@
 import difflib
 import os
 import re
+import time
 from collections import Counter
 from pathlib import Path
 
 import nltk
 import spacy
 from models.datamuse_synonyms import DatamuseSynonymFinder
-from models.groq_validator import GroqValidator
+from models.llm_validator import LLMValidator
 from models.synonym_lookup import SynonymLookup
 from models.text_processor import TextProcessor
 from utils.change_patches import apply_changes_by_span
@@ -15,13 +16,15 @@ from utils.change_patches import apply_changes_by_span
 from nltk.corpus import wordnet as wn
 from wordfreq import zipf_frequency
 
-# Try to import Groq, but don't fail if not available
+# Try to import OpenAI (used for Fireworks AI), but don't fail if not available
 try:
-    from groq import Groq
-    GROQ_AVAILABLE = True
+    from openai import OpenAI
+    FIREWORKS_AVAILABLE = True
 except ImportError:
-    GROQ_AVAILABLE = False
-    print("Warning: Groq not installed. Advanced simplification will be limited.")
+    FIREWORKS_AVAILABLE = False
+    print("Warning: openai package not installed. Advanced simplification will be limited.")
+
+FIREWORKS_MODEL = "accounts/fireworks/models/llama-v3p3-70b-instruct"
 
 nlp = spacy.load('en_core_web_sm')
 
@@ -41,6 +44,36 @@ BLOCKED_SYNONYMS = {
     'line', 'lines', 'stool', 'stools', 'tool',
     # Single-letter or very short that are meaningless in context
 }
+
+# Phrases that often signal an LLM has drifted into writing a concluding
+# wrap-up instead of staying inside the source paragraph's scope.
+SUMMARY_WRAPUP_PHRASES = (
+    'through this experience',
+    'through this process',
+    'we learn',
+    'we learned',
+    'we find the value of',
+    'importance of',
+    'value of',
+    'sense of',
+    'essential for',
+    'appreciation for',
+    'develop an appreciation',
+    'develop a sense of',
+    'sense of accomplishment',
+    'sense of satisfaction',
+    'teaches us',
+    'shows the importance',
+    'demonstrates the importance',
+    'overall,',
+    'rewarding experience',
+    'collective effort',
+    'collective efforts',
+    'brings our family together',
+    'family together',
+    'fulfillment',
+    'dedication',
+)
 
 # Zipf frequency thresholds for grade estimation
 # Higher zipf = more common word. Scale is roughly 0-7.
@@ -80,6 +113,75 @@ GRADE_TARGET_METRICS = {
     11: {'target_syl': 1.51, 'target_wps': 23, 'min_wps': 16, 'max_wps': 30},
     12: {'target_syl': 1.55, 'target_wps': 25, 'min_wps': 18, 'max_wps': 33},
     13: {'target_syl': 1.60, 'target_wps': 28, 'min_wps': 20, 'max_wps': 38},
+}
+
+GRADE_PROFILES = {
+    3: (
+        "Grade 3 reads like a story for 8-year-olds. "
+        "Very short sentences (5-10 words). Only common 1-syllable words (cat, run, big, like). "
+        "Simple subject-verb-object structure. No subordinate clauses. "
+        "Concrete topics only — no abstract ideas. Connected with 'and', 'but', 'then'."
+    ),
+    4: (
+        "Grade 4 reads like a chapter book for 9-year-olds. "
+        "Short sentences (7-13 words). Mostly 1-syllable words with occasional 2-syllable words (happy, began, person). "
+        "Simple sentences, sometimes joined with 'and' or 'but'. No subordinate clauses. "
+        "Concrete descriptions with some basic cause-effect (because, so)."
+    ),
+    5: (
+        "Grade 5 reads like a textbook for 10-year-olds. "
+        "Medium-short sentences (8-16 words). Mix of 1 and 2-syllable words (become, children, important, different). "
+        "Occasional compound sentences with 'and', 'but', 'or'. "
+        "At most one simple connector per sentence. Factual, clear descriptions."
+    ),
+    6: (
+        "Grade 6 reads like a middle-school textbook. "
+        "Medium sentences (10-18 words). Common 2-syllable vocabulary (create, between, certain, measure, provide). "
+        "Compound sentences are common. At most one subordinate clause per sentence (using 'which', 'that', 'because'). "
+        "Clear paragraph structure with topic sentences."
+    ),
+    7: (
+        "Grade 7 reads like a 7th-grade classroom text. "
+        "Medium sentences (11-21 words). Frequent 2-syllable words with some academic terms (establish, develop, significant). "
+        "AT MOST one subordinate clause per sentence — keep sentences clear and direct. "
+        "Cause-effect and comparison structures. No complex clause nesting."
+    ),
+    8: (
+        "Grade 8 reads like an 8th-grade academic text. "
+        "Medium-long sentences (12-22 words). Academic vocabulary (demonstrate, generate, fundamental, environment). "
+        "One subordinate clause per sentence is typical. Occasional use of 'although', 'however', 'furthermore'. "
+        "Logical argument structure with evidence and reasoning."
+    ),
+    9: (
+        "Grade 9 reads like a high-school freshman textbook. "
+        "Longer sentences (13-25 words). Academic and semi-formal vocabulary (consequently, substantial, predominantly, acquisition). "
+        "1-2 subordinate clauses per sentence. Transitions between ideas (moreover, nevertheless, consequently). "
+        "Analytical writing with claims and supporting evidence."
+    ),
+    10: (
+        "Grade 10 reads like a 10th-grade literature or science text. "
+        "Long sentences (14-28 words). Formal academic vocabulary with domain terms (constitute, inherent, theoretical, methodology). "
+        "1-2 clauses per sentence with varied connectors. "
+        "Abstract concepts, nuanced arguments, and formal tone throughout."
+    ),
+    11: (
+        "Grade 11 reads like an advanced high-school text — NOT college level. "
+        "Long sentences (16-30 words). Sophisticated vocabulary (juxtaposition, paradigm, encompass, dichotomy). "
+        "2-3 clauses per sentence maximum. Complex argument structure with qualifications and counter-arguments. "
+        "Formal academic register but still accessible to a high-school student."
+    ),
+    12: (
+        "Grade 12 reads like AP/IB-level academic writing — the ceiling of high-school prose. "
+        "Long sentences (18-33 words). Advanced vocabulary (epistemological, multifaceted, synthesize, extrapolate). "
+        "2-3 clauses per sentence. Layered arguments with hedging and nuance. "
+        "Formal, authoritative tone. NOT graduate-level or journal prose."
+    ),
+    13: (
+        "College level reads like a university textbook or academic journal. "
+        "Very long sentences (20-38 words). Professional academic vocabulary with discipline-specific terminology. "
+        "Multiple clauses per sentence with complex subordination. "
+        "Dense, information-rich prose with citations-style reasoning and abstract theoretical discussion."
+    ),
 }
 
 # Kept for backward-compat with upgrade complexification code
@@ -172,51 +274,44 @@ SUPPLEMENTAL_COMPLEXIFICATIONS = {
     'argument': ['debate'],
     'back': ['return'],
     'base': ['foundation'],
-    'big': ['significant', 'substantial'],
     'book': ['volume'],
     'careful': ['systematic', 'deliberate'],
     'change': ['transform', 'modify', 'alter'],
     'check': ['evaluate', 'assess', 'verify'],
     'claim': ['assertion', 'argument'],
-    'deep': ['profound'],
-    'dog': ['canine'],
     'end': ['conclude'],
     'expert': ['scholar'],
     'field': ['discipline'],
     'find': ['discover', 'identify', 'determine'],
-    'food': ['nourishment'],
     'general': ['abstract'],
-    'grow': ['cultivate'],
+    'grow': ['expand', 'develop'],
     'hard': ['complex', 'challenging'],
     'home': ['residence'],
-    'house': ['residence', 'dwelling'],
+    'house': ['residence', 'building'],
     'idea': ['concept', 'theory', 'hypothesis'],
     'key': ['vital', 'essential'],
-    'long': ['extended', 'sustained'],
     'make': ['produce', 'generate', 'construct'],
     'many': ['numerous', 'multiple'],
     'more': ['additional', 'further'],
     'move': ['shift', 'transition'],
-    'people': ['individuals', 'residents'],
+    'people': ['individuals', 'citizens'],
     'place': ['position', 'situate'],
     'proof': ['evidence'],
-    'read': ['examine', 'peruse'],
+    'read': ['examine', 'review'],
     'real': ['authentic', 'valid'],
-    'rest': ['remain'],
     'right': ['accurate', 'valid'],
     'say': ['state', 'assert'],
     'see': ['observe', 'perceive'],
     'show': ['demonstrate', 'illustrate'],
     'some': ['certain'],
-    'small': ['modest', 'compact'],
     'study': ['research', 'analysis'],
     'systems': ['networks'],
     'test': ['challenge', 'evaluate'],
     'think': ['consider', 'contemplate'],
-    'town': ['municipality'],
+    'town': ['community', 'settlement'],
     'understanding': ['knowledge'],
     'use': ['utilize', 'employ'],
-    'walk': ['stroll', 'proceed'],
+    'walk': ['stroll'],
     'wide': ['widespread'],
 }
 
@@ -409,8 +504,6 @@ DISCOURSE_DOWNGRADE_MAP = {
 DISCOURSE_UPGRADE_MAP = {
     'about': 'regarding',
     'also': 'furthermore',
-    'but': 'however',
-    'so': 'therefore',
     'still': 'nevertheless',
     'then': 'subsequently',
 }
@@ -428,15 +521,18 @@ class TextSimplifier:
         self.synonym_lookup = SynonymLookup()
         self.text_processor = TextProcessor()
         self.datamuse_finder = DatamuseSynonymFinder()
-        self.groq_validator = GroqValidator()
+        self.llm_validator = LLMValidator()
         self.readability_model = readability_model
         self._register_local_nltk_data_path()
         self.wordnet_available = self._check_wordnet_available()
 
-        # Initialize Groq client if available
-        self.groq_client = None
-        if GROQ_AVAILABLE and os.getenv('GROQ_API_KEY'):
-            self.groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+        # Initialize Fireworks AI client if available
+        self.llm_client = None
+        if FIREWORKS_AVAILABLE and os.getenv('FIREWORKS_API_KEY'):
+            self.llm_client = OpenAI(
+                base_url="https://api.fireworks.ai/inference/v1",
+                api_key=os.getenv('FIREWORKS_API_KEY'),
+            )
 
         # Grade-specific constraints derived from GRADE_TARGET_METRICS
         self.grade_constraints = {
@@ -447,6 +543,9 @@ class TextSimplifier:
         # Cache for synonym lookups (word -> best simple synonym)
         self._synonym_cache = {}
         self._selection_context = {}
+        self.rate_limited_llm = os.getenv('CLARITYWORKS_RATE_LIMITED_LLM', '1').lower() not in {'0', 'false', 'no'}
+        self._llm_call_budget = None
+        self._llm_calls_made = 0
 
     def _register_local_nltk_data_path(self):
         """Prefer repo-local NLTK assets so sandboxed runs can see them."""
@@ -468,97 +567,129 @@ class TextSimplifier:
                 print("Warning: NLTK WordNet corpus not found. Falling back to curated maps and non-WordNet rules.")
                 return False
 
+    def _llm_chat(self, messages, temperature=0, max_tokens=4000, max_retries=3):
+        """Fireworks AI API call with automatic retry on rate-limit (429) errors."""
+        if not self.llm_client:
+            return None
+        if self._llm_call_budget is not None and self._llm_calls_made >= self._llm_call_budget:
+            print("[fireworks] LLM call budget exhausted for this request; using deterministic fallback.")
+            return None
+        if self.rate_limited_llm:
+            max_retries = min(max_retries, 1)
+        self._llm_calls_made += 1
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                response = self.llm_client.chat.completions.create(
+                    model=FIREWORKS_MODEL,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                return response
+            except Exception as e:
+                last_err = e
+                err_str = str(e)
+                if '429' in err_str or 'rate_limit' in err_str.lower() or 'RATE_LIMIT' in err_str:
+                    if attempt < max_retries - 1:
+                        wait = self._parse_retry_after(err_str) or (10 * (attempt + 1))
+                        wait = min(wait, 120)
+                        print(f"[fireworks] Rate limited, waiting {wait:.0f}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait)
+                        continue
+                raise
+        raise last_err
+
+    @staticmethod
+    def _parse_retry_after(err_str):
+        """Extract retry-after seconds from API error message."""
+        import re as _re
+        m = _re.search(r'try again in (\d+)m([\d.]+)s', err_str)
+        if m:
+            return int(m.group(1)) * 60 + float(m.group(2))
+        m = _re.search(r'try again in ([\d.]+)s', err_str)
+        if m:
+            return float(m.group(1))
+        return None
+
     # ------------------------------------------------------------------ #
     #  Main entry point
     # ------------------------------------------------------------------ #
 
-    def simplify_to_grade(self, text, target_grade, mode='auto'):
+    def simplify_to_grade(self, text, target_grade, mode='auto', prefer_rule_based=False):
         """
-        Rewrite pipeline (Post-Prompt 10 restored):
-          1. Groq does a direction-aware full rewrite with target_syl / target_wps
-             targets and a metric-verification correction pass (primary driver).
-          2. _diff_changes extracts anchored per-word / per-sentence patches from
-             the Groq output so Auto and Interactive expose the same change set.
-          3. If Groq is unavailable, fall back to the rule-based beam search with
-             the critic / polish flow.
+        Rewrite pipeline:
+          1. Build a candidate pool for the requested target grade.
+          2. When LLM authoring is enabled, spend one rewrite call, mix that
+             draft with deterministic rule candidates, and score them together.
+          3. Finalize the winning text into anchored word/sentence patches so
+             Auto and Interactive expose the same reviewable change set.
         """
-        source_grade, _, _ = self._measure_text_metrics(text)
-        direction = self._get_target_direction(source_grade, target_grade)
-        going_up = direction > 0
+        previous_budget = self._llm_call_budget
+        previous_calls = self._llm_calls_made
+        self._llm_call_budget = 1 if (self.rate_limited_llm and self.llm_client) else None
+        self._llm_calls_made = 0
 
-        groq_text = None
-        if self.groq_client and direction != 0:
-            groq_text, _ = self._groq_full_rewrite(text, target_grade, going_up=going_up)
+        try:
+            selection = self._select_authoring_candidate(
+                text=text,
+                target_grade=target_grade,
+                mode=mode,
+                prefer_rule_based=prefer_rule_based,
+            )
+        finally:
+            llm_calls_used = self._llm_calls_made
+            self._llm_call_budget = previous_budget
+            self._llm_calls_made = previous_calls
 
+        current_text = selection['text']
+        going_up = selection['going_up']
         critic_review = None
 
-        if groq_text:
-            current_text, changes, final_metrics = self._finalize_preview_candidate(
+        self._selection_context = {
+            'candidate_score': selection['score'],
+            'selection_summary': selection['selection_summary'],
+            'top_candidates': selection['top_candidates'],
+        }
+
+        current_text, changes, final_metrics = self._finalize_preview_candidate(
+            original_text=text,
+            candidate_text=current_text,
+            target_grade=target_grade,
+            going_up=going_up,
+        )
+
+        post_review_allowed = not self.rate_limited_llm
+        validation = (
+            self.llm_validator.validate_changes(text, current_text, changes)
+            if post_review_allowed
+            else self._local_validation_result(current_text, final_metrics)
+        )
+        if self.llm_validator.client and post_review_allowed:
+            critic_review = self.llm_validator.critic_candidates(
                 original_text=text,
-                candidate_text=groq_text,
+                target_grade=target_grade,
+                candidates=selection['top_candidates'],
+            )
+            current_text, changes, validation, final_metrics, final_review_summary = self._apply_llm_repair_pass(
+                original_text=text,
+                current_text=current_text,
                 target_grade=target_grade,
                 going_up=going_up,
+                changes=changes,
+                validation=validation,
+                critic_review=critic_review,
             )
-            selection_summary = {
-                'strategy': 'groq_full_rewrite',
-                'source_grade': round(source_grade, 2),
-                'target_grade': target_grade,
-                'going_up': going_up,
-                'top_candidates': [],
-            }
-            self._selection_context = {
-                'candidate_score': final_metrics['target_distance'],
-                'selection_summary': selection_summary,
-                'top_candidates': [],
-            }
-            candidate_score = final_metrics['target_distance']
+        else:
             final_review_summary = {
                 'final_review_applied': False,
                 'review_adjusted_change_count': 0,
-            }
-            validation = self.groq_validator.validate_changes(text, current_text, changes)
-        else:
-            selection = self._select_rewrite_candidate(text, target_grade, mode)
-            current_text = selection['text']
-            going_up = selection['going_up']
-
-            self._selection_context = {
-                'candidate_score': selection['score'],
-                'selection_summary': selection['selection_summary'],
-                'top_candidates': selection['top_candidates'],
+                'llm_calls_used': llm_calls_used,
+                'llm_review_skipped_for_rate_limit': self.rate_limited_llm and bool(self.llm_validator.client),
             }
 
-            current_text, changes, final_metrics = self._finalize_preview_candidate(
-                original_text=text,
-                candidate_text=current_text,
-                target_grade=target_grade,
-                going_up=going_up,
-            )
-
-            validation = self.groq_validator.validate_changes(text, current_text, changes)
-            if self.groq_validator.client:
-                critic_review = self.groq_validator.critic_candidates(
-                    original_text=text,
-                    target_grade=target_grade,
-                    candidates=selection['top_candidates'],
-                )
-                current_text, changes, validation, final_metrics, final_review_summary = self._apply_groq_repair_pass(
-                    original_text=text,
-                    current_text=current_text,
-                    target_grade=target_grade,
-                    going_up=going_up,
-                    changes=changes,
-                    validation=validation,
-                    critic_review=critic_review,
-                )
-            else:
-                final_review_summary = {
-                    'final_review_applied': False,
-                    'review_adjusted_change_count': 0,
-                }
-
-            selection_summary = dict(selection['selection_summary'])
-            candidate_score = selection['score']
+        selection_summary = dict(selection['selection_summary'])
+        candidate_score = selection['score']
 
         if mode == 'interactive' and not validation['valid'] and validation['issues']:
             print(f"[interactive] Validation issues (not auto-fixing): {validation['issues']}")
@@ -573,6 +704,7 @@ class TextSimplifier:
             ),
             'invalid_sentence_count': final_metrics['invalid_sentence_count'],
             'semantic_similarity_score': final_metrics['semantic_similarity_score'],
+            'llm_calls_used': llm_calls_used,
             **final_review_summary,
         }
         if critic_review:
@@ -589,6 +721,20 @@ class TextSimplifier:
             'selection_summary': selection_summary,
         }
 
+    def _local_validation_result(self, current_text, final_metrics):
+        issues = []
+        if final_metrics.get('invalid_sentence_count', 0):
+            issues.append('Local sentence-structure check flagged a possible incomplete or awkward sentence.')
+        if final_metrics.get('semantic_similarity_score', 1.0) < 0.82:
+            issues.append('Local overlap check suggests possible meaning drift.')
+
+        return {
+            'valid': not issues,
+            'issues': issues,
+            'suggestions': [],
+            'skipped_llm_validation': True,
+        }
+
     def _finalize_preview_candidate(
         self,
         original_text,
@@ -598,6 +744,25 @@ class TextSimplifier:
         prefer_sentence_level=False,
     ):
         desired_candidate_text = candidate_text
+
+        def exact_fallback():
+            fallback_change = self._build_exact_rebuild_change(
+                original_text,
+                desired_candidate_text,
+                target_grade,
+                going_up,
+            )
+            if not fallback_change:
+                return [], desired_candidate_text
+            fallback_change['id'] = 0
+            fallback_changes = self._assign_dependency_groups([fallback_change])
+            fallback_rebuilt = apply_changes_by_span(
+                original_text,
+                fallback_changes,
+                [change['id'] for change in fallback_changes],
+            )
+            return fallback_changes, fallback_rebuilt
+
         changes = self._diff_changes(
             original_text,
             desired_candidate_text,
@@ -631,33 +796,33 @@ class TextSimplifier:
                 else:
                     rebuilt_candidate_text = original_text
 
-            # If neither diff pass rebuilds to the Groq text, emit a single
-            # whole-text patch. This guarantees the frontend client-side rebuild
-            # (which drops overlapping patches) produces the same text the
-            # backend measured — so Interactive mode's grade matches Auto's.
             if rebuilt_candidate_text != desired_candidate_text:
-                fallback_change = self._build_patch_change(
-                    original_text,
-                    desired_candidate_text,
-                    0,
-                    len(original_text),
-                    0,
-                    target_grade,
-                    going_up,
-                    allow_fallback=True,
-                )
-                if fallback_change:
-                    fallback_change['id'] = 0
-                    changes = self._assign_dependency_groups([fallback_change])
-                    rebuilt_candidate_text = apply_changes_by_span(
-                        original_text,
-                        changes,
-                        [change['id'] for change in changes],
+                if rebuilt_candidate_text.split() == desired_candidate_text.split():
+                    pass
+                else:
+                    # Per-sentence fallback: pair each original sentence with the
+                    # closest rewritten sentence instead of collapsing to one patch.
+                    fuzzy = self._fuzzy_sentence_diff(
+                        original_text, desired_candidate_text, target_grade, going_up,
                     )
+                    if fuzzy and len(fuzzy) >= 2:
+                        fuzzy = self._assign_dependency_groups(fuzzy)
+                        fuzzy_rebuilt = apply_changes_by_span(
+                            original_text,
+                            fuzzy,
+                            [c['id'] for c in fuzzy],
+                        )
+                        if fuzzy_rebuilt.split() == desired_candidate_text.split():
+                            changes = fuzzy
+                            rebuilt_candidate_text = fuzzy_rebuilt
+                        else:
+                            changes, rebuilt_candidate_text = exact_fallback()
+                    else:
+                        changes, rebuilt_candidate_text = exact_fallback()
 
             candidate_text = rebuilt_candidate_text
         else:
-            candidate_text = original_text
+            changes, candidate_text = exact_fallback()
 
         final_metrics = self._measure_preview_metrics(candidate_text)
         final_metrics['semantic_similarity_score'] = round(
@@ -669,6 +834,99 @@ class TextSimplifier:
             2,
         )
         return candidate_text, changes, final_metrics
+
+    def _build_exact_rebuild_change(self, original_text, desired_candidate_text, target_grade, going_up):
+        """
+        Last-resort review patch for cases where granular anchors cannot
+        reconstruct the selected candidate exactly. The selected text has
+        already been scored, so finalization must not silently deliver a
+        different grade because a smaller diff dropped a split sentence.
+        """
+        if original_text == desired_candidate_text:
+            return None
+
+        fallback_change = self._build_patch_change(
+            original_text,
+            desired_candidate_text,
+            0,
+            len(original_text),
+            0,
+            target_grade,
+            going_up,
+            allow_fallback=True,
+        )
+        if fallback_change:
+            validation_flags = list(fallback_change.get('validation_flags') or [])
+            if 'exact_preview_rebuild' not in validation_flags:
+                validation_flags.append('exact_preview_rebuild')
+            fallback_change['validation_flags'] = validation_flags
+            return fallback_change
+
+        original_display = original_text.strip() or original_text
+        replacement_display = desired_candidate_text.strip() or desired_candidate_text
+        original_stats = self._fragment_stats(original_display)
+        replacement_stats = self._fragment_stats(replacement_display)
+        candidate_score = self._selection_context.get('candidate_score', 0.0)
+        change_type = 'phrase_rewrite'
+        explanation_items = self._extract_explanation_items(
+            original_display,
+            replacement_display,
+            going_up,
+        )
+        clauses_before = self._approx_clause_count(original_display)
+        clauses_after = self._approx_clause_count(replacement_display)
+        examples = "; ".join(item.get('text', '') for item in explanation_items[:3] if item.get('text'))
+        if examples:
+            reason = (
+                f"Rebuilt this broad paragraph rewrite exactly while preserving word-level evidence: "
+                f"{examples} Clause complexity changed {clauses_before} -> {clauses_after} for Grade {target_grade}."
+            )
+        else:
+            reason = (
+                f"Rebuilt this broad paragraph rewrite exactly so the delivered text matches the selected "
+                f"Grade {target_grade} candidate (avg syllables {original_stats['avg_syllables']:.2f} -> "
+                f"{replacement_stats['avg_syllables']:.2f}, clauses {clauses_before} -> {clauses_after})."
+            )
+
+        return {
+            'type': change_type,
+            'original': original_display,
+            'simplified': replacement_display,
+            'original_text': original_text,
+            'replacement_text': desired_candidate_text,
+            'position': 0,
+            'start': 0,
+            'end': len(original_text),
+            'preview_start': 0,
+            'preview_end': len(desired_candidate_text),
+            'review_scope': 'paragraph',
+            'direction': 'up' if going_up else 'down',
+            'quality_score': 0.35,
+            'quality_flags': ['coarse_review', 'forced_exact_rebuild'],
+            'rule_id': 'selection.exact_preview_rebuild',
+            'reason_code': 'reshape_text_for_target',
+            'evidence': {
+                'target_grade': target_grade,
+                'direction': 'up' if going_up else 'down',
+                'review_scope': 'paragraph',
+                'word_count_before': original_stats['word_count'],
+                'word_count_after': replacement_stats['word_count'],
+                'sentence_count_before': original_stats['sentence_count'],
+                'sentence_count_after': replacement_stats['sentence_count'],
+                'boundary_count_before': len(re.findall(r'[.!?]+', original_display or '')),
+                'boundary_count_after': len(re.findall(r'[.!?]+', replacement_display or '')),
+                'clause_count_before': clauses_before,
+                'clause_count_after': clauses_after,
+                'avg_syllables_before': round(original_stats['avg_syllables'], 2),
+                'avg_syllables_after': round(replacement_stats['avg_syllables'], 2),
+                'candidate_score': candidate_score,
+                'explanation_items': explanation_items,
+            },
+            'candidate_score': candidate_score,
+            'validation_flags': ['exact_preview_rebuild'],
+            'explanation_items': explanation_items,
+            'reason': reason,
+        }
 
     def _iterative_rule_rewrite(self, text, target_grade):
         """
@@ -682,8 +940,9 @@ class TextSimplifier:
         best_text = text
         best_grade = initial_grade
         best_score = self._alignment_score(initial_grade, target_grade)
+        pass_budget = 5 + min(3, int(abs(float(target_grade) - float(initial_grade)) // 2))
 
-        for pass_index in range(5):
+        for pass_index in range(pass_budget):
             estimated_grade, current_syl, current_wps = self._measure_text_metrics(current_text)
             direction = self._get_target_direction(estimated_grade, target_grade)
             going_up = direction > 0
@@ -777,11 +1036,255 @@ class TextSimplifier:
             'stage_notes': ['legacy_iterative'],
         }
 
+    def _select_authoring_candidate(self, text, target_grade, mode, prefer_rule_based=False):
+        source_grade, _, _ = self._measure_text_metrics(text)
+        direction = self._get_target_direction(source_grade, target_grade)
+        going_up = direction > 0
+        policy = self._get_target_policy(target_grade, going_up, source_grade=source_grade)
+
+        rule_selection = self._select_rewrite_candidate(text, target_grade, mode)
+        if prefer_rule_based or not self.llm_client or direction == 0:
+            summary = {
+                **dict(rule_selection['selection_summary']),
+                'generation_mode': 'rule_primary',
+                'candidate_pool': {
+                    'rule': len(rule_selection['top_candidates']),
+                    'llm': 0,
+                },
+            }
+            return {
+                **rule_selection,
+                'selection_summary': summary,
+            }
+
+        rule_candidates = []
+        for candidate in rule_selection['top_candidates']:
+            rule_candidates.append({
+                'text': candidate['text'],
+                'rule_history': candidate.get('selection_path', ['selection.rule_candidate']),
+                'stage_notes': candidate.get('selection_path', ['rule']),
+            })
+
+        llm_candidates = self._generate_llm_candidates(
+            original_text=text,
+            target_grade=target_grade,
+            source_grade=source_grade,
+            going_up=going_up,
+            mode=mode,
+            policy=policy,
+            rule_selection=rule_selection,
+        )
+        if not llm_candidates:
+            summary = {
+                **dict(rule_selection['selection_summary']),
+                'generation_mode': 'rule_primary_fallback',
+                'candidate_pool': {
+                    'rule': len(rule_candidates),
+                    'llm': 0,
+                },
+            }
+            return {
+                **rule_selection,
+                'selection_summary': summary,
+            }
+
+        ranked = self._rank_candidates(
+            original_text=text,
+            candidates=rule_candidates + llm_candidates,
+            target_grade=target_grade,
+            mode=mode,
+            source_grade=source_grade,
+            policy=policy,
+        )
+        selected = self._select_preferred_candidate(ranked, target_grade=target_grade)
+        summary = self._build_selection_summary(
+            policy=policy,
+            source_grade=source_grade,
+            target_grade=target_grade,
+            selected_candidate=selected,
+            top_candidates=ranked[:policy['beam_width']],
+        )
+        summary.update({
+            'generation_mode': 'llm_augmented_single_pass' if self.rate_limited_llm else 'llm_augmented',
+            'candidate_pool': {
+                'rule': len(rule_candidates),
+                'llm': len(llm_candidates),
+            },
+        })
+
+        return {
+            'text': selected['text'],
+            'score': selected['candidate_score'],
+            'going_up': going_up,
+            'selection_summary': summary,
+            'top_candidates': summary['top_candidates'],
+        }
+
+    def _generate_llm_candidates(
+        self,
+        original_text,
+        target_grade,
+        source_grade,
+        going_up,
+        mode,
+        policy,
+        rule_selection,
+    ):
+        if not self.llm_client:
+            return []
+
+        generated = []
+
+        # Single LLM draft seeded from the best rule-based candidate. Free-tier
+        # Fireworks runs cannot afford staged passes; the rule-based beam search
+        # provides the competitive baselines around this one draft.
+        rule_seed_text = rule_selection.get('text')
+        seed = rule_seed_text if (rule_seed_text and rule_seed_text != original_text) else original_text
+        seed_label = 'llm.rule_seeded' if seed != original_text else 'llm.direct_balanced'
+
+        llm_text, _ = self._llm_full_rewrite(
+            seed,
+            target_grade,
+            going_up=going_up,
+            rewrite_style='balanced',
+            reference_text=original_text,
+            plan_label=seed_label,
+            include_diff=False,
+        )
+        if llm_text and llm_text.strip():
+            generated.append({
+                'text': llm_text,
+                'rule_history': [seed_label],
+                'stage_notes': [seed_label],
+            })
+
+        return generated
+
+    @staticmethod
+    def _candidate_has_summary_wrapup(candidate):
+        flags = candidate.get('validation_flags', []) or []
+        return any(flag.startswith('summary_wrapup:') for flag in flags)
+
+    @classmethod
+    def _candidate_has_paragraph_scope_drift(cls, candidate):
+        flags = candidate.get('validation_flags', []) or []
+        return (
+            cls._candidate_has_summary_wrapup(candidate) or
+            'final_paragraph_expanded' in flags or
+            'final_paragraph_sentence_growth' in flags or
+            'paragraph_count_changed' in flags
+        )
+
+    @staticmethod
+    def _select_preferred_candidate(ranked_candidates, target_grade=None):
+        if not ranked_candidates:
+            return None
+
+        best_overall = ranked_candidates[0]
+        if target_grade is not None and target_grade >= 11:
+            clean_valid_directional = [
+                candidate for candidate in ranked_candidates
+                if (
+                    candidate.get('invalid_sentence_delta', candidate.get('invalid_sentence_count', 0)) == 0 and
+                    candidate.get('direction_hit') and
+                    not TextSimplifier._candidate_has_paragraph_scope_drift(candidate)
+                )
+            ]
+            exact_valid = [
+                candidate for candidate in ranked_candidates
+                if (
+                    candidate.get('invalid_sentence_delta', candidate.get('invalid_sentence_count', 0)) == 0 and
+                    candidate.get('direction_hit') and
+                    candidate.get('target_distance', 999) == 0
+                )
+            ]
+            clean_exact_valid = [
+                candidate for candidate in exact_valid
+                if not TextSimplifier._candidate_has_paragraph_scope_drift(candidate)
+            ]
+            if clean_exact_valid:
+                return min(
+                    clean_exact_valid,
+                    key=lambda candidate: (
+                        candidate['candidate_score'],
+                        -candidate['semantic_similarity_score'],
+                        candidate['paragraph_rewrite_count'],
+                    ),
+                )
+            if exact_valid:
+                best_exact = min(
+                    exact_valid,
+                    key=lambda candidate: (
+                        candidate['candidate_score'],
+                        -candidate['semantic_similarity_score'],
+                        candidate['paragraph_rewrite_count'],
+                    ),
+                )
+                if clean_valid_directional:
+                    best_clean = min(
+                        clean_valid_directional,
+                        key=lambda candidate: (
+                            candidate['target_distance'],
+                            candidate['candidate_score'],
+                            -candidate['semantic_similarity_score'],
+                            candidate['paragraph_rewrite_count'],
+                        ),
+                    )
+                    if (
+                        best_clean['target_distance'] <= best_exact['target_distance'] + 0.35 or
+                        best_clean['candidate_score'] <= best_exact['candidate_score'] + 2.0
+                    ):
+                        return best_clean
+                return best_exact
+
+        valid_directional = [
+            candidate for candidate in ranked_candidates
+            if (
+                candidate.get('invalid_sentence_delta', candidate.get('invalid_sentence_count', 0)) == 0 and
+                candidate.get('direction_hit')
+            )
+        ]
+        valid_any = [
+            candidate for candidate in ranked_candidates
+            if candidate.get('invalid_sentence_delta', candidate.get('invalid_sentence_count', 0)) == 0
+        ]
+
+        for pool in (valid_directional, valid_any):
+            if not pool:
+                continue
+            if target_grade is not None and target_grade >= 11:
+                clean_pool = [
+                    candidate for candidate in pool
+                    if not TextSimplifier._candidate_has_paragraph_scope_drift(candidate)
+                ]
+                if clean_pool:
+                    pool = clean_pool
+                return min(
+                    pool,
+                    key=lambda candidate: (
+                        candidate['target_distance'],
+                        candidate['candidate_score'],
+                        -candidate['semantic_similarity_score'],
+                        candidate['paragraph_rewrite_count'],
+                    ),
+                )
+            return min(
+                pool,
+                key=lambda candidate: (
+                    candidate['target_distance'],
+                    candidate['candidate_score'],
+                    -candidate['semantic_similarity_score'],
+                    candidate['paragraph_rewrite_count'],
+                ),
+            )
+
+        return best_overall
+
     def _select_rewrite_candidate(self, text, target_grade, mode):
         source_grade, _, _ = self._measure_text_metrics(text)
         direction = self._get_target_direction(source_grade, target_grade)
         going_up = direction > 0
-        policy = self._get_target_policy(target_grade, going_up)
+        policy = self._get_target_policy(target_grade, going_up, source_grade=source_grade)
 
         if direction == 0:
             base_metrics = self._score_candidate(
@@ -869,15 +1372,52 @@ class TextSimplifier:
             'top_candidates': summary['top_candidates'],
         }
 
-    def _get_target_policy(self, target_grade, going_up):
+    def _get_target_policy(self, target_grade, going_up, source_grade=None):
         policy_map = UPGRADE_TARGET_BUCKET_POLICIES if going_up else DOWNGRADE_TARGET_BUCKET_POLICIES
         if target_grade <= 5:
-            return policy_map['3-5']
-        if target_grade <= 8:
-            return policy_map['6-8']
-        if target_grade <= 10:
-            return policy_map['9-10']
-        return policy_map['11-13']
+            policy = policy_map['3-5']
+        elif target_grade <= 8:
+            policy = policy_map['6-8']
+        elif target_grade <= 10:
+            policy = policy_map['9-10']
+        else:
+            policy = policy_map['11-13']
+
+        policy = dict(policy)
+        if source_grade is None:
+            return policy
+
+        gap = abs(float(target_grade) - float(source_grade))
+        if gap < 3.5:
+            return policy
+
+        policy['beam_width'] = max(policy['beam_width'], BEAM_WIDTH + 1)
+        policy['lexical_rounds'] += 1
+        policy['lexical_max'] += 3
+
+        if going_up:
+            policy['combine_rounds'] += 1
+            if policy['combine_changes'] is not None:
+                policy['combine_changes'] += 2
+        else:
+            policy['split_rounds'] += 1
+            if policy['split_changes'] is not None:
+                policy['split_changes'] += 2
+
+        if gap >= 6.5:
+            policy['beam_width'] = max(policy['beam_width'], BEAM_WIDTH + 2)
+            policy['lexical_rounds'] += 1
+            policy['lexical_max'] += 3
+            if going_up:
+                policy['combine_rounds'] += 1
+                if policy['combine_changes'] is not None:
+                    policy['combine_changes'] += 2
+            else:
+                policy['split_rounds'] += 1
+                if policy['split_changes'] is not None:
+                    policy['split_changes'] += 2
+
+        return policy
 
     def _generate_stage_candidates(self, candidate, stage, target_grade, going_up, policy):
         variants = [{
@@ -1066,10 +1606,12 @@ class TextSimplifier:
         ordered = sorted(
             ranked.values(),
             key=lambda candidate: (
+                candidate.get('invalid_sentence_delta', candidate['invalid_sentence_count']) > 0,
+                candidate.get('invalid_sentence_delta', candidate['invalid_sentence_count']),
+                candidate['invalid_sentence_count'],
                 candidate['candidate_score'],
                 candidate['target_distance'],
                 -candidate['semantic_similarity_score'],
-                candidate['invalid_sentence_count'],
                 len(candidate.get('rule_history', [])),
             )
         )
@@ -1082,6 +1624,8 @@ class TextSimplifier:
         target_distance = self._distance_to_target_band(candidate_grade, target_grade)
         source_distance = self._distance_to_target_band(source_grade, target_grade)
         invalid_sentences = self._collect_invalid_sentences(candidate_text)
+        baseline_invalid_count = len(self._collect_invalid_sentences(original_text))
+        invalid_sentence_delta = max(0, len(invalid_sentences) - baseline_invalid_count)
         semantic_similarity = self._semantic_similarity_score(original_text, candidate_text)
         lexical_flags = self._lexical_sanity_flags(original_text, candidate_text)
         directional_flags = self._directional_candidate_flags(
@@ -1094,6 +1638,15 @@ class TextSimplifier:
             semantic_similarity=semantic_similarity,
         )
         paragraph_rewrites = self._count_heavy_paragraph_rewrites(original_text, candidate_text)
+        summary_wrapup_flags = []
+        paragraph_scope_flags = []
+        final_paragraph_scope_penalty = 0.0
+        if target_grade >= 11:
+            summary_wrapup_flags = self._summary_wrapup_flags(original_text, candidate_text)
+            final_paragraph_scope_penalty, paragraph_scope_flags = self._final_paragraph_scope_penalty(
+                original_text,
+                candidate_text,
+            )
         moving_up = target_grade > source_grade
         direction_hit = (
             (moving_up and candidate_grade >= source_grade - 0.05) or
@@ -1103,17 +1656,24 @@ class TextSimplifier:
         score = target_distance * 6.0
         score += abs(avg_syl - target_metrics['target_syl']) * policy['syllable_weight']
         score += abs(avg_wps - target_metrics['target_wps']) * policy['wps_weight']
-        score += len(invalid_sentences) * 8.0
+        score += invalid_sentence_delta * 24.0
+        score += min(len(invalid_sentences), baseline_invalid_count) * 1.5
         score += max(0.0, 0.88 - semantic_similarity) * 6.0
         score += len(lexical_flags) * 3.5
         score += len(directional_flags) * 3.0
+        score += len(summary_wrapup_flags) * 4.5
+        if len(summary_wrapup_flags) >= 2:
+            score += 8.0
         if not direction_hit:
             score += 9.0
         score += paragraph_rewrites * policy['paragraph_penalty']
+        score += final_paragraph_scope_penalty
         if target_grade <= 5 and avg_wps > target_metrics['target_wps']:
             score += (avg_wps - target_metrics['target_wps']) * 0.35
         if target_grade >= 11 and avg_wps < target_metrics['target_wps']:
             score += (target_metrics['target_wps'] - avg_wps) * 0.25
+        if target_grade >= 11 and candidate_grade < target_grade:
+            score += (target_grade - candidate_grade) * 4.0
         if target_distance > source_distance + 0.1:
             score += (target_distance - source_distance) * 2.5
         if abs(source_grade - target_grade) <= 2.5 and semantic_similarity < 0.9:
@@ -1125,15 +1685,21 @@ class TextSimplifier:
             'target_distance': round(target_distance, 2),
             'direction_hit': direction_hit,
             'invalid_sentence_count': len(invalid_sentences),
+            'invalid_sentence_delta': invalid_sentence_delta,
             'semantic_similarity_score': round(semantic_similarity, 2),
             'avg_syllables_per_word': round(avg_syl, 2),
             'avg_words_per_sentence': round(avg_wps, 2),
             'validation_flags': (
                 lexical_flags +
                 directional_flags +
-                (['invalid_sentence_structure'] if invalid_sentences else [])
+                summary_wrapup_flags +
+                paragraph_scope_flags +
+                (['new_invalid_sentence_structure'] if invalid_sentence_delta else []) +
+                (['inherited_invalid_sentence_structure'] if invalid_sentences and not invalid_sentence_delta else [])
             ),
             'paragraph_rewrite_count': paragraph_rewrites,
+            'summary_wrapup_flag_count': len(summary_wrapup_flags),
+            'final_paragraph_scope_penalty': round(final_paragraph_scope_penalty, 2),
         }
 
     def _directional_candidate_flags(
@@ -1218,6 +1784,49 @@ class TextSimplifier:
 
         return flags
 
+    def _summary_wrapup_flags(self, original_text, candidate_text):
+        original_norm = re.sub(r'\s+', ' ', (original_text or '').lower())
+        candidate_norm = re.sub(r'\s+', ' ', (candidate_text or '').lower())
+        flags = []
+        for marker in SUMMARY_WRAPUP_PHRASES:
+            if candidate_norm.count(marker) > original_norm.count(marker):
+                marker_slug = re.sub(r'[^a-z0-9]+', '_', marker).strip('_')
+                flags.append(f'summary_wrapup:{marker_slug}')
+        return flags
+
+    def _final_paragraph_scope_penalty(self, original_text, candidate_text):
+        original_paragraphs = self._extract_paragraph_chunks(original_text)
+        candidate_paragraphs = self._extract_paragraph_chunks(candidate_text)
+        if not original_paragraphs or not candidate_paragraphs:
+            return 0.0, []
+
+        penalty = 0.0
+        flags = []
+
+        if len(original_paragraphs) != len(candidate_paragraphs):
+            penalty += abs(len(original_paragraphs) - len(candidate_paragraphs)) * 2.5
+            flags.append('paragraph_count_changed')
+
+        original_last = original_paragraphs[-1]['raw']
+        candidate_last = candidate_paragraphs[-1]['raw']
+        original_stats = self._fragment_stats(original_last)
+        candidate_stats = self._fragment_stats(candidate_last)
+
+        original_words = max(1, original_stats['word_count'])
+        word_ratio = candidate_stats['word_count'] / original_words
+        word_ratio_threshold = 1.3 if original_stats['sentence_count'] <= 1 else 1.6
+        if word_ratio > word_ratio_threshold:
+            penalty += min(7.5, (word_ratio - word_ratio_threshold) * 4.5)
+            flags.append('final_paragraph_expanded')
+
+        sentence_growth = candidate_stats['sentence_count'] - original_stats['sentence_count']
+        sentence_growth_threshold = 0 if original_stats['sentence_count'] <= 1 else 1
+        if sentence_growth > sentence_growth_threshold:
+            penalty += min(4.0, (sentence_growth - sentence_growth_threshold) * 2.0)
+            flags.append('final_paragraph_sentence_growth')
+
+        return penalty, flags
+
     def _count_heavy_paragraph_rewrites(self, original_text, candidate_text):
         original_paragraphs = self._extract_paragraph_chunks(original_text)
         candidate_paragraphs = self._extract_paragraph_chunks(candidate_text)
@@ -1251,6 +1860,7 @@ class TextSimplifier:
             'direction_hit': selected_candidate['direction_hit'],
             'target_distance': selected_candidate['target_distance'],
             'invalid_sentence_count': selected_candidate['invalid_sentence_count'],
+            'invalid_sentence_delta': selected_candidate.get('invalid_sentence_delta', 0),
             'semantic_similarity_score': selected_candidate['semantic_similarity_score'],
             'top_candidates': [
                 {
@@ -1260,6 +1870,7 @@ class TextSimplifier:
                     'target_distance': candidate['target_distance'],
                     'direction_hit': candidate['direction_hit'],
                     'invalid_sentence_count': candidate['invalid_sentence_count'],
+                    'invalid_sentence_delta': candidate.get('invalid_sentence_delta', 0),
                     'semantic_similarity_score': candidate['semantic_similarity_score'],
                     'selection_path': candidate.get('rule_history', []),
                     'validation_flags': candidate.get('validation_flags', []),
@@ -1433,6 +2044,10 @@ class TextSimplifier:
     def _ranges_overlap(left_start, left_end, right_start, right_end):
         return left_start < right_end and right_start < left_end
 
+    @staticmethod
+    def _overlap_length(left_start, left_end, right_start, right_end):
+        return max(0, min(left_end, right_end) - max(left_start, right_start))
+
     def _build_final_review_reason(self, change, target_grade):
         change_type = change.get('type')
         scope = change.get('review_scope', 'sentence')
@@ -1458,6 +2073,20 @@ class TextSimplifier:
             f"natural, and faithful to the original text at Grade {target_grade}."
         )
 
+    def _should_mark_final_reviewed(self, change, revised_ranges):
+        preview_start = change.get('preview_start', change.get('start', 0))
+        preview_end = change.get('preview_end', preview_start)
+        patch_length = max(1, preview_end - preview_start)
+        total_overlap = sum(
+            self._overlap_length(preview_start, preview_end, range_start, range_end)
+            for range_start, range_end in revised_ranges
+        )
+        overlap_ratio = total_overlap / patch_length
+
+        scope = change.get('review_scope', 'sentence')
+        threshold = 0.55 if scope == 'paragraph' else 0.35 if scope == 'sentence' else 0.2
+        return total_overlap > 0 and overlap_ratio >= threshold
+
     def _annotate_final_reviewed_changes(self, changes, revised_ranges, target_grade, issues):
         if not changes:
             return []
@@ -1468,17 +2097,14 @@ class TextSimplifier:
             updated = dict(change)
             updated['change_origin'] = 'rule'
             updated['final_reviewed'] = False
+            updated['final_review_note'] = None
 
-            preview_start = updated.get('preview_start', updated.get('start', 0))
-            preview_end = updated.get('preview_end', preview_start)
-            touched = any(
-                self._ranges_overlap(preview_start, preview_end, range_start, range_end)
-                for range_start, range_end in revised_ranges
-            )
+            touched = self._should_mark_final_reviewed(updated, revised_ranges)
 
             if touched:
                 updated['change_origin'] = 'rule+final_review'
                 updated['final_reviewed'] = True
+                updated['final_review_note'] = self._build_final_review_reason(updated, target_grade)
                 validation_flags = list(updated.get('validation_flags') or [])
                 if 'final_review_adjusted' not in validation_flags:
                     validation_flags.append('final_review_adjusted')
@@ -1487,19 +2113,20 @@ class TextSimplifier:
                 evidence = dict(updated.get('evidence') or {})
                 if updated.get('rule_id'):
                     evidence['base_rule_id'] = updated['rule_id']
+                if updated.get('reason_code'):
+                    evidence['base_reason_code'] = updated['reason_code']
+                if updated.get('reason'):
+                    evidence['base_reason'] = updated['reason']
                 evidence['final_reviewed'] = True
                 if issue_summary:
                     evidence['review_focus'] = issue_summary
                 updated['evidence'] = evidence
-                updated['rule_id'] = 'review.semantic_repair'
-                updated['reason_code'] = 'repair_semantics_and_flow'
-                updated['reason'] = self._build_final_review_reason(updated, target_grade)
 
             annotated.append(updated)
 
         return annotated
 
-    def _apply_groq_repair_pass(
+    def _apply_llm_repair_pass(
         self,
         original_text,
         current_text,
@@ -1513,7 +2140,7 @@ class TextSimplifier:
             'final_review_applied': True,
             'review_adjusted_change_count': 0,
         }
-        if not self.groq_validator.client:
+        if not self.llm_validator.client:
             summary['final_review_applied'] = False
             final_metrics = self._measure_preview_metrics(current_text)
             final_metrics['semantic_similarity_score'] = round(
@@ -1527,7 +2154,7 @@ class TextSimplifier:
             return current_text, changes, validation, final_metrics, summary
 
         review_issues = self._collect_final_review_issues(validation, critic_review)
-        revised_text = self.groq_validator.polish_text(
+        revised_text = self.llm_validator.polish_text(
             original_text=original_text,
             rewritten_text=current_text,
             target_grade=target_grade,
@@ -1561,9 +2188,9 @@ class TextSimplifier:
                 going_up=going_up,
             )
 
-        validation = self.groq_validator.validate_changes(original_text, current_text, changes)
+        validation = self.llm_validator.validate_changes(original_text, current_text, changes)
         if validation.get('issues') and self._should_use_local_repair(target_grade, final_metrics, validation):
-            repaired_text = self.groq_validator.local_repair(
+            repaired_text = self.llm_validator.local_repair(
                 original_text=original_text,
                 candidate_text=current_text,
                 target_grade=target_grade,
@@ -1587,7 +2214,7 @@ class TextSimplifier:
                 summary['review_adjusted_change_count'] = sum(
                     1 for change in changes if change.get('final_reviewed')
                 )
-                validation = self.groq_validator.validate_changes(original_text, current_text, changes)
+                validation = self.llm_validator.validate_changes(original_text, current_text, changes)
 
         return current_text, changes, validation, final_metrics, summary
 
@@ -1631,7 +2258,7 @@ class TextSimplifier:
             self._distance_to_target_band(final_metrics['raw_score'], target_grade),
             2,
         )
-        validation = self.groq_validator.validate_changes(original_text, current_text, changes)
+        validation = self.llm_validator.validate_changes(original_text, current_text, changes)
         return current_text, changes, validation, final_metrics
 
     def _get_target_band(self, target_grade):
@@ -1664,7 +2291,7 @@ class TextSimplifier:
         Decide when auto mode should escalate from the rule engine to a
         full-text rescue rewrite.
         """
-        if not self.groq_client:
+        if not self.llm_client:
             return False
 
         if self._get_target_direction(final_grade, target_grade) != 0:
@@ -1673,7 +2300,7 @@ class TextSimplifier:
         if abs(final_grade - target_grade) >= REWRITE_RESCUE_GRADE_GAP:
             return True
 
-        return self._needs_groq_help(text, target_grade)
+        return self._needs_llm_help(text, target_grade)
 
     def _distance_to_target_band(self, estimated_grade, target_grade):
         """Distance from the displayed target-grade band."""
@@ -1789,8 +2416,7 @@ class TextSimplifier:
         if predicted is None:
             predicted = -21.16 + 14.33 * avg_syl + 0.6 * avg_wps
 
-        # Do NOT clamp — the correction pass needs the true overshoot magnitude,
-        # and this must match the raw_score the UI renders (which is unclamped).
+        # Do NOT clamp; targeting must match the raw_score the UI renders.
         return predicted, avg_syl, avg_wps
 
     def _estimate_current_grade(self, text):
@@ -2418,9 +3044,7 @@ class TextSimplifier:
             # Most stop words should stay untouched, but curated discourse-marker
             # upgrades such as "also -> furthermore" help adjacent grade bumps
             # without changing the meaning of the sentence.
-            if token.is_stop and not (
-                complex_options and token.pos_ in ('ADV', 'CCONJ', 'SCONJ')
-            ):
+            if token.is_stop and not (complex_options and token.pos_ == 'ADV'):
                 continue
             if token.pos_ == 'VERB':
                 next_token = doc[token.i + 1] if token.i + 1 < len(doc) else None
@@ -2532,7 +3156,7 @@ class TextSimplifier:
 
         # Strategy 2: not used for upgrade — curated map is higher quality than
         # unconstrained WordNet reverse lookup, which produces semantic errors.
-        # Groq handles vocabulary upgrade for words not in the curated map.
+        # LLM handles vocabulary upgrade for words not in the curated map.
         return None
 
     def _combine_short_sentences(self, text, target_grade, max_combinations=None):
@@ -3310,13 +3934,14 @@ class TextSimplifier:
         for match in re.finditer(r'\S+\s*', text):
             raw = match.group(0)
             stripped = raw.strip()
-            normalized = re.sub(r"^[^\w']+|[^\w']+$", '', stripped).lower()
-            if not normalized:
-                normalized = stripped.lower()
+            core = re.sub(r"^[^\w']+|[^\w']+$", '', stripped)
+            if not core:
+                core = stripped
             chunks.append({
                 'raw': raw,
                 'display': stripped,
-                'normalized': normalized,
+                'normalized': core.lower(),
+                'normalized_cased': core,
                 'start': match.start(),
                 'end': match.end(),
             })
@@ -3606,6 +4231,170 @@ class TextSimplifier:
 
         return swaps
 
+    def _extract_explanation_items(self, original_display, replacement_display, going_up, max_items=6):
+        """
+        Pull old-style explanation evidence out of broad paragraph rewrites
+        without creating overlapping apply patches. These items are display
+        evidence only; the paragraph patch remains the single source of truth
+        for applying the selected candidate exactly.
+        """
+        import difflib
+
+        original_tokens = re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", original_display or '')
+        replacement_tokens = re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", replacement_display or '')
+        if not original_tokens or not replacement_tokens:
+            return []
+
+        matcher = difflib.SequenceMatcher(
+            None,
+            [token.lower() for token in original_tokens],
+            [token.lower() for token in replacement_tokens],
+            autojunk=False,
+        )
+
+        items = []
+        seen_pairs = set()
+        function_words = {
+            'a', 'an', 'the', 'and', 'or', 'but', 'so', 'for', 'nor', 'yet',
+            'to', 'of', 'in', 'on', 'at', 'by', 'with', 'from', 'into', 'over',
+            'under', 'as', 'than', 'that', 'which', 'who', 'whom', 'whose',
+            'is', 'are', 'was', 'were', 'be', 'been', 'being', 'am', 'do',
+            'does', 'did', 'has', 'have', 'had', 'will', 'would', 'can',
+            'could', 'may', 'might', 'must', 'shall', 'should', 'it', 'its',
+            'he', 'she', 'they', 'them', 'we', 'us', 'you', 'i', 'me', 'my',
+            'his', 'her', 'their', 'our', 'your',
+        }
+
+        def token_stats(token):
+            lookup = re.sub(r"[^\w]", '', token or '').lower()
+            return {
+                'lookup': lookup,
+                'frequency': zipf_frequency(lookup, 'en') if lookup else 0.0,
+                'syllables': self.text_processor.count_syllables(lookup) if lookup else 0,
+            }
+
+        def is_useful_pair(before, after):
+            before_stats = token_stats(before)
+            after_stats = token_stats(after)
+            if not before_stats['lookup'] or not after_stats['lookup']:
+                return None
+            if before_stats['lookup'] == after_stats['lookup']:
+                return None
+            if (before_stats['lookup'], after_stats['lookup']) in seen_pairs:
+                return None
+            if before_stats['lookup'] in function_words or after_stats['lookup'] in function_words:
+                return None
+            # Skip tiny function-word churn. It is visible, but it is not the
+            # old explanation users found valuable.
+            if before_stats['frequency'] >= 6.2 and after_stats['frequency'] >= 6.2:
+                return None
+
+            freq_delta = before_stats['frequency'] - after_stats['frequency']
+            syl_delta = after_stats['syllables'] - before_stats['syllables']
+            direction_hit = (freq_delta > 0.25 or syl_delta > 0) if going_up else (freq_delta < -0.25 or syl_delta < 0)
+            if not direction_hit:
+                return None
+
+            impact = abs(freq_delta) + 0.35 * abs(syl_delta)
+            if impact < 0.25:
+                return None
+
+            return {
+                'kind': 'word_upgrade' if going_up else 'word_replacement',
+                'before': before,
+                'after': after,
+                'frequency_before': round(before_stats['frequency'], 2),
+                'frequency_after': round(after_stats['frequency'], 2),
+                'syllables_before': before_stats['syllables'],
+                'syllables_after': after_stats['syllables'],
+                'impact': round(impact, 2),
+                'text': self._format_explanation_item(
+                    before,
+                    after,
+                    before_stats['frequency'],
+                    after_stats['frequency'],
+                    before_stats['syllables'],
+                    after_stats['syllables'],
+                    going_up,
+                ),
+            }
+
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if len(items) >= max_items:
+                break
+            if tag == 'equal':
+                continue
+            if tag == 'insert':
+                inserted = [
+                    token for token in replacement_tokens[j1:j2]
+                    if token.lower() in {
+                        'consequently', 'subsequently', 'therefore', 'however',
+                        'furthermore', 'moreover', 'although', 'during', 'while'
+                    }
+                ]
+                for token in inserted:
+                    if len(items) >= max_items:
+                        break
+                    items.append({
+                        'kind': 'connector_added',
+                        'before': '',
+                        'after': token,
+                        'text': f"Added connector '{token}' to make relationships between ideas more explicit.",
+                    })
+                continue
+            if tag != 'replace':
+                continue
+
+            before_block = original_tokens[i1:i2]
+            after_block = replacement_tokens[j1:j2]
+            candidates = []
+            used_after = set()
+
+            if len(before_block) == len(after_block):
+                for before, after in zip(before_block, after_block):
+                    item = is_useful_pair(before, after)
+                    if item:
+                        candidates.append(item)
+            else:
+                for before in before_block:
+                    best_item = None
+                    best_index = None
+                    for after_index, after in enumerate(after_block):
+                        if after_index in used_after:
+                            continue
+                        item = is_useful_pair(before, after)
+                        if not item:
+                            continue
+                        if best_item is None or item['impact'] > best_item['impact']:
+                            best_item = item
+                            best_index = after_index
+                    if best_item:
+                        used_after.add(best_index)
+                        candidates.append(best_item)
+
+            candidates.sort(key=lambda item: item.get('impact', 0), reverse=True)
+            for item in candidates:
+                if len(items) >= max_items:
+                    break
+                seen_pairs.add((item['before'].lower(), item['after'].lower()))
+                items.append(item)
+
+        return items
+
+    @staticmethod
+    def _format_explanation_item(before, after, freq_before, freq_after, syl_before, syl_after, going_up):
+        if going_up:
+            return (
+                f"Replaced '{before}' with '{after}' — more formal/academic "
+                f"(Zipf {freq_before:.1f} -> {freq_after:.1f}, "
+                f"{syl_before} -> {syl_after} syllable(s))."
+            )
+        return (
+            f"Replaced '{before}' with '{after}' — easier and more familiar "
+            f"(Zipf {freq_before:.1f} -> {freq_after:.1f}, "
+            f"{syl_before} -> {syl_after} syllable(s))."
+        )
+
     def _build_reason_metadata(
         self,
         original_display,
@@ -3666,10 +4455,20 @@ class TextSimplifier:
             })
             return metadata
 
+        structural_explanation_items = self._extract_explanation_items(
+            original_display,
+            replacement_display,
+            local_going_up,
+        ) if review_scope == 'paragraph' else []
+
         if change_type == 'sentence_split':
             metadata.update({
                 'rule_id': 'syntactic.sentence_split',
                 'reason_code': 'shorten_sentence_for_target',
+                'evidence': {
+                    **metadata['evidence'],
+                    'explanation_items': structural_explanation_items,
+                },
             })
             return metadata
 
@@ -3677,16 +4476,26 @@ class TextSimplifier:
             metadata.update({
                 'rule_id': 'syntactic.sentence_combine',
                 'reason_code': 'increase_clause_density',
+                'evidence': {
+                    **metadata['evidence'],
+                    'explanation_items': structural_explanation_items,
+                },
             })
             return metadata
 
         key_swaps = self._extract_key_word_swaps(original_display, replacement_display)
+        explanation_items = structural_explanation_items or self._extract_explanation_items(
+            original_display,
+            replacement_display,
+            local_going_up,
+        )
         metadata.update({
             'rule_id': 'discourse.connector_rewrite' if review_scope == 'sentence' else 'discourse.paragraph_reframe',
             'reason_code': 'improve_flow_for_target',
             'evidence': {
                 **metadata['evidence'],
                 'key_swaps': key_swaps,
+                'explanation_items': explanation_items,
             },
         })
         return metadata
@@ -3724,6 +4533,19 @@ class TextSimplifier:
         words_before = evidence.get('word_count_before', 0)
 
         if reason_code == 'shorten_sentence_for_target':
+            if review_scope == 'paragraph':
+                explanation_items = evidence.get('explanation_items') or []
+                if explanation_items:
+                    examples = "; ".join(item.get('text', '') for item in explanation_items[:3] if item.get('text'))
+                    return (
+                        f"Split and simplified this paragraph for Grade {target_grade}: "
+                        f"sentence structure became easier ({clauses_before} -> {clauses_after} clause units), "
+                        f"with concrete vocabulary evidence such as {examples}"
+                    )
+                return (
+                    f"Restructured this paragraph into shorter sentence units so the ideas are easier "
+                    f"to follow at Grade {target_grade}."
+                )
             return (
                 f"Split the sentence because it was long ({words_before} words with about "
                 f"{clauses_before} clauses) — too much subordination to follow at Grade {target_grade}. "
@@ -3731,6 +4553,19 @@ class TextSimplifier:
             )
 
         if reason_code == 'increase_clause_density':
+            if review_scope == 'paragraph':
+                explanation_items = evidence.get('explanation_items') or []
+                if explanation_items:
+                    examples = "; ".join(item.get('text', '') for item in explanation_items[:3] if item.get('text'))
+                    return (
+                        f"Combined and upgraded this paragraph for Grade {target_grade}: "
+                        f"sentence structure became denser ({clauses_before} -> {clauses_after} clause units), "
+                        f"with concrete vocabulary evidence such as {examples}"
+                    )
+                return (
+                    f"Restructured this paragraph into denser sentence groupings so the ideas read "
+                    f"at Grade {target_grade} complexity."
+                )
             return (
                 f"Combined short sentences into one with about {clauses_after} clauses — "
                 f"Grade {target_grade} expects denser subordination and longer sentences, "
@@ -3738,7 +4573,22 @@ class TextSimplifier:
             )
 
         swaps = evidence.get('key_swaps') or []
+        explanation_items = evidence.get('explanation_items') or []
         action = 'Raised' if direction == 'up' else 'Simplified'
+
+        if explanation_items:
+            examples = "; ".join(item.get('text', '') for item in explanation_items[:3] if item.get('text'))
+            clause_delta = ''
+            if clauses_before != clauses_after:
+                direction_verb = 'raising' if clauses_after > clauses_before else 'reducing'
+                clause_delta = (
+                    f" Clause structure also changed ({clauses_before} -> {clauses_after}), "
+                    f"{direction_verb} sentence complexity."
+                )
+            return (
+                f"{action} this {scope_label} for Grade {target_grade} with visible word-level evidence: "
+                f"{examples}{clause_delta}"
+            )
 
         if swaps:
             def _format_swap(swap):
@@ -3771,7 +4621,18 @@ class TextSimplifier:
                 f"{direction_verb} sentence complexity to fit Grade {target_grade}."
             )
 
-        return f"{action} wording in this {scope_label} to fit Grade {target_grade}."
+        avg_syl_before = evidence.get('avg_syllables_before', 0.0)
+        avg_syl_after = evidence.get('avg_syllables_after', 0.0)
+        words_after = evidence.get('word_count_after', words_before)
+        if direction == 'up':
+            return (
+                f"Rephrased this {scope_label} to sound more formal and academically dense for Grade {target_grade} "
+                f"(avg syllables {avg_syl_before:.2f} -> {avg_syl_after:.2f}, edited span {words_before} -> {words_after} words)."
+            )
+        return (
+            f"Rephrased this {scope_label} to use clearer, more familiar wording for Grade {target_grade} "
+            f"(avg syllables {avg_syl_before:.2f} -> {avg_syl_after:.2f}, edited span {words_before} -> {words_after} words)."
+        )
 
     def _classify_patch_change(self, original_display, replacement_display, going_up):
         original_word = self._extract_single_word(original_display)
@@ -3791,6 +4652,56 @@ class TextSimplifier:
             return 'sentence_combine'
 
         return 'phrase_rewrite'
+
+    @staticmethod
+    def _extract_patch_words(text):
+        return re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", text or '')
+
+    def _is_low_signal_patch_change(
+        self,
+        original_display,
+        replacement_display,
+        change_type,
+        review_scope,
+        allow_fallback=False,
+    ):
+        original_words = self._extract_patch_words(original_display)
+        replacement_words = self._extract_patch_words(replacement_display)
+        original_core = [word.lower() for word in original_words]
+        replacement_core = [word.lower() for word in replacement_words]
+
+        if original_core == replacement_core:
+            return True
+
+        max_words = max(len(original_words), len(replacement_words))
+        min_words = min(len(original_words), len(replacement_words))
+
+        if change_type == 'phrase_rewrite' and max_words <= 1:
+            return True
+
+        if not allow_fallback:
+            return False
+
+        if change_type == 'phrase_rewrite' and review_scope == 'paragraph':
+            if max_words <= 4:
+                return True
+            if min_words <= 1 and max_words <= 6:
+                return True
+            if min_words == 0 and max_words <= 6:
+                return True
+
+        contentful_before = [
+            word for word in original_words
+            if zipf_frequency(word.lower(), 'en') < 5.8
+        ]
+        contentful_after = [
+            word for word in replacement_words
+            if zipf_frequency(word.lower(), 'en') < 5.8
+        ]
+        if not contentful_before and not contentful_after and max_words <= 4:
+            return True
+
+        return False
 
     def _build_patch_change(
         self,
@@ -3829,6 +4740,15 @@ class TextSimplifier:
                 'quality_score': min(quality['quality_score'], 0.35),
             }
 
+        if self._is_low_signal_patch_change(
+            original_display,
+            replacement_display,
+            change_type,
+            quality['review_scope'],
+            allow_fallback=allow_fallback,
+        ):
+            return None
+
         visible_preview_start, visible_preview_end = self._normalize_visible_span(replacement_raw)
         metadata = self._build_reason_metadata(
             original_display,
@@ -3865,6 +4785,7 @@ class TextSimplifier:
             'evidence': metadata['evidence'],
             'candidate_score': metadata['evidence']['candidate_score'],
             'validation_flags': validation_flags,
+            'explanation_items': metadata['evidence'].get('explanation_items', []),
             'reason': self._build_patch_reason(metadata),
         }
 
@@ -3933,10 +4854,7 @@ class TextSimplifier:
 
         original_core = re.sub(r"[^A-Za-z0-9']+", '', original_display).lower()
         rewritten_core = re.sub(r"[^A-Za-z0-9']+", '', rewritten_display).lower()
-        original_punct = re.sub(r"[\w\s]+", '', original_display)
-        rewritten_punct = re.sub(r"[\w\s]+", '', rewritten_display)
-
-        return original_core != rewritten_core or original_punct != rewritten_punct
+        return original_core != rewritten_core
 
     def _collect_local_patch_segments(self, opcodes, original_chunks, rewritten_chunks):
         segments = []
@@ -4020,8 +4938,8 @@ class TextSimplifier:
 
         matcher = difflib.SequenceMatcher(
             None,
-            [chunk['normalized'] for chunk in original_chunks],
-            [chunk['normalized'] for chunk in rewritten_chunks],
+            [chunk['normalized_cased'] for chunk in original_chunks],
+            [chunk['normalized_cased'] for chunk in rewritten_chunks],
             autojunk=False
         )
         opcodes = matcher.get_opcodes()
@@ -4037,54 +4955,6 @@ class TextSimplifier:
                 going_up,
                 allow_fallback=True
             )
-            return [change] if change else []
-
-        boundary_count_before = len(re.findall(r'[.!?]+', original_block or ''))
-        boundary_count_after = len(re.findall(r'[.!?]+', rewritten_block or ''))
-        if prefer_sentence_level and boundary_count_before != boundary_count_after:
-            change = self._build_patch_change(
-                original_block,
-                rewritten_block,
-                original_offset,
-                original_offset + len(original_block),
-                rewritten_offset,
-                target_grade,
-                going_up,
-            )
-            if not change:
-                change = self._build_patch_change(
-                    original_block,
-                    rewritten_block,
-                    original_offset,
-                    original_offset + len(original_block),
-                    rewritten_offset,
-                    target_grade,
-                    going_up,
-                    allow_fallback=True,
-                )
-            return [change] if change else []
-
-        if prefer_sentence_level and len(segments) > 1:
-            change = self._build_patch_change(
-                original_block,
-                rewritten_block,
-                original_offset,
-                original_offset + len(original_block),
-                rewritten_offset,
-                target_grade,
-                going_up,
-            )
-            if not change:
-                change = self._build_patch_change(
-                    original_block,
-                    rewritten_block,
-                    original_offset,
-                    original_offset + len(original_block),
-                    rewritten_offset,
-                    target_grade,
-                    going_up,
-                    allow_fallback=True,
-                )
             return [change] if change else []
 
         changes = []
@@ -4199,6 +5069,23 @@ class TextSimplifier:
             original_end = original_sentences[i2 - 1]['end'] if i2 > i1 else original_start
             rewritten_start = rewritten_sentences[j1]['start'] if j1 < len(rewritten_sentences) else rewritten_length
             rewritten_end = rewritten_sentences[j2 - 1]['end'] if j2 > j1 else rewritten_start
+            original_span_count = i2 - i1
+            rewritten_span_count = j2 - j1
+
+            if original_span_count != rewritten_span_count:
+                structural_change = self._build_patch_change(
+                    original_text[original_start:original_end],
+                    rewritten_text[rewritten_start:rewritten_end],
+                    original_offset + original_start,
+                    original_offset + original_end,
+                    rewritten_offset + rewritten_start,
+                    target_grade,
+                    going_up,
+                    allow_fallback=True,
+                )
+                if structural_change:
+                    changes.append(structural_change)
+                    continue
 
             block_changes = self._diff_change_block(
                 original_text[original_start:original_end],
@@ -4293,6 +5180,97 @@ class TextSimplifier:
             changes.extend(block_changes)
 
         return changes or None
+
+    def _fuzzy_sentence_diff(self, original_text, rewritten_text, target_grade, going_up):
+        """Fallback diff using word-overlap similarity to align sentences.
+
+        When SequenceMatcher fails because the LLM rewrote sentences too
+        heavily, pair each original sentence with the most similar rewritten
+        sentence and produce per-sentence changes.
+        """
+        orig_sents = self._extract_sentence_chunks(original_text)
+        new_sents = self._extract_sentence_chunks(rewritten_text)
+        if not orig_sents or not new_sents:
+            return None
+
+        def _word_set(text):
+            return set(w.lower() for w in text.split() if len(w) > 2)
+
+        orig_words = [_word_set(s['raw']) for s in orig_sents]
+        new_words = [_word_set(s['raw']) for s in new_sents]
+
+        used_new = set()
+        pairings = []
+
+        for i, ow in enumerate(orig_words):
+            best_j, best_sim = -1, 0.0
+            for j, nw in enumerate(new_words):
+                if j in used_new or not ow or not nw:
+                    continue
+                overlap = len(ow & nw)
+                sim = overlap / max(len(ow | nw), 1)
+                if sim > best_sim:
+                    best_sim = sim
+                    best_j = j
+            if best_j >= 0 and best_sim >= 0.25:
+                pairings.append((i, best_j, best_sim))
+                used_new.add(best_j)
+
+        if not pairings:
+            return None
+
+        grade_label = 'College' if target_grade >= 13 else f'Grade {target_grade}'
+        changes = []
+        for orig_idx, new_idx, _sim in pairings:
+            orig_sent = orig_sents[orig_idx]
+            new_sent = new_sents[new_idx]
+            if orig_sent['raw'].strip() == new_sent['raw'].strip():
+                continue
+
+            change = self._build_patch_change(
+                orig_sent['raw'],
+                new_sent['raw'],
+                orig_sent['start'],
+                orig_sent['end'],
+                new_sent['start'],
+                target_grade,
+                going_up,
+                allow_fallback=True,
+            )
+            if change:
+                changes.append(change)
+
+        matched_orig = {p[0] for p in pairings}
+        unmatched_orig = [i for i in range(len(orig_sents)) if i not in matched_orig]
+        for i in unmatched_orig:
+            nearest_idx = None
+            nearest_dist = float('inf')
+            for ci, change in enumerate(changes):
+                change_start = change.get('start', 0)
+                change_end = change.get('end', 0)
+                dist = min(
+                    abs(orig_sents[i]['start'] - change_end),
+                    abs(orig_sents[i]['end'] - change_start),
+                )
+                if dist < nearest_dist:
+                    nearest_dist = dist
+                    nearest_idx = ci
+            if nearest_idx is not None:
+                neighbor = changes[nearest_idx]
+                new_start = min(neighbor['start'], orig_sents[i]['start'])
+                new_end = max(neighbor['end'], orig_sents[i]['end'])
+                neighbor['start'] = new_start
+                neighbor['position'] = new_start
+                neighbor['end'] = new_end
+                neighbor['original'] = original_text[new_start:new_end].strip()
+                neighbor['original_text'] = original_text[new_start:new_end]
+
+        if len(changes) >= 2:
+            for idx, c in enumerate(changes):
+                c['id'] = idx
+            return changes
+
+        return None
 
     def _diff_changes(
         self,
@@ -4408,47 +5386,107 @@ class TextSimplifier:
         for index, change in enumerate(changes):
             change['id'] = index
 
-        if not changes and original_text != rewritten_text:
-            fallback_change = self._build_patch_change(
-                original_text,
-                rewritten_text,
-                0,
-                len(original_text),
-                0,
-                target_grade,
-                going_up,
-                allow_fallback=True
-            )
-            if fallback_change:
-                fallback_change['id'] = 0
-                return [fallback_change]
+        if len(changes) <= 1 and original_text != rewritten_text:
+            fuzzy = self._fuzzy_sentence_diff(original_text, rewritten_text, target_grade, going_up)
+            if fuzzy and len(fuzzy) > len(changes):
+                return fuzzy
+            if not changes:
+                fallback_change = self._build_patch_change(
+                    original_text,
+                    rewritten_text,
+                    0,
+                    len(original_text),
+                    0,
+                    target_grade,
+                    going_up,
+                    allow_fallback=True
+                )
+                if fallback_change:
+                    fallback_change['id'] = 0
+                    return [fallback_change]
 
         return changes
 
     # ------------------------------------------------------------------ #
-    #  Groq full rewrite (auto mode — always runs)
+    #  LLM rewrite candidate generation
     # ------------------------------------------------------------------ #
 
-    def _groq_full_rewrite(self, original_text, target_grade, going_up=False):
+    def _llm_full_rewrite(
+        self,
+        original_text,
+        target_grade,
+        going_up=False,
+        rewrite_style='balanced',
+        reference_text=None,
+        metric_feedback=None,
+        plan_label='pass1',
+        include_diff=True,
+    ):
         """
-        Rewrite the entire text at the target grade level using Groq.
-        Direction-aware: uses a different prompt for upgrade vs downgrade.
+        Generate one LLM rewrite candidate.
 
-        Includes a metric verification pass: if the first rewrite misses the targets
-        by too much, a correction prompt is sent with the actual vs target metrics.
-
-        Returns (rewritten_text, [change_obj]) or (None, []) if Groq unavailable.
+        The LLM remains the authoring engine here, but the chosen output is
+        still diffed back into deterministic patches so the UI can explain
+        lexical swaps, sentence splits, and sentence combinations.
         """
-        if not self.groq_client:
+        if not self.llm_client:
             return None, []
 
         try:
+            reference_text = reference_text or original_text
             metrics = GRADE_TARGET_METRICS.get(target_grade, GRADE_TARGET_METRICS[8])
             target_wps = metrics['target_wps']
             min_wps = metrics['min_wps']
             max_wps = metrics['max_wps']
             target_syl = metrics['target_syl']
             grade_label = 'College' if target_grade >= 13 else f'Grade {target_grade}'
+
+            style_rules = {
+                'conservative': (
+                    "Prefer local edits. Keep the same paragraph order and sentence order whenever possible. "
+                    "Use word substitutions, sentence splits, and sentence combinations before broader paraphrasing."
+                ),
+                'balanced': (
+                    "Keep the same paragraph order and overall idea order. Prefer local edits first, "
+                    "but you may fully rewrite an individual sentence when needed to hit the target naturally."
+                ),
+                'aggressive': (
+                    "You may rewrite sentences more strongly inside each paragraph to hit the target, "
+                    "but keep paragraph order, factual content, and the order of main ideas unchanged."
+                ),
+                'corrective': (
+                    "This is a correction pass on a near-miss. Stay very close to the current wording. "
+                    "Change only the words or sentence boundaries needed to fix the target grade, grammar, or awkward phrasing."
+                ),
+            }
+            style_rule = style_rules.get(rewrite_style, style_rules['balanced'])
+            style_temperature = {
+                'conservative': 0.0,
+                'balanced': 0.2,
+                'aggressive': 0.35,
+                'corrective': 0.1,
+            }.get(rewrite_style, 0.2)
+
+            reference_block = ""
+            if reference_text != original_text:
+                reference_block = f"""
+
+FACT REFERENCE:
+{reference_text}
+
+Use the fact reference to preserve who did what, what causes what, and every original fact. Do not copy its harder or easier wording blindly; only use it to keep meaning exact."""
+
+            metric_hint = ""
+            if metric_feedback:
+                metric_hint = f"""
+
+CURRENT CANDIDATE METRICS:
+- Estimated grade: {metric_feedback.get('raw_score', 0):.2f}
+- Target distance: {metric_feedback.get('target_distance', 0):.2f}
+- Invalid sentence count: {metric_feedback.get('invalid_sentence_count', 0)}
+- Semantic similarity: {metric_feedback.get('semantic_similarity_score', 0):.2f}
+
+Use these numbers to correct the current wording instead of rewriting the full passage from scratch."""
 
             def _build_upgrade_prompt(text_to_rewrite):
                 if target_grade <= 6:
@@ -4474,22 +5512,26 @@ THIS IS AN UPGRADE — make it MORE COMPLEX than the original.
 STRICT METRIC TARGETS (the readability grade depends on hitting these precisely):
   - Average words per sentence: {target_wps}  (HARD LIMIT: each sentence must be {min_wps}–{max_wps} words)
   - Average syllables per word: {target_syl:.2f}
+  - Sentence count: approximately {ideal_sentence_count} sentences
 
 RULES:
-1. SENTENCE LENGTH: Every sentence must be {min_wps}–{max_wps} words. NO sentence may exceed {max_wps} words. Combine short sentences using conjunctions and connectors.
-2. VOCABULARY: Use {vocab_level}. Replace simple words with formal 2-syllable alternatives:
+1. REWRITE SHAPE: {style_rule}
+2. SENTENCE LENGTH: Write approximately {ideal_sentence_count} sentences. Every sentence must be {min_wps}–{max_wps} words. NO sentence may exceed {max_wps} words. Combine short sentences using conjunctions and connectors.
+3. VOCABULARY: Use {vocab_level}. Replace simple words with formal 2-syllable alternatives:
    "use" → "utilize"  |  "show" → "demonstrate"  |  "need" → "require"
    "big" → "significant"  |  "start" → "begin" or "establish"  |  "help" → "support"
    "get" → "obtain"  |  "find" → "discover"  |  "make" → "create" or "produce"
-3. CONTEXTUAL FIT: Every word replacement MUST make sense in the sentence's context. Do NOT use a word just because it is more complex — it must fit the noun/verb it modifies. "big park" → "large park" is OK. "big park" → "substantial park" is WRONG because parks are not "substantial". Always ask: would a native speaker naturally use this word here?
-4. CLAUSE COMPLEXITY: {clause_rule}
-5. SYLLABLE COUNT: Aim for avg {target_syl:.2f} syllables/word. Use 2-syllable words (per-son, com-plete, for-mal, dai-ly, of-ten).
-6. PRESERVE MEANING: Keep all facts. Do not omit any information.
-7. NAMES & ACRONYMS: Keep all proper nouns and abbreviations exactly as written.
-8. NO REPETITION: Each idea appears once only.
-9. OUTPUT: Write ONLY the rewritten text. No labels, headings, or commentary.
+4. CONTEXTUAL FIT: Every word replacement MUST make sense in the sentence's context. Do NOT use a word just because it is more complex — it must fit the noun/verb it modifies. "big park" → "large park" is OK. "big park" → "substantial park" is WRONG because parks are not "substantial". Always ask: would a native speaker naturally use this word here?
+5. CLAUSE COMPLEXITY: {clause_rule}
+6. SYLLABLE COUNT: Aim for avg {target_syl:.2f} syllables/word. Use 2-syllable words (per-son, com-plete, for-mal, dai-ly, of-ten).
+7. PARAGRAPH SHAPE: Keep the SAME number of paragraphs as the original. Each rewritten paragraph must correspond to the same original paragraph and stay within that paragraph's scope.
+8. ENDING DISCIPLINE: Do NOT add a conclusion, takeaway, moral, reflection, or whole-text summary. Do NOT turn the final paragraph into an academic wrap-up. If the original final paragraph is short, keep it proportionally short unless grammar forces a small adjustment.
+9. PRESERVE MEANING: Keep all facts. Do not omit any information.
+10. NAMES & ACRONYMS: Keep all proper nouns and abbreviations exactly as written.
+11. NO REPETITION: Each idea appears once only.
+12. OUTPUT: Write ONLY the rewritten text. No labels, headings, or commentary.{metric_hint}{reference_block}
 
-ORIGINAL TEXT:
+TEXT TO REWRITE:
 {text_to_rewrite}
 
 REWRITTEN TEXT ({grade_label}):"""
@@ -4511,21 +5553,23 @@ THIS IS A SIMPLIFICATION — make it EASIER than the original.
 STRICT METRIC TARGETS (the ML model grade is determined ONLY by these two numbers):
   - Average words per sentence: {target_wps}  (HARD LIMIT: each sentence must be {min_wps}–{max_wps} words)
   - Average syllables per word: {target_syl:.2f}  (use short, common words)
+  - Sentence count: approximately {ideal_sentence_count} sentences
 
 RULES:
-1. SENTENCE LENGTH: Every sentence must be {min_wps}–{max_wps} words. Split any longer sentence into two shorter ones. Use a period, not a semicolon.
-2. VOCABULARY: Use {vocab_level}. Replace difficult words with simpler ones that mean THE SAME THING:
+1. REWRITE SHAPE: {style_rule}
+2. SENTENCE LENGTH: Write approximately {ideal_sentence_count} sentences. Every sentence must be {min_wps}–{max_wps} words. Split any longer sentence into two shorter ones. Use a period, not a semicolon.
+3. VOCABULARY: Use {vocab_level}. Replace difficult words with simpler ones that mean THE SAME THING:
    "utilize" → "use"  |  "demonstrate" → "show"  |  "require" → "need"
    "obtain" → "get"  |  "substantial" → "large"  |  "facilitate" → "help"
    NEVER change word meaning: "zones" → "areas" is OK, "zones" → "suns" is WRONG.
-3. CONTEXTUAL FIT: Every word replacement MUST make sense in the sentence's context. A simpler word must fit naturally where the original word was used. Would a native speaker say this? If not, pick a different simpler word.
-4. SYLLABLE COUNT: Aim for avg {target_syl:.2f} syllables/word. Prefer short words.
-5. PRESERVE MEANING: Keep ALL facts. Do not skip any paragraphs.
-6. NAMES & ACRONYMS: Keep all proper nouns and abbreviations exactly as written.
-7. NO REPETITION: Do NOT repeat any sentence or paragraph.
-8. OUTPUT: Write ONLY the simplified text. No labels or commentary.
+4. CONTEXTUAL FIT: Every word replacement MUST make sense in the sentence's context. A simpler word must fit naturally where the original word was used. Would a native speaker say this? If not, pick a different simpler word.
+5. SYLLABLE COUNT: Aim for avg {target_syl:.2f} syllables/word. Prefer short words.
+6. PRESERVE MEANING: Keep ALL facts. Do not skip any paragraphs.
+7. NAMES & ACRONYMS: Keep all proper nouns and abbreviations exactly as written.
+8. NO REPETITION: Do NOT repeat any sentence or paragraph.
+9. OUTPUT: Write ONLY the simplified text. No labels or commentary.{metric_hint}{reference_block}
 
-ORIGINAL TEXT:
+TEXT TO REWRITE:
 {text_to_rewrite}
 
 SIMPLIFIED TEXT ({grade_label}):"""
@@ -4534,100 +5578,151 @@ SIMPLIFIED TEXT ({grade_label}):"""
                 for prefix in ["REWRITTEN TEXT:", "UPGRADED TEXT:", "SIMPLIFIED TEXT:", "Here is", "Grade", "College"]:
                     if text.startswith(prefix) and '\n' in text:
                         text = text[text.index('\n') + 1:].strip()
+                # Strip trailing meta-commentary the LLM sometimes appends
+                for marker in ["\nI made the following", "\nI made no other", "\nNote:", "\nChanges made:", "\nChanges:"]:
+                    idx = text.find(marker)
+                    if idx != -1:
+                        text = text[:idx].strip()
                 return text
 
-            # ---- First pass ----
-            prompt = _build_upgrade_prompt(original_text) if going_up else _build_downgrade_prompt(original_text)
-            response = self.groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-                max_tokens=4000
-            )
-            rewritten = _strip_preamble(response.choices[0].message.content.strip())
+            # ---- Estimate ideal sentence count from the original text ----
+            orig_doc = nlp(original_text)
+            orig_word_count = len([t for t in orig_doc if t.is_alpha])
+            ideal_sentence_count = max(2, round(orig_word_count / target_wps))
 
-            # ---- Metric verification ----
-            actual_grade, actual_syl, actual_wps = self._measure_text_metrics(rewritten)
-
-            # Primary check: is the estimated grade close enough to the target?
-            # Small grade jumps (e.g., Grade 4→6) need tight tolerance.
-            grade_ok = abs(actual_grade - target_grade) <= 1.0
-            # Secondary checks for individual metric violations (bidirectional:
-            # overshooting an upgrade is as wrong as undershooting it).
-            wps_ok = min_wps - 2 <= actual_wps <= max_wps + 3
-            syl_ok = abs(actual_syl - target_syl) <= 0.10
-
-            print(f"[groq] pass1: actual grade={actual_grade:.1f}, syl={actual_syl:.2f}, wps={actual_wps:.1f} "
-                  f"(targets: grade={target_grade}, syl={target_syl:.2f}, wps={target_wps}, range {min_wps}-{max_wps})")
-
-            def _build_metric_issues(grade_val, syl_val, wps_val):
-                issues = []
-                if abs(grade_val - target_grade) > 1.0:
-                    if grade_val < target_grade - 1:
-                        issues.append(
-                            f"result is Grade {grade_val:.0f} but target is Grade {target_grade} — "
-                            f"undershot the target: use more multi-syllable words and longer, more complex sentences"
-                        )
-                    elif grade_val > target_grade + 1:
-                        issues.append(
-                            f"result is Grade {grade_val:.0f} but target is Grade {target_grade} — "
-                            f"overshot the target: use slightly simpler vocabulary and shorter clauses"
-                        )
-                if wps_val > max_wps + 3:
-                    issues.append(f"sentences averaged {wps_val:.0f} words — must be {min_wps}–{max_wps} words EACH (too long)")
-                elif wps_val < min_wps - 2:
-                    issues.append(f"sentences averaged only {wps_val:.0f} words — must be {min_wps}–{max_wps} words EACH (too short)")
-                if abs(syl_val - target_syl) > 0.10:
-                    if syl_val < target_syl - 0.10:
-                        issues.append(
-                            f"vocabulary too simple ({syl_val:.2f} syl/word) — need ~{target_syl:.2f}, "
-                            f"use more 2–3 syllable words"
-                        )
-                    else:
-                        issues.append(
-                            f"vocabulary too complex ({syl_val:.2f} syl/word) — need ~{target_syl:.2f}, "
-                            f"use shorter, simpler words"
-                        )
-                return issues
-
-            # ---- Correction passes: adjust the PREVIOUS output, not the original ----
-            for correction_pass in range(2):
-                if abs(actual_grade - target_grade) <= 1.0 and wps_ok and syl_ok:
-                    break
-
-                issues = _build_metric_issues(actual_grade, actual_syl, actual_wps)
-                if not issues:
-                    break
-
-                issue_str = '; '.join(issues)
-                pass_label = 'IMPORTANT' if correction_pass == 0 else 'CRITICAL (final attempt)'
-                correction_prompt = f"""{pass_label} -- the text below does NOT yet match {grade_label}. Problems: {issue_str}.
-
-Adjust the text below to fix these problems. Make TARGETED changes -- do NOT rewrite from scratch.
-Keep the structure and meaning intact. Only change what is needed to hit the metric targets.
-
-METRIC TARGETS for {grade_label}:
-  - Average words per sentence: {target_wps} (range {min_wps}-{max_wps})
-  - Average syllables per word: {target_syl:.2f}
-
-TEXT TO ADJUST:
-{rewritten}
-
-ADJUSTED TEXT ({grade_label}):"""
-
-                resp_corr = self.groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": correction_prompt}],
-                    temperature=0,
-                    max_tokens=4000
+            def _do_llm_pass(text_to_rewrite, pass_label="pass1"):
+                prompt = _build_upgrade_prompt(text_to_rewrite) if going_up else _build_downgrade_prompt(text_to_rewrite)
+                resp = self._llm_chat(
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=style_temperature,
+                    max_tokens=4000,
                 )
-                corrected = _strip_preamble(resp_corr.choices[0].message.content.strip())
-                c_grade, c_syl, c_wps = self._measure_text_metrics(corrected)
-                print(f"[groq] pass{correction_pass + 2}: grade={c_grade:.1f}, syl={c_syl:.2f}, wps={c_wps:.1f}")
+                if resp is None:
+                    return None, 0.0, 0.0, 0.0
+                text_out = _strip_preamble(resp.choices[0].message.content.strip())
+                g, s, w = self._measure_text_metrics(text_out)
+                print(f"[fireworks] {plan_label}/{pass_label}: actual grade={g:.1f}, syl={s:.2f}, wps={w:.1f} "
+                      f"(targets: grade={target_grade}, syl={target_syl:.2f}, wps={target_wps}, range {min_wps}-{max_wps})")
+                return text_out, g, s, w
 
-                if abs(c_grade - target_grade) < abs(actual_grade - target_grade):
-                    rewritten = corrected
-                    actual_grade, actual_syl, actual_wps = c_grade, c_syl, c_wps
+            # ---- First pass ----
+            rewritten, actual_grade, actual_syl, actual_wps = _do_llm_pass(original_text, "pass1")
+            if rewritten is None:
+                return None, []
+
+            def _build_correction_prompt(text_to_fix, cur_grade, cur_syl, cur_wps, aggressive=False):
+                syl_direction = ""
+                if cur_syl < target_syl - 0.05:
+                    syl_examples = ('use -> utilize, show -> demonstrate, help -> assist, '
+                                    'get -> obtain, find -> discover, need -> require')
+                    syl_direction = f"\nSYLLABLE FIX: Current avg is {cur_syl:.2f}, need {target_syl:.2f}. Replace 1-syllable words with 2-syllable equivalents:\n   {syl_examples}"
+                elif cur_syl > target_syl + 0.05:
+                    syl_examples = ('utilize -> use, demonstrate -> show, require -> need, '
+                                    'obtain -> get, additional -> more, significant -> big')
+                    syl_direction = f"\nSYLLABLE FIX: Current avg is {cur_syl:.2f}, need {target_syl:.2f}. Replace multi-syllable words with shorter equivalents:\n   {syl_examples}"
+
+                wps_direction = ""
+                if cur_wps > max_wps + 2:
+                    wps_direction = (f"\nSENTENCE FIX: Sentences average {cur_wps:.0f} words but must be {min_wps}-{max_wps}. "
+                                     f"The text should have approximately {ideal_sentence_count} sentences. "
+                                     f"Split the longest sentences at natural breakpoints (periods, not semicolons).")
+                elif cur_wps < min_wps - 1:
+                    wps_direction = (f"\nSENTENCE FIX: Sentences average only {cur_wps:.0f} words but must be {min_wps}-{max_wps}. "
+                                     f"The text should have approximately {ideal_sentence_count} sentences. "
+                                     f"Combine the shortest adjacent sentences using 'and', 'but', 'which', or 'because'.")
+
+                if aggressive:
+                    intensity = (f"This is a MAJOR correction — the text is far from the target. "
+                                 f"Rewrite freely to hit the targets. Split or combine as many sentences as needed. "
+                                 f"The text MUST have approximately {ideal_sentence_count} sentences, "
+                                 f"each {min_wps}-{max_wps} words.")
+                else:
+                    intensity = (f"Make ONLY the minimum changes needed. "
+                                 f"Replace 3-6 words max for syllable adjustment. "
+                                 f"Split or combine 1-2 sentences max for length adjustment.")
+
+                return f"""The text below needs adjustments to reach {grade_label} level.
+
+Current metrics: avg {cur_syl:.2f} syl/word, avg {cur_wps:.1f} words/sentence (estimated grade {cur_grade:.1f}).
+Target metrics: avg {target_syl:.2f} syl/word, avg {target_wps} words/sentence (grade {target_grade}).
+Target sentence count: approximately {ideal_sentence_count} sentences.
+{syl_direction}{wps_direction}
+
+{intensity}
+Keep the same facts, paragraph order, and idea order. Prefer local edits over rewriting whole paragraphs.
+Do NOT add a conclusion, takeaway, moral, or wrap-up summary. Do NOT expand the final paragraph beyond its original local scope.{reference_block}
+
+TEXT:
+{text_to_fix}
+
+ADJUSTED TEXT:"""
+
+            # ---- Rule-based metric correction (replaces LLM correction loop) ----
+            def _rule_correct(text_to_fix, cur_grade, cur_syl, cur_wps, max_rounds=2):
+                """Apply rule-based vocabulary and structure adjustments to move toward target."""
+                adjusted = text_to_fix
+                g, s, w = cur_grade, cur_syl, cur_wps
+                for tune_round in range(max_rounds):
+                    grade_ok = abs(g - target_grade) <= 1.0
+                    wps_ok = min_wps - 2 <= w <= max_wps + 3
+                    syl_ok = abs(s - target_syl) <= 0.10
+                    if grade_ok and wps_ok and syl_ok:
+                        break
+
+                    if g > target_grade + 1.0:
+                        adjusted, _ = self._replace_difficult_words(adjusted, target_grade)
+                        if w > max_wps:
+                            adjusted, _ = self._split_long_sentences(adjusted, target_grade)
+                    elif g < target_grade - 1.0:
+                        adjusted, _ = self._complexify_text(adjusted, target_grade)
+                        if w < min_wps:
+                            adjusted, _ = self._combine_short_sentences(adjusted, target_grade)
+
+                    g, s, w = self._measure_text_metrics(adjusted)
+                    print(f"[rule-correct] round {tune_round + 1}: grade={g:.1f}, syl={s:.2f}, wps={w:.1f}")
+                return adjusted, g, s, w
+
+            rewritten, actual_grade, actual_syl, actual_wps = _rule_correct(
+                rewritten, actual_grade, actual_syl, actual_wps
+            )
+
+            # Safety net for paid/unrestricted environments only. Free-tier
+            # runs keep one authoring call per request and rely on rule-based
+            # metric correction after that draft.
+            if not self.rate_limited_llm and abs(actual_grade - target_grade) > 2.0:
+                correction_prompt = _build_correction_prompt(
+                    rewritten,
+                    actual_grade,
+                    actual_syl,
+                    actual_wps,
+                    aggressive=(rewrite_style == 'aggressive'),
+                )
+                resp_corr = self._llm_chat(
+                    messages=[{"role": "user", "content": correction_prompt}],
+                    temperature=min(0.2, style_temperature),
+                    max_tokens=4000,
+                )
+                if resp_corr is not None:
+                    corrected = _strip_preamble(resp_corr.choices[0].message.content.strip())
+                    c_grade, c_syl, c_wps = self._measure_text_metrics(corrected)
+                    print(
+                        f"[fireworks] {plan_label}/correction: grade={c_grade:.1f}, "
+                        f"syl={c_syl:.2f}, wps={c_wps:.1f}"
+                    )
+                    if abs(c_grade - target_grade) < abs(actual_grade - target_grade):
+                        rewritten, actual_grade, actual_syl, actual_wps = corrected, c_grade, c_syl, c_wps
+                        rewritten, actual_grade, actual_syl, actual_wps = _rule_correct(
+                            rewritten, actual_grade, actual_syl, actual_wps
+                        )
+
+            # Clamp extreme undershoot on downgrades to Grade 3-4
+            if target_grade <= 4 and actual_grade < target_grade - 1.5:
+                rewritten, _ = self._combine_short_sentences(rewritten, target_grade)
+                actual_grade, actual_syl, actual_wps = self._measure_text_metrics(rewritten)
+                print(f"[clamp] undershoot fix: grade={actual_grade:.1f}, syl={actual_syl:.2f}, wps={actual_wps:.1f}")
+
+            if not include_diff:
+                return rewritten, []
 
             # Extract granular word/sentence changes by diffing original vs rewritten.
             # These are shown in the changes panel without any AI branding.
@@ -4648,17 +5743,15 @@ ADJUSTED TEXT ({grade_label}):"""
             return rewritten, diff_changes
 
         except Exception as e:
-            import traceback
-            print(f"Groq full rewrite error: {e}")
-            traceback.print_exc()
+            print(f"LLM full rewrite error: {e}")
             return None, []
 
     # ------------------------------------------------------------------ #
-    #  Groq fallback (optional)
+    #  LLM fallback (optional)
     # ------------------------------------------------------------------ #
 
-    def _needs_groq_help(self, text, target_grade):
-        if not self.groq_client:
+    def _needs_llm_help(self, text, target_grade):
+        if not self.llm_client:
             return False
         doc = nlp(text)
         constraints = self.grade_constraints.get(target_grade, {'max_words': 20})
@@ -4668,8 +5761,8 @@ ADJUSTED TEXT ({grade_label}):"""
                 return True
         return False
 
-    def groq_fallback(self, text, target_grade):
-        if not self.groq_client:
+    def llm_fallback(self, text, target_grade):
+        if not self.llm_client:
             return text, []
         try:
             prompt = f"""Simplify this text to Grade {target_grade} reading level.
@@ -4684,23 +5777,28 @@ Text:
 
 Simplified version:"""
 
-            response = self.groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+            response = self._llm_chat(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
-                max_tokens=2000
+                max_tokens=2000,
             )
+            if response is None:
+                return text, []
             simplified = response.choices[0].message.content.strip()
+            for marker in ["\nI made the following", "\nI made no other", "\nNote:", "\nChanges made:", "\nChanges:"]:
+                idx = simplified.find(marker)
+                if idx != -1:
+                    simplified = simplified[:idx].strip()
             return simplified, [{
                 'type': 'ai_enhanced',
                 'original': text,
                 'simplified': simplified,
                 'position': 0,
-                'reason': 'AI-assisted simplification (Groq Llama 3.3 70B).',
+                'reason': 'AI-assisted simplification.',
                 'id': 999
             }]
         except Exception as e:
-            print(f"Groq API error: {e}")
+            print(f"Fireworks API error: {e}")
             return text, []
 
     # Backward compatibility

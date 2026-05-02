@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ArrowLeftRight, Loader2, BarChart3 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowLeftRight, Loader2, BarChart3, ExternalLink } from 'lucide-react';
 import { analysisApi } from '../../services/api';
 import type { Analysis } from '../../types';
 import LoadingSpinner from '../common/LoadingSpinner';
@@ -9,6 +10,8 @@ const ComparePage: React.FC = () => {
   const [textB, setTextB] = useState('');
   const [resultA, setResultA] = useState<Analysis | null>(null);
   const [resultB, setResultB] = useState<Analysis | null>(null);
+  const [analysisIdA, setAnalysisIdA] = useState<number | null>(null);
+  const [analysisIdB, setAnalysisIdB] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,6 +30,8 @@ const ComparePage: React.FC = () => {
       ]);
       setResultA(resA.analysis);
       setResultB(resB.analysis);
+      setAnalysisIdA(resA.analysisId);
+      setAnalysisIdB(resB.analysisId);
     } catch (err) {
       setError('Failed to analyze texts. Make sure the backend is running.');
       console.error(err);
@@ -197,6 +202,15 @@ const ComparePage: React.FC = () => {
               <p className="mt-1" style={{ color: 'var(--p-700)', fontSize: 12 }}>
                 {resultA.predictions.predicted_complexity}
               </p>
+              {analysisIdA && (
+                <Link
+                  to={`/analysis/${analysisIdA}`}
+                  className="mt-3 inline-flex items-center gap-1.5 hover:underline"
+                  style={{ color: 'var(--p-700)', fontSize: 11.5, fontWeight: 600 }}
+                >
+                  View Full Analysis <ExternalLink className="w-3 h-3" />
+                </Link>
+              )}
             </div>
             <div
               className="cw-card cw-card-pad-lg text-center"
@@ -218,6 +232,15 @@ const ComparePage: React.FC = () => {
               <p className="mt-1" style={{ color: 'var(--s-700)', fontSize: 12 }}>
                 {resultB.predictions.predicted_complexity}
               </p>
+              {analysisIdB && (
+                <Link
+                  to={`/analysis/${analysisIdB}`}
+                  className="mt-3 inline-flex items-center gap-1.5 hover:underline"
+                  style={{ color: 'var(--s-700)', fontSize: 11.5, fontWeight: 600 }}
+                >
+                  View Full Analysis <ExternalLink className="w-3 h-3" />
+                </Link>
+              )}
             </div>
           </div>
 

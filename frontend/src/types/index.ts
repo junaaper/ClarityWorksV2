@@ -146,6 +146,17 @@ export interface AnalysisResponse {
   analysis: Analysis;
 }
 
+export interface SimplificationExplanationItem {
+  kind: string;
+  before?: string;
+  after?: string;
+  frequency_before?: number;
+  frequency_after?: number;
+  syllables_before?: number;
+  syllables_after?: number;
+  text: string;
+}
+
 export interface SimplificationChange {
   type: string;
   original: string;
@@ -166,12 +177,14 @@ export interface SimplificationChange {
   quality_flags?: string[];
   rule_id?: string;
   reason_code?: string;
-  evidence?: Record<string, string | number | boolean>;
+  evidence?: Record<string, unknown>;
+  explanation_items?: SimplificationExplanationItem[];
   candidate_score?: number;
   dependency_group_id?: string;
   validation_flags?: string[];
   change_origin?: 'rule' | 'final_review' | 'rule+final_review';
   final_reviewed?: boolean;
+  final_review_note?: string | null;
 }
 
 export interface SimplificationPreviewMetrics {

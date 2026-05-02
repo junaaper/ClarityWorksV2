@@ -1,6 +1,6 @@
 # CLAUDE.md - ClarityWorks Project Context
 
-> **Last Updated:** 2026-04-08
+> **Last Updated:** 2026-04-25
 > This file must be updated after every code change.
 
 ---
@@ -413,9 +413,9 @@ clarityworksv2/
 ### RAG Engine (Prompt 4, upgraded Prompt 8 - rag_engine.py)
 - `RAGEngine` class using ChromaDB PersistentClient
 - **E5-small-v2 embeddings** (`intfloat/e5-small-v2`, 384-dim, same size as MiniLM but much more accurate) — requires `"query: "` / `"passage: "` prefixes
-- **RecursiveCharacterTextSplitter** (langchain-text-splitters): 1000-char chunks, 200-char overlap, splits by `\n\n` → `\n` → `. ` → ` ` → `""`
+- **RecursiveCharacterTextSplitter** (langchain-text-splitters): 1500-char chunks, 300-char overlap, splits by `\n\n` → `\n` → `. ` → ` ` → `""`
 - **FlashRank re-ranking** (`ms-marco-MiniLM-L-12-v2`, ~4MB, CPU-only, ONNX): retrieves top-20 candidates via embedding similarity, then re-ranks with cross-encoder to precise top-5
-- **True RAG answer generation** via Groq (`llama-3.3-70b-versatile`, temp=0.2, max_tokens=1500): `_generate_answer()` builds context from top-k chunks with `[Source N]` labels, synthesizes coherent answer with citations
+- **True RAG answer generation** via Groq (`llama-3.3-70b-versatile`, temp=0.25, max_tokens=2500): `_generate_answer()` builds context from top-k chunks with `[Source N]` labels, synthesizes comprehensive multi-paragraph answers with citations
 - **Return format**: `query_documents()` returns `{answer: str|None, sources: list, has_answer: bool}` instead of raw list
 - **pdfplumber PDF extraction**: used for RAG document upload (replaced pymupdf4llm which caused ONNX int32/int64 conflict via its internal BoxRFDGNN layout model)
 - **Automatic model migration**: detects embedding model change via `.embedding_model` marker file, clears incompatible ChromaDB collections
@@ -687,8 +687,8 @@ The thinc library (spaCy dependency) tries to import torch, which may fail with 
 - [x] RAG similarity score fix (Euclidean distance normalization) - Bug fix
 - [x] RAG upgraded: E5-small-v2 embeddings, FlashRank re-ranking, RecursiveCharacterTextSplitter, pymupdf4llm - Prompt 8
 - [x] True RAG answer generation: Groq llama-3.3-70b-versatile synthesizes answers from retrieved chunks with [Source N] citations - Prompt 8
-- [x] RAG AI answer display: green gradient box with Bot icon, expandable source documents with chevron toggles - Prompt 8
-- [x] RAG exports updated: PDF/DOCX exports include AI-generated answer section - Prompt 8
+- [x] RAG answer display: insight box with Bot icon, expandable source documents with chevron toggles - Prompt 8
+- [x] RAG exports updated: PDF/DOCX exports include answer section - Prompt 8
 - [x] Calibrated test files: 11 test files (grade 3-12 + college) all pass validation (graduated tolerance) - Prompt 7
 - [x] Text cleaner utility for extracted text (PDF/DOC/OCR) - Prompt 7
 - [x] Live word count display in TextInput with validation messages - Prompt 7
@@ -704,15 +704,15 @@ The thinc library (spaCy dependency) tries to import torch, which may fail with 
 - [x] Most common words visualization (top 15 bar chart in AnalysisResults) - Prompt 9
 - [x] Readability trend line chart on Dashboard (grade + Flesch over time) - Prompt 9
 - [x] Pre-simplification score preview on SimplifyPage (Grade X → Grade Y) - Prompt 9
-- [x] Comparative analysis page (side-by-side text comparison with metrics diff) - Prompt 9
+- [x] Comparative analysis page (side-by-side text comparison with metrics diff, "View Full Analysis" links) - Prompt 9
 - [x] Dark mode toggle (Tailwind darkMode: 'class', sidebar toggle, CSS overrides) - Prompt 9
-- [x] Batch analysis (paste or CSV upload, summary table, CSV export) - Prompt 9
+- [x] Batch analysis (paste or CSV upload, summary table, CSV export, clickable rows linking to individual analyses) - Prompt 9
 
 - [x] Text Complexity Score (0-100 weighted composite from grade, Flesch, difficult words, sentence length) - Prompt 10
 - [x] Reading Time Estimate (difficulty-adjusted WPM, 5th summary card) - Prompt 10
 - [x] "Improve This" Suggestions (3-5 prioritized actionable suggestions with grade impact) - Prompt 10
 - [x] Vocabulary Level Analysis (Simple/Medium/Advanced/Expert categorization with stacked bar chart) - Prompt 10
-- [x] Detailed PDF Report Generator (multi-page jsPDF: cover, scores, suggestions, vocabulary, difficult passages) - Prompt 10
+- [x] Detailed PDF Report Generator (multi-page jsPDF: cover, scores, complexity breakdown, improvement suggestions, vocabulary, difficult passages — 30 words shown with full reasons) - Prompt 10
 
 ### PENDING
 - (none)
@@ -784,7 +784,7 @@ The thinc library (spaCy dependency) tries to import torch, which may fail with 
 - **Parts 1-4 (RAG Infrastructure):**
   - Upgraded embedding model from `all-MiniLM-L6-v2` to `intfloat/e5-small-v2` (same 384 dims, significantly more accurate, requires `"query: "` / `"passage: "` prefixes)
   - Added FlashRank cross-encoder re-ranking (`ms-marco-MiniLM-L-12-v2`, ~4MB ONNX, CPU-only) — 2-stage retrieval: top-20 candidates → re-rank to top-5
-  - Replaced custom paragraph-based chunking with `RecursiveCharacterTextSplitter` (1000-char chunks, 200-char overlap, separator cascade)
+  - Replaced custom paragraph-based chunking with `RecursiveCharacterTextSplitter` (1500-char chunks, 300-char overlap, separator cascade)
   - Replaced pdfplumber with `pymupdf4llm` for RAG PDF extraction (outputs clean Markdown preserving structure)
   - Added automatic model migration: detects embedding model change, clears incompatible ChromaDB collections
   - Updated app.py: default top_k changed from 20 to 5 (re-ranking makes fewer, more precise results better)
@@ -792,16 +792,16 @@ The thinc library (spaCy dependency) tries to import torch, which may fail with 
   - New dependencies: `pymupdf4llm>=0.0.17`, `flashrank>=0.2.0`, `langchain-text-splitters>=0.2.0`
 - **Part 5 (True RAG Answer Generation):**
   - Added Groq client initialization in `RAGEngine.__init__` (uses `GROQ_API_KEY` from .env)
-  - Added `_generate_answer(query, top_results)` method: builds context from top-k chunks with `[Source N]` labels, calls Groq `llama-3.3-70b-versatile` (temp=0.2, max_tokens=1500) to synthesize coherent answer with citations
+  - Added `_generate_answer(query, top_results)` method: builds context from top-k chunks with `[Source N]` labels, calls Groq `llama-3.3-70b-versatile` (temp=0.25, max_tokens=2500) to synthesize comprehensive answers with citations
   - Updated `query_documents()` return format from `List[dict]` to `{answer: str|None, sources: list, has_answer: bool}`
 - **Part 7 (Flask Endpoint):**
   - Updated `/rag/query` endpoint to return `{query, answer, sources, has_answer, results_count, results}` (backward-compatible)
 - **Part 8 (Frontend RAG UI):**
-  - RAGQuery.tsx: AI answer displayed in green gradient box (`bg-gradient-to-r from-green-50 to-emerald-50`) with Bot icon
+  - RAGQuery.tsx: Answer displayed in insight box with Bot icon (label: "Answer", not "AI-Generated Answer")
   - Expandable source documents with ChevronDown/ChevronRight toggles, similarity badges, word counts
   - Yellow warning box when GROQ_API_KEY not configured
 - **Part 9 (Export Updates):**
-  - exportRAG.ts: PDF/DOCX exports include "AI-Generated Answer" section between query and sources
+  - exportRAG.ts: PDF/DOCX exports include "Answer" section between query and sources
   - RAGExportData interface updated with optional `answer` field
 - **Part 10 (Test Script):**
   - Created `ml-service/test_rag_improvements.py` — 6 tests: FlashRank init, Groq init, chunking, embeddings, answer generation, return format
@@ -859,6 +859,25 @@ The thinc library (spaCy dependency) tries to import torch, which may fail with 
 - **onnxruntime pinned**: `onnxruntime>=1.19.0` added to requirements.txt (needed by pymupdf's layout model and FlashRank). `numpy<2.0` constraint added (scikit-learn 1.3.2 incompatible with numpy 2.x). `pymupdf4llm` removed from requirements.
 - **traceback logging**: Added `traceback.print_exc()` to RAG upload error handler for easier debugging
 - Files modified: `app.py`, `rag_engine.py`, `api.ts`, `requirements.txt`, `.gitignore`
+
+### Post-Prompt 10 Session 3: RAG, Exports, UX Polish - COMPLETED
+- **RAG chunk size upgrade**: Increased from 1000→1500 chars with 200→300 overlap, capturing more context per retrieval hit for richer answers
+- **RAG answer generation upgrade**: Rewrote Groq prompt to produce longer, more detailed prose answers (3-4 paragraphs with examples and definitions from sources). max_tokens raised from 1500→2500, temperature 0.2→0.25
+- **"AI-Generated Answer" → "Answer"**: Renamed the label in RAGQuery.tsx UI, exportRAG.ts (PDF/DOCX), and exportSimplification.ts to just "Answer" — cleaner UX, no need to advertise the generation method
+- **Batch analysis clickable rows**: Each batch result now stores `analysisId` from the API response. Title cells are `<Link>` components that navigate to `/analysis/:id` for the full analysis page
+- **Compare texts "View Full Analysis" links**: ComparePage now stores `analysisIdA`/`analysisIdB` from both parallel API calls. Each summary card shows a "View Full Analysis" link to the saved analysis
+- **History analyses tab fix**: The backend `getAnalyses` count query was missing the `gradeLevel` filter — pagination total was wrong when filtering by grade. Fixed by mirroring all WHERE conditions in the count query
+- **Detailed report overhaul**: Complete rewrite of `detailedReport.ts`:
+  - New Improvement Suggestions page with priority-colored bullet points, estimated grade impact, and action items
+  - Complexity Score Breakdown table (grade 40%, Flesch 30%, difficult words 20%, sentence length 10%)
+  - Better formatting: section headers with colored underlines, alternating row colors, grade banner
+  - Difficult words table now shows 30 words (up from 20) with full reasons (no truncation)
+  - Difficult sentences increased to 8 (up from 5) with full metadata
+  - Richer Flesch interpretation strings
+- **Simplification export overhaul**: `exportSimplification.ts` now includes metrics comparison table (Grade, Flesch, Word Count, Avg Sentence Length) showing before→after values when available. Header bar matches design system. Better change table with full reasons
+- **RAG export overhaul**: `exportRAG.ts` redesigned with teal header bar, structured source cards with match percentage headers, proper page break handling
+- Files modified: `rag_engine.py`, `RAGQuery.tsx`, `BatchPage.tsx`, `ComparePage.tsx`, `analysisController.ts`, `exportRAG.ts`, `exportSimplification.ts`, `detailedReport.ts`
+- Build: tsc --noEmit SUCCESS (zero errors), Vite build SUCCESS
 
 ---
 
@@ -922,7 +941,7 @@ This section provides full technical detail on every library, pipeline, API, mod
 | **sentence-transformers** | 2.3.1 | `SentenceTransformer('intfloat/e5-small-v2')` — 384-dim embeddings for RAG (requires `"query: "` / `"passage: "` prefixes). Upgraded from all-MiniLM-L6-v2 in Prompt 8 |
 | **flashrank** | 0.2+ | Cross-encoder re-ranker (`ms-marco-MiniLM-L-12-v2`, ~4MB ONNX model, CPU-only). Re-ranks top-20 embedding candidates to precise top-5. Init wrapped in try/except — falls back to embedding similarity if ONNX issues occur |
 | **onnxruntime** | ≥1.19.0 | ONNX Runtime required by FlashRank and pymupdf layout model. Must be ≥1.19 for pymupdf compatibility on Windows |
-| **langchain-text-splitters** | 0.2+ | `RecursiveCharacterTextSplitter` — splits by `\n\n` → `\n` → `. ` → ` ` → `""`. 1000-char chunks, 200-char overlap |
+| **langchain-text-splitters** | 0.2+ | `RecursiveCharacterTextSplitter` — splits by `\n\n` → `\n` → `. ` → ` ` → `""`. 1500-char chunks, 300-char overlap (upgraded from 1000/200 for richer context) |
 | **groq** | 0.11.0 | Groq Cloud API client. Model: `llama-3.3-70b-versatile`. Used for: (1) validation of rule-based simplification changes, (2) auto-fixing issues found by validation, (3) fallback simplification when rule-based methods leave remaining complexity, (4) True RAG answer generation from retrieved chunks (Prompt 8) |
 | **requests** | 2.31.0 | HTTP client for Datamuse API calls (synonym fallback) |
 | **pdfplumber** | 0.10.3 | PDF text extraction for analysis input AND RAG document upload (replaced pymupdf4llm for RAG after ONNX conflict) |
@@ -1202,7 +1221,7 @@ No external APIs are used for the core ML prediction pipeline — all models run
 
 **Upload flow** (`rag_engine.py → upload_document`):
 1. Extract text from PDF (pdfplumber) or DOCX (python-docx)
-2. Chunk text via RecursiveCharacterTextSplitter: 1000-char chunks, 200-char overlap, splits at `\n\n` → `\n` → `. ` → ` ` → `""`
+2. Chunk text via RecursiveCharacterTextSplitter: 1500-char chunks, 300-char overlap, splits at `\n\n` → `\n` → `. ` → ` ` → `""`
 3. Generate embeddings: `SentenceTransformer.encode(["passage: " + t for t in chunks])` — E5-small-v2, 384-dimensional float vectors
 4. Store in ChromaDB: one collection per document (`doc_{uuid}`), with metadata (chunk_id, char_count, word_count, document_id)
 5. Save document metadata to PostgreSQL `rag_documents` table
@@ -1211,12 +1230,12 @@ No external APIs are used for the core ML prediction pipeline — all models run
 1. **Stage 1 (Embedding search)**: Generate query embedding with `"query: "` prefix, retrieve top-20 candidates per collection from ChromaDB
 2. Convert L2 distances to similarity: `max(0.0, min(1.0, 1 - (distance / 2)))`
 3. **Stage 2 (Re-ranking)**: Feed all candidates to FlashRank cross-encoder (`ms-marco-MiniLM-L-12-v2`, ONNX, CPU-only), select top-5
-4. **Stage 3 (Answer generation)**: `_generate_answer()` builds context from top-5 chunks with `[Source N]` labels, calls Groq `llama-3.3-70b-versatile` (temp=0.2, max_tokens=1500) to synthesize coherent answer citing sources. Prompt instructs: cite sources, don't fabricate, answer concisely
+4. **Stage 3 (Answer generation)**: `_generate_answer()` builds context from top-5 chunks with `[Source N]` labels, calls Groq `llama-3.3-70b-versatile` (temp=0.25, max_tokens=2500) to synthesize comprehensive multi-paragraph answers with inline citations. Prompt instructs: cite sources, don't fabricate, write thorough prose with examples
 5. Return `{answer: str|None, sources: list[dict], has_answer: bool}` — answer is None if Groq not configured
 
 **Chunking strategy** (RecursiveCharacterTextSplitter):
-- Target: 1000 characters per chunk (~150-200 words)
-- Overlap: 200 characters
+- Target: 1500 characters per chunk (~200-300 words)
+- Overlap: 300 characters
 - Separator cascade: `\n\n` → `\n` → `. ` → ` ` → `""` (preserves paragraph and sentence boundaries)
 - `keep_separator=True` for context preservation
 
@@ -1251,9 +1270,9 @@ No external APIs are used for the core ML prediction pipeline — all models run
 - Vocabulary Level Analysis: categorizes words into Simple/Medium/Advanced/Expert with stacked bar chart (Prompt 10)
 - 6 chart types (radar, bar, pie, gauge, common words, custom)
 - PDF report export
-- Detailed PDF Report: multi-page jsPDF report with cover page, scores table, improvement suggestions, vocabulary analysis, difficult passages (Prompt 10)
-- Comparative analysis page (side-by-side text comparison with 11 metrics) (Prompt 9)
-- Batch analysis page (paste or CSV, progress bar, summary table, CSV export) (Prompt 9)
+- Detailed PDF Report: multi-page jsPDF report with cover page, scores table, complexity score breakdown, improvement suggestions with priority colors, vocabulary analysis, difficult passages (30 words with full reasons, 8 sentences) (Prompt 10)
+- Comparative analysis page (side-by-side text comparison with 11 metrics, "View Full Analysis" links to saved analyses) (Prompt 9)
+- Batch analysis page (paste or CSV, progress bar, summary table, CSV export, clickable rows link to individual analyses) (Prompt 9)
 
 **Text Simplification:**
 - Auto mode (apply all changes) and interactive mode (accept/deny individually)
@@ -1272,10 +1291,10 @@ No external APIs are used for the core ML prediction pipeline — all models run
 - **E5-small-v2** embeddings (384-dim, more accurate than MiniLM, with query/passage prefixes)
 - **FlashRank** cross-encoder re-ranking (retrieve top-20, re-rank to precise top-5)
 - **True RAG answer generation**: Groq `llama-3.3-70b-versatile` synthesizes coherent answer from top chunks with `[Source N]` citations
-- AI answer displayed in green gradient box with Bot icon; expandable source documents with chevron toggles
-- Yellow warning when GROQ_API_KEY not configured (sources still shown without AI answer)
+- Answer displayed in insight box with Bot icon (labeled "Answer"); expandable source documents with chevron toggles
+- Yellow warning when GROQ_API_KEY not configured (sources still shown without answer)
 - Automatic model migration (clears old ChromaDB data when embedding model changes)
-- Export RAG query results as PDF or DOCX — includes AI-generated answer section (Prompt 7+8)
+- Export RAG query results as PDF or DOCX — includes answer section (Prompt 7+8)
 
 **User Management:**
 - JWT authentication (24h expiry, bcrypt password hashing)

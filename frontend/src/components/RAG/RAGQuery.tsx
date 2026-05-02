@@ -255,7 +255,7 @@ const RAGQuery: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <Bot className="w-4 h-4" />
                       <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700 }}>
-                        AI-Generated Answer
+                        Answer
                       </span>
                     </div>
                     <span
@@ -283,7 +283,7 @@ const RAGQuery: React.FC = () => {
                     style={{ borderTop: '1px solid color-mix(in srgb, var(--s-500) 25%, transparent)' }}
                   >
                     <p style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic' }}>
-                      Synthesized from your uploaded textbooks. Verify by expanding source documents below.
+                      Based on your uploaded textbooks. Expand source documents below to verify.
                     </p>
                   </div>
                 </div>
@@ -299,7 +299,7 @@ const RAGQuery: React.FC = () => {
                   }}
                 >
                   <p style={{ fontSize: 12, color: 'var(--warn-700)' }}>
-                    Answer generation is disabled. Add GROQ_API_KEY to your .env file to enable AI-generated answers.
+                    Answer generation is disabled. Add FIREWORKS_API_KEY to your .env file to enable AI-generated answers.
                   </p>
                 </div>
               )}

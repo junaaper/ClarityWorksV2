@@ -1,6 +1,6 @@
 """
 Test script for RAG improvements
-Tests: chunking, re-ranking, Groq answer generation
+Tests: chunking, re-ranking, Fireworks answer generation
 """
 
 import os
@@ -32,12 +32,12 @@ def test_rag_system():
     else:
         print("   FAIL - FlashRank not initialized")
 
-    # Test 2: Check Groq initialization
-    print("\n2. Groq Answer Generation:")
-    if rag.groq_client:
-        print("   PASS - Groq client initialized")
+    # Test 2: Check Fireworks initialization
+    print("\n2. Fireworks Answer Generation:")
+    if rag.llm_client:
+        print("   PASS - Fireworks client initialized")
     else:
-        print("   WARN - Groq client not initialized (check GROQ_API_KEY in .env)")
+        print("   WARN - Fireworks client not initialized (check FIREWORKS_API_KEY in .env)")
 
     # Test 3: Test chunking
     print("\n3. Improved Chunking (RecursiveCharacterTextSplitter):")
@@ -80,9 +80,9 @@ use these principles to design bridges, vehicles, and spacecraft.
     print(f"   PASS - Generated {len(embeddings)} embeddings")
     print(f"   Embedding dimensions: {embeddings.shape[1]}")
 
-    # Test 5: Test answer generation (if Groq available)
+    # Test 5: Test answer generation (if Fireworks available)
     print("\n5. Answer Generation (True RAG):")
-    if rag.groq_client:
+    if rag.llm_client:
         test_chunks = [
             {
                 'text': "Newton's first law states that objects at rest stay at rest, and objects in motion stay in motion at constant velocity, unless acted upon by an external force. This is also known as the law of inertia.",
@@ -105,7 +105,7 @@ use these principles to design bridges, vehicles, and spacecraft.
         else:
             print("   FAIL - Answer generation returned None")
     else:
-        print("   SKIP - Groq not configured")
+        print("   SKIP - Fireworks not configured")
 
     # Test 6: Test full query_documents return format
     print("\n6. Query Return Format:")

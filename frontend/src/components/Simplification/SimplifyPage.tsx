@@ -46,7 +46,36 @@ const getScopeLabel = (scope?: Change['review_scope']) => {
   }
 };
 
-const getChangeLabel = (change: Pick<Change, 'type' | 'review_scope'>) => {
+const isFinalReviewSummary = (change: Pick<Change, 'final_reviewed' | 'review_scope'>) =>
+  Boolean(change.final_reviewed && change.review_scope === 'paragraph');
+
+const isBroadParagraphRewrite = (
+  change: Pick<Change, 'type' | 'review_scope' | 'quality_flags' | 'validation_flags' | 'explanation_items'>
+) => Boolean(
+  change.review_scope === 'paragraph' && (
+    change.type === 'phrase_rewrite' ||
+    (change.explanation_items?.length ?? 0) > 0 ||
+    change.quality_flags?.includes('coarse_review') ||
+    change.quality_flags?.includes('forced_exact_rebuild') ||
+    change.validation_flags?.includes('exact_preview_rebuild')
+  )
+);
+
+const shouldHideChangeSnippet = (
+  change: Pick<Change, 'type' | 'final_reviewed' | 'review_scope' | 'quality_flags' | 'validation_flags' | 'explanation_items'>
+) => isFinalReviewSummary(change) || isBroadParagraphRewrite(change);
+
+const getChangeLabel = (
+  change: Pick<Change, 'type' | 'review_scope' | 'final_reviewed' | 'quality_flags' | 'validation_flags' | 'explanation_items'>
+) => {
+  if (isFinalReviewSummary(change)) {
+    return 'Final Review Adjustment';
+  }
+
+  if (isBroadParagraphRewrite(change)) {
+    return 'Paragraph Rewrite';
+  }
+
   if (change.review_scope === 'paragraph') {
     switch (change.type) {
       case 'sentence_split':
@@ -76,6 +105,96 @@ const getChangeLabel = (change: Pick<Change, 'type' | 'review_scope'>) => {
     default:
       return 'Structure';
   }
+};
+
+const getChangeSummaryText = (change: Change) => {
+  if (isBroadParagraphRewrite(change)) {
+    const evidenceCount = change.explanation_items?.length ?? 0;
+    return evidenceCount
+      ? `Paragraph rewrite with ${evidenceCount} evidence-backed change${evidenceCount === 1 ? '' : 's'}.`
+      : 'Paragraph rewrite kept as one exact preview patch.';
+  }
+  if (change.review_scope === 'paragraph') {
+    return 'Paragraph adjusted during the final meaning check.';
+  }
+  if (change.review_scope === 'sentence') {
+    return 'Sentence adjusted during the final meaning check.';
+  }
+  return 'Wording adjusted during the final meaning check.';
+};
+
+type ExplanationItem = NonNullable<Change['explanation_items']>[number];
+
+const getEvidenceLabel = (item: ExplanationItem) => {
+  switch (item.kind) {
+    case 'word_upgrade':
+      return 'Word Upgrade';
+    case 'word_replacement':
+      return 'Word Replacement';
+    case 'connector_added':
+      return 'Connector';
+    default:
+      return 'Evidence';
+  }
+};
+
+const getEvidenceAccent = (item: ExplanationItem) =>
+  item.kind === 'word_replacement' ? 'var(--err-500)' : 'var(--s-500)';
+
+const EvidenceItems: React.FC<{
+  items?: Change['explanation_items'];
+  limit?: number;
+  compact?: boolean;
+}> = ({ items, limit = 5, compact = false }) => {
+  const visibleItems = (items ?? []).slice(0, limit);
+  if (!visibleItems.length) return null;
+
+  return (
+    <div className={compact ? 'space-y-1' : 'mt-2 space-y-1.5'}>
+      {visibleItems.map((item, index) => {
+        const accent = getEvidenceAccent(item);
+        const hasWordPair = Boolean(item.before && item.after);
+        return (
+          <div
+            key={`evidence-${index}-${item.before ?? item.after ?? item.kind}`}
+            className="rounded-sm"
+            style={{
+              borderLeft: `2px solid color-mix(in srgb, ${accent} 42%, transparent)`,
+              background: compact ? 'transparent' : 'color-mix(in srgb, var(--surface-sunk) 46%, transparent)',
+              padding: compact ? '2px 0 2px 8px' : '6px 8px',
+            }}
+          >
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="cw-badge cw-badge-neutral">{getEvidenceLabel(item)}</span>
+              {hasWordPair ? (
+                <>
+                  <span style={{ fontSize: 11.5, color: 'var(--err-700)', textDecoration: 'line-through' }}>
+                    {item.before}
+                  </span>
+                  <span style={{ color: 'var(--text-4)', fontSize: 11.5 }}>→</span>
+                  <span style={{ fontSize: 11.5, color: 'var(--s-700)', fontWeight: 700 }}>
+                    {item.after}
+                  </span>
+                  {typeof item.frequency_before === 'number' && typeof item.frequency_after === 'number' && (
+                    <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                      Zipf {item.frequency_before.toFixed(1)} → {item.frequency_after.toFixed(1)}
+                    </span>
+                  )}
+                  {typeof item.syllables_before === 'number' && typeof item.syllables_after === 'number' && (
+                    <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                      {item.syllables_before} → {item.syllables_after} syll.
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span style={{ fontSize: 11.5, color: 'var(--text-2)' }}>{item.text}</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 const getReplacementPatchText = (change: Change) =>
@@ -361,7 +480,6 @@ const SimplifyPage: React.FC = () => {
   const deniedCount = changes.filter((c) => c.accepted === false).length;
   const pendingCount = changes.filter((c) => c.accepted === null).length;
   const displayedPreviewGrade = previewMetrics?.predicted_grade_level ?? simplifiedGrade;
-  const previewConfidence = selectionSummary?.confidence_label;
   const linkedGroupCount = new Set(
     changes
       .map((change) => change.dependency_group_id)
@@ -497,7 +615,7 @@ const SimplifyPage: React.FC = () => {
 
         <p className="mt-4" style={{ color: 'var(--text-3)', fontSize: 12, lineHeight: 1.55 }}>
           {mode === 'auto'
-            ? 'Auto Mode — rule-based rewrite applied automatically; AI checks flow and coherence after.'
+            ? 'Auto Mode — the system tries multiple rewrite candidates, keeps the closest valid version, and shows reviewable change reasons.'
             : 'Interactive Mode — hover any highlight for the reason, then Accept or Deny each change before saving.'}
         </p>
       </div>
@@ -519,23 +637,6 @@ const SimplifyPage: React.FC = () => {
                 {linkedGroupCount} linked group{linkedGroupCount !== 1 ? 's' : ''}
               </span>
             )}
-          </div>
-        </div>
-      )}
-
-      {((previewMetrics?.invalid_sentence_count ?? 0) > 0 || previewConfidence === 'Low') && (
-        <div
-          className="rounded-md p-3 mb-5"
-          style={{
-            background: 'color-mix(in srgb, var(--warn-500) 8%, var(--surface-raised))',
-            border: '1px solid color-mix(in srgb, var(--warn-500) 25%, transparent)',
-          }}
-        >
-          <div className="flex flex-wrap items-center gap-3" style={{ fontSize: 12, color: 'var(--warn-700)' }}>
-            {(previewMetrics?.invalid_sentence_count ?? 0) > 0 && (
-              <span>Rewrite needs another review pass before saving.</span>
-            )}
-            {previewConfidence === 'Low' && <span>Some wording may still need review.</span>}
           </div>
         </div>
       )}
@@ -644,10 +745,19 @@ const SimplifyPage: React.FC = () => {
             {getScopeLabel(hoveredChangeData.review_scope) && (
               <span className="cw-badge cw-badge-neutral">{getScopeLabel(hoveredChangeData.review_scope)}</span>
             )}
+            {hoveredChangeData.final_reviewed && (
+              <span className="cw-badge cw-badge-info">Final Review</span>
+            )}
           </div>
           <p style={{ color: 'var(--text-2)', fontSize: 12.5, marginBottom: 10, lineHeight: 1.5 }}>
             {hoveredChangeData.reason}
           </p>
+          <EvidenceItems items={hoveredChangeData.explanation_items} limit={4} compact />
+          {hoveredChangeData.final_reviewed && hoveredChangeData.final_review_note && (
+            <p style={{ color: 'var(--text-3)', fontSize: 11.5, marginBottom: 10, lineHeight: 1.5 }}>
+              {hoveredChangeData.final_review_note}
+            </p>
+          )}
 
           {mode === 'interactive' && hoveredChangeData.accepted === null && (
             <div className="flex gap-2">
@@ -704,20 +814,37 @@ const SimplifyPage: React.FC = () => {
                         {getScopeLabel(change.review_scope) && (
                           <span className="cw-badge cw-badge-neutral">{getScopeLabel(change.review_scope)}</span>
                         )}
+                        {change.final_reviewed && (
+                          <span className="cw-badge cw-badge-info">Final Review</span>
+                        )}
                         {change.dependency_group_id && (
                           <span className="cw-badge cw-badge-info">Linked</span>
                         )}
-                        <span style={{ fontSize: 12, color: 'var(--err-700)', textDecoration: 'line-through' }}>
-                          {change.original}
-                        </span>
-                        <span style={{ color: 'var(--text-4)', fontSize: 12 }}>→</span>
-                        <span style={{ fontSize: 12, color: 'var(--s-700)', fontWeight: 600 }}>
-                          {change.simplified}
-                        </span>
+                        {shouldHideChangeSnippet(change) ? (
+                          <span style={{ fontSize: 12, color: 'var(--text-3)', fontStyle: 'italic' }}>
+                            {getChangeSummaryText(change)}
+                          </span>
+                        ) : (
+                          <>
+                            <span style={{ fontSize: 12, color: 'var(--err-700)', textDecoration: 'line-through' }}>
+                              {change.original}
+                            </span>
+                            <span style={{ color: 'var(--text-4)', fontSize: 12 }}>→</span>
+                            <span style={{ fontSize: 12, color: 'var(--s-700)', fontWeight: 600 }}>
+                              {change.simplified}
+                            </span>
+                          </>
+                        )}
                       </div>
                       <p style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
                         {change.reason}
                       </p>
+                      <EvidenceItems items={change.explanation_items} limit={5} />
+                      {change.final_reviewed && change.final_review_note && (
+                        <p style={{ fontSize: 11.5, color: 'var(--text-4)', lineHeight: 1.5, marginTop: 4 }}>
+                          {change.final_review_note}
+                        </p>
+                      )}
                     </div>
 
                     {mode === 'interactive' && (
