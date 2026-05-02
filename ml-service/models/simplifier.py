@@ -711,6 +711,12 @@ class TextSimplifier:
             selection_summary['critic_review'] = critic_review
         self._selection_context['selection_summary'] = selection_summary
 
+        current_text = re.sub(r'\n +', '\n', current_text).strip()
+
+        display_changes = self._build_display_changes(text, current_text, target_grade, going_up)
+        if display_changes:
+            changes = display_changes
+
         return {
             'simplified_text': current_text,
             'changes': changes,
@@ -4380,6 +4386,155 @@ class TextSimplifier:
                 items.append(item)
 
         return items
+
+    def _build_display_changes(self, original_text, rewritten_text, target_grade, going_up):
+        """
+        Post-processing diff: compare original and final rewritten text
+        paragraph-by-paragraph to extract granular display changes.
+        Runs after all rewriting is complete — purely for UI display.
+        Each word swap becomes its own top-level change.
+        """
+        orig_paragraphs = [p.strip() for p in re.split(r'\n\s*\n', original_text) if p.strip()]
+        new_paragraphs = [p.strip() for p in re.split(r'\n\s*\n', rewritten_text) if p.strip()]
+
+        if not orig_paragraphs or not new_paragraphs:
+            return []
+
+        pairs = list(zip(orig_paragraphs, new_paragraphs))
+        if len(orig_paragraphs) > len(new_paragraphs):
+            last_orig = '\n\n'.join(orig_paragraphs[len(new_paragraphs) - 1:])
+            pairs[-1] = (last_orig, pairs[-1][1])
+        elif len(new_paragraphs) > len(orig_paragraphs):
+            last_new = '\n\n'.join(new_paragraphs[len(orig_paragraphs) - 1:])
+            pairs[-1] = (pairs[-1][0], last_new)
+
+        changes = []
+        change_id = 0
+        orig_offset = 0
+        new_offset = 0
+        grade_label = f"Grade {target_grade}" if target_grade <= 12 else "College"
+        candidate_score = self._selection_context.get('candidate_score', 0.8)
+
+        for orig_para, new_para in pairs:
+            orig_start = original_text.find(orig_para, orig_offset)
+            new_start = rewritten_text.find(new_para, new_offset)
+            if orig_start == -1:
+                orig_start = orig_offset
+            if new_start == -1:
+                new_start = new_offset
+
+            if orig_para == new_para:
+                orig_offset = orig_start + len(orig_para)
+                new_offset = new_start + len(new_para)
+                continue
+
+            explanation_items = self._extract_explanation_items(
+                orig_para, new_para, going_up, max_items=30
+            )
+
+            for item in explanation_items:
+                word_before = item['before']
+                word_after = item['after']
+                word_pos = orig_para.lower().find(word_before.lower())
+                preview_pos = new_para.lower().find(word_after.lower())
+
+                abs_start = orig_start + (word_pos if word_pos != -1 else 0)
+                abs_preview = new_start + (preview_pos if preview_pos != -1 else 0)
+
+                reason = self._format_explanation_item(
+                    word_before, word_after,
+                    item.get('frequency_before', 0), item.get('frequency_after', 0),
+                    item.get('syllables_before', 0), item.get('syllables_after', 0),
+                    going_up,
+                )
+
+                changes.append({
+                    'type': item['kind'],
+                    'original': word_before,
+                    'simplified': word_after,
+                    'original_text': word_before,
+                    'replacement_text': word_after,
+                    'position': abs_start,
+                    'start': abs_start,
+                    'end': abs_start + len(word_before),
+                    'preview_start': abs_preview,
+                    'preview_end': abs_preview + len(word_after),
+                    'review_scope': 'word',
+                    'direction': 'up' if going_up else 'down',
+                    'quality_score': 0.8,
+                    'quality_flags': [],
+                    'rule_id': 'display.word_upgrade' if going_up else 'display.word_swap',
+                    'reason_code': 'raise_vocabulary_difficulty' if going_up else 'use_more_common_word',
+                    'evidence': {
+                        'target_grade': target_grade,
+                        'direction': 'up' if going_up else 'down',
+                        'review_scope': 'word',
+                        'word_before': word_before,
+                        'word_after': word_after,
+                        'frequency_before': item.get('frequency_before', 0),
+                        'frequency_after': item.get('frequency_after', 0),
+                        'syllables_before': item.get('syllables_before', 0),
+                        'syllables_after': item.get('syllables_after', 0),
+                        'candidate_score': candidate_score,
+                    },
+                    'candidate_score': candidate_score,
+                    'reason': reason,
+                    'id': change_id,
+                })
+                change_id += 1
+
+            orig_sentences = len(re.findall(r'[.!?]+', orig_para)) or 1
+            new_sentences = len(re.findall(r'[.!?]+', new_para)) or 1
+            if orig_sentences != new_sentences:
+                struct_type = 'sentence_combine' if going_up else 'sentence_split'
+                struct_details = []
+                orig_semicolons = orig_para.count(';')
+                new_semicolons = new_para.count(';')
+                if new_semicolons > orig_semicolons:
+                    struct_details.append(f"{new_semicolons - orig_semicolons} semicolon(s) inserted to join independent clauses")
+                elif orig_semicolons > new_semicolons:
+                    struct_details.append(f"{orig_semicolons - new_semicolons} semicolon(s) replaced with periods")
+                if new_sentences < orig_sentences:
+                    struct_details.append(f"{orig_sentences - new_sentences} sentence(s) combined into longer clauses")
+                elif new_sentences > orig_sentences:
+                    struct_details.append(f"{new_sentences - orig_sentences} sentence(s) split for shorter, clearer phrasing")
+                struct_reason = "; ".join(struct_details) + f" ({orig_sentences} → {new_sentences} sentences)." if struct_details else f"Sentence structure changed ({orig_sentences} → {new_sentences} sentences)."
+
+                changes.append({
+                    'type': struct_type,
+                    'original': '',
+                    'simplified': '',
+                    'original_text': orig_para,
+                    'replacement_text': new_para,
+                    'position': orig_start,
+                    'start': orig_start,
+                    'end': orig_start + len(orig_para),
+                    'preview_start': new_start,
+                    'preview_end': new_start + len(new_para),
+                    'review_scope': 'sentence',
+                    'direction': 'up' if going_up else 'down',
+                    'quality_score': 0.8,
+                    'quality_flags': [],
+                    'rule_id': 'display.sentence_split' if not going_up else 'display.sentence_combine',
+                    'reason_code': 'shorten_sentence_for_target' if not going_up else 'increase_clause_density',
+                    'evidence': {
+                        'target_grade': target_grade,
+                        'direction': 'up' if going_up else 'down',
+                        'review_scope': 'sentence',
+                        'sentence_count_before': orig_sentences,
+                        'sentence_count_after': new_sentences,
+                        'candidate_score': candidate_score,
+                    },
+                    'candidate_score': candidate_score,
+                    'reason': struct_reason,
+                    'id': change_id,
+                })
+                change_id += 1
+
+            orig_offset = orig_start + len(orig_para)
+            new_offset = new_start + len(new_para)
+
+        return changes
 
     @staticmethod
     def _format_explanation_item(before, after, freq_before, freq_after, syl_before, syl_after, going_up):

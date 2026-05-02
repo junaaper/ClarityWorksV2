@@ -62,8 +62,8 @@ const isBroadParagraphRewrite = (
 );
 
 const shouldHideChangeSnippet = (
-  change: Pick<Change, 'type' | 'final_reviewed' | 'review_scope' | 'quality_flags' | 'validation_flags' | 'explanation_items'>
-) => isFinalReviewSummary(change) || isBroadParagraphRewrite(change);
+  change: Pick<Change, 'type' | 'original' | 'simplified' | 'final_reviewed' | 'review_scope' | 'quality_flags' | 'validation_flags' | 'explanation_items'>
+) => isFinalReviewSummary(change) || isBroadParagraphRewrite(change) || (!change.original && !change.simplified);
 
 const getChangeLabel = (
   change: Pick<Change, 'type' | 'review_scope' | 'final_reviewed' | 'quality_flags' | 'validation_flags' | 'explanation_items'>
@@ -118,7 +118,7 @@ const getChangeSummaryText = (change: Change) => {
     return 'Paragraph adjusted during the final meaning check.';
   }
   if (change.review_scope === 'sentence') {
-    return 'Sentence adjusted during the final meaning check.';
+    return change.reason || 'Sentence structure adjusted.';
   }
   return 'Wording adjusted during the final meaning check.';
 };
@@ -363,12 +363,30 @@ const SimplifyPage: React.FC = () => {
       const newChanges: Change[] = (response.suggested_changes || []).map((change) =>
         normalizeChange(change, mode)
       );
-      const previewState = buildPreviewState(sourceText, newChanges, mode);
-      const previewText =
-        newChanges.length > 0 ? previewState.text : (response.preview_text || sourceText);
+
+      const isDisplayDiff = newChanges.length > 0 && newChanges.some(
+        (c) => c.rule_id?.startsWith('display.')
+      );
+
+      let previewText: string;
+      let ranges: Record<number, ChangeRange>;
+
+      if (isDisplayDiff) {
+        previewText = response.preview_text || sourceText;
+        ranges = {};
+        for (const c of newChanges) {
+          if ((c.review_scope === 'word' || c.review_scope === 'sentence') && c.preview_start != null && c.preview_end != null && c.preview_end > c.preview_start) {
+            ranges[c.id] = { start: c.preview_start, end: c.preview_end };
+          }
+        }
+      } else {
+        const previewState = buildPreviewState(sourceText, newChanges, mode);
+        previewText = newChanges.length > 0 ? previewState.text : (response.preview_text || sourceText);
+        ranges = previewState.ranges;
+      }
 
       setChanges(newChanges);
-      setRenderedRanges(previewState.ranges);
+      setRenderedRanges(ranges);
       setSimplifiedText(previewText);
       setPreviewMetrics(response.preview_metrics ?? null);
       setSelectionSummary(response.selection_summary ?? null);
@@ -476,11 +494,9 @@ const SimplifyPage: React.FC = () => {
 
   const hoveredChangeData = changes.find((c) => c.id === hoveredChange);
 
-  const countWithEvidence = (c: Change) => (c.explanation_items?.length || 1);
-  const totalChangeCount = changes.reduce((sum, c) => sum + countWithEvidence(c), 0);
-  const acceptedCount = changes.filter((c) => c.accepted === true).reduce((sum, c) => sum + countWithEvidence(c), 0);
-  const deniedCount = changes.filter((c) => c.accepted === false).reduce((sum, c) => sum + countWithEvidence(c), 0);
-  const pendingCount = changes.filter((c) => c.accepted === null).reduce((sum, c) => sum + countWithEvidence(c), 0);
+  const acceptedCount = changes.filter((c) => c.accepted === true).length;
+  const deniedCount = changes.filter((c) => c.accepted === false).length;
+  const pendingCount = changes.filter((c) => c.accepted === null).length;
   const displayedPreviewGrade = previewMetrics?.predicted_grade_level ?? simplifiedGrade;
   const linkedGroupCount = new Set(
     changes
@@ -627,7 +643,7 @@ const SimplifyPage: React.FC = () => {
         <div className="cw-card cw-card-pad mb-5">
           <div className="flex items-center gap-3 flex-wrap" style={{ fontSize: 12 }}>
             <span className="cw-badge cw-badge-neutral">
-              {totalChangeCount} change{totalChangeCount !== 1 ? 's' : ''}
+              {changes.length} change{changes.length !== 1 ? 's' : ''}
             </span>
             <span className="cw-badge cw-badge-ok">{acceptedCount} accepted</span>
             <span className="cw-badge cw-badge-err">{deniedCount} denied</span>
@@ -908,31 +924,44 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
   onAccept,
   onDeny,
 }) => {
-  const highlights = changes
-    .filter((change) => {
-      if (change.accepted === false) return false;
-      if (mode === 'auto') return change.accepted === true;
-      return true;
-    })
-    .map((change) => {
-      const range = ranges[change.id];
-      if (!range) return null;
-      return {
-        start: Math.max(0, Math.min(text.length, range.start)),
-        end: Math.max(0, Math.min(text.length, range.end)),
-        change,
-      };
-    })
-    .filter((highlight): highlight is { start: number; end: number; change: Change } => {
-      return Boolean(highlight && highlight.end > highlight.start);
-    })
-    .sort((a, b) => {
-      if (a.start !== b.start) return a.start - b.start;
-      if (a.end !== b.end) return a.end - b.end;
-      return a.change.id - b.change.id;
-    });
+  const accepted = changes.filter((change) => {
+    if (change.accepted === false) return false;
+    if (mode === 'auto') return change.accepted === true;
+    return true;
+  });
 
-  if (highlights.length === 0) {
+  const wordHighlights = accepted
+    .filter((c) => c.review_scope === 'word' || !c.review_scope)
+    .map((c) => { const r = ranges[c.id]; return r ? { start: Math.max(0, Math.min(text.length, r.start)), end: Math.max(0, Math.min(text.length, r.end)), change: c, scope: 'word' as const } : null; })
+    .filter((h): h is NonNullable<typeof h> => Boolean(h && h.end > h.start))
+    .sort((a, b) => a.start - b.start);
+
+  const sentenceHighlights = accepted
+    .filter((c) => c.review_scope === 'sentence' || c.review_scope === 'paragraph')
+    .map((c) => { const r = ranges[c.id]; return r ? { start: Math.max(0, Math.min(text.length, r.start)), end: Math.max(0, Math.min(text.length, r.end)), change: c, scope: 'sentence' as const } : null; })
+    .filter((h): h is NonNullable<typeof h> => Boolean(h && h.end > h.start))
+    .sort((a, b) => a.start - b.start);
+
+  type Segment = { start: number; end: number; change: Change; scope: 'word' | 'sentence' };
+  const segments: Segment[] = [...wordHighlights];
+
+  for (const sh of sentenceHighlights) {
+    let cursor = sh.start;
+    const overlapping = wordHighlights.filter((w) => w.start < sh.end && w.end > sh.start);
+    for (const w of overlapping) {
+      if (w.start > cursor) {
+        segments.push({ start: cursor, end: w.start, change: sh.change, scope: 'sentence' });
+      }
+      cursor = Math.max(cursor, w.end);
+    }
+    if (cursor < sh.end) {
+      segments.push({ start: cursor, end: sh.end, change: sh.change, scope: 'sentence' });
+    }
+  }
+
+  segments.sort((a, b) => a.start !== b.start ? a.start - b.start : a.change.id - b.change.id);
+
+  if (segments.length === 0) {
     return <span className="text-gray-800 whitespace-pre-wrap">{text}</span>;
   }
 
@@ -940,48 +969,49 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
   let key = 0;
   let pos = 0;
 
-  for (const h of highlights) {
-    if (h.start > pos) {
+  for (const seg of segments) {
+    if (seg.start < pos) continue;
+    if (seg.start > pos) {
       parts.push(
         <span key={key++} className="text-gray-800">
-          {text.slice(pos, h.start)}
+          {text.slice(pos, seg.start)}
         </span>
       );
     }
 
-    const isPending = h.change.accepted === null;
+    const isPending = seg.change.accepted === null;
+    const isWord = seg.scope === 'word';
 
-    // Different styles for pending vs accepted
     let highlightClass = 'px-0.5 rounded cursor-help transition-colors ';
-    if (hoveredChange === h.change.id) {
+    if (hoveredChange === seg.change.id) {
       highlightClass += isPending
         ? 'bg-amber-400 text-amber-900'
-        : 'bg-green-400 text-green-900';
+        : isWord ? 'bg-green-400 text-green-900' : 'bg-blue-300 text-blue-900';
     } else {
       highlightClass += isPending
         ? 'bg-amber-100 text-amber-800 border-b-2 border-amber-400'
-        : 'bg-green-200 text-green-800';
+        : isWord ? 'bg-green-200 text-green-800' : 'bg-blue-100 text-blue-800';
     }
 
     parts.push(
       <span
         key={key++}
         className={highlightClass}
-        onMouseEnter={(e) => onHover(h.change.id, e)}
+        onMouseEnter={(e) => onHover(seg.change.id, e)}
         onMouseLeave={() => onHover(null)}
       >
-        {text.slice(h.start, h.end)}
-        {mode === 'interactive' && isPending && (
+        {text.slice(seg.start, seg.end)}
+        {mode === 'interactive' && isPending && isWord && (
           <span className="inline-flex ml-1 gap-0.5 align-middle">
             <button
-              onClick={(e) => { e.stopPropagation(); onAccept(h.change.id); }}
+              onClick={(e) => { e.stopPropagation(); onAccept(seg.change.id); }}
               className="inline-flex items-center justify-center w-4 h-4 bg-green-500 text-white rounded-full text-xs hover:bg-green-700 leading-none"
               title="Accept"
             >
               &#10003;
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); onDeny(h.change.id); }}
+              onClick={(e) => { e.stopPropagation(); onDeny(seg.change.id); }}
               className="inline-flex items-center justify-center w-4 h-4 bg-red-500 text-white rounded-full text-xs hover:bg-red-700 leading-none"
               title="Deny"
             >
@@ -991,7 +1021,7 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
         )}
       </span>
     );
-    pos = h.end;
+    pos = seg.end;
   }
 
   if (pos < text.length) {

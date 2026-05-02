@@ -16,6 +16,7 @@ class TextCleaner:
             '\ufb04': 'ffl',
             '\ufb05': 'st',
             '\ufb06': 'st',
+            '\u0398': 'ti',
             '\u2018': "'",
             '\u2019': "'",
             '\u201a': "'",
