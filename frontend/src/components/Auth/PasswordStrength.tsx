@@ -44,11 +44,11 @@ const PasswordStrength: React.FC<PasswordStrengthProps> = ({ password }) => {
   const requirements = getPasswordRequirements(password);
   const { strength, percentage } = getPasswordStrength(password);
 
-  const strengthColors = {
-    weak: 'bg-red-500',
-    fair: 'bg-yellow-500',
-    good: 'bg-blue-500',
-    strong: 'bg-green-500',
+  const strengthColors: Record<string, string> = {
+    weak: 'var(--err-500)',
+    fair: 'var(--warn-500)',
+    good: 'var(--p-500)',
+    strong: 'var(--ok-500)',
   };
 
   const strengthLabels = {
@@ -70,25 +70,27 @@ const PasswordStrength: React.FC<PasswordStrengthProps> = ({ password }) => {
     return null;
   }
 
+  const barColor = strengthColors[strength];
+
   return (
-    <div className="mt-2 space-y-3">
+    <div className="mt-3 space-y-3">
       {/* Strength Bar */}
       <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-gray-600">Password Strength</span>
-          <span className={`text-xs font-medium ${
-            strength === 'weak' ? 'text-red-600' :
-            strength === 'fair' ? 'text-yellow-600' :
-            strength === 'good' ? 'text-blue-600' :
-            'text-green-600'
-          }`}>
+        <div className="flex items-center justify-between mb-1.5">
+          <span style={{ fontSize: 11, color: 'var(--text-3)', letterSpacing: 0.2, textTransform: 'uppercase', fontWeight: 600 }}>
+            Password Strength
+          </span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: barColor }}>
             {strengthLabels[strength]}
           </span>
         </div>
-        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div
+          className="rounded-full overflow-hidden"
+          style={{ height: 5, background: 'var(--surface-sunk)', border: '1px solid var(--border)' }}
+        >
           <div
-            className={`h-full transition-all duration-300 ${strengthColors[strength]}`}
-            style={{ width: `${percentage}%` }}
+            className="h-full transition-all duration-300 rounded-full"
+            style={{ width: `${percentage}%`, background: barColor }}
           />
         </div>
       </div>
@@ -98,15 +100,10 @@ const PasswordStrength: React.FC<PasswordStrengthProps> = ({ password }) => {
         {requirementsList.map((req) => (
           <div
             key={req.key}
-            className={`flex items-center gap-2 text-xs ${
-              req.met ? 'text-green-600' : 'text-gray-500'
-            }`}
+            className="flex items-center gap-2"
+            style={{ fontSize: 11.5, color: req.met ? 'var(--ok-500)' : 'var(--text-4)' }}
           >
-            {req.met ? (
-              <Check className="w-3 h-3" />
-            ) : (
-              <X className="w-3 h-3" />
-            )}
+            {req.met ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
             <span>{req.label}</span>
           </div>
         ))}

@@ -41,57 +41,92 @@ const Register: React.FC = () => {
     }
   };
 
+  const fieldLabel: React.CSSProperties = {
+    fontSize: 11.5,
+    fontWeight: 600,
+    color: 'var(--text-2)',
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100 p-4">
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{
+        background: 'radial-gradient(ellipse at top, color-mix(in srgb, var(--p-700) 14%, var(--surface)) 0%, var(--surface) 55%)',
+      }}
+    >
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <div className="flex items-center justify-center gap-3 mb-8">
-            <BookOpen className="w-10 h-10 text-primary-600" />
-            <h1 className="text-2xl font-bold text-gray-800">ClarityWorks</h1>
+        {/* Brand */}
+        <div className="flex items-center justify-center gap-3 mb-6">
+          <div
+            className="flex items-center justify-center rounded-md"
+            style={{
+              width: 40,
+              height: 40,
+              background: 'var(--gradient-scholar)',
+              boxShadow: 'var(--sh-2)',
+            }}
+          >
+            <BookOpen className="w-5 h-5" style={{ color: '#fff' }} />
+          </div>
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: 'var(--p-900)', letterSpacing: -0.2 }}>
+              ClarityWorks
+            </div>
+            <div className="cw-eyebrow" style={{ marginBottom: 0 }}>Digital Scholar</div>
+          </div>
+        </div>
+
+        <div className="cw-card cw-card-pad-lg" style={{ padding: 36 }}>
+          <div className="mb-6 text-center">
+            <h2 className="cw-section-title" style={{ fontSize: 20, marginBottom: 4 }}>Create your account</h2>
+            <p style={{ color: 'var(--text-3)', fontSize: 12.5 }}>
+              Start analyzing readability in minutes.
+            </p>
           </div>
 
-          <h2 className="text-xl font-semibold text-gray-700 mb-6 text-center">
-            Create your account
-          </h2>
-
           {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <div
+              className="mb-4 rounded-md flex items-center gap-2"
+              style={{
+                padding: '10px 14px',
+                background: 'var(--err-50)',
+                border: '1px solid color-mix(in srgb, var(--err-500) 22%, transparent)',
+                color: 'var(--err-700)',
+                fontSize: 12.5,
+              }}
+            >
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Full Name
-              </label>
+              <label className="block mb-1.5" style={fieldLabel}>Full Name</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-4)' }} />
                 <input
                   type="text"
                   {...register('fullName', {
                     required: 'Full name is required',
-                    minLength: {
-                      value: 2,
-                      message: 'Name must be at least 2 characters',
-                    },
+                    minLength: { value: 2, message: 'Name must be at least 2 characters' },
                   })}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                  className="cw-input"
+                  style={{ paddingLeft: 36 }}
                   placeholder="John Doe"
                 />
               </div>
               {errors.fullName && (
-                <p className="mt-1 text-sm text-red-600">{errors.fullName.message}</p>
+                <p className="mt-1" style={{ color: 'var(--err-500)', fontSize: 11.5 }}>{errors.fullName.message}</p>
               )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email
-              </label>
+              <label className="block mb-1.5" style={fieldLabel}>Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-4)' }} />
                 <input
                   type="email"
                   {...register('email', {
@@ -101,21 +136,20 @@ const Register: React.FC = () => {
                       message: 'Invalid email format',
                     },
                   })}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                  className="cw-input"
+                  style={{ paddingLeft: 36 }}
                   placeholder="you@example.com"
                 />
               </div>
               {errors.email && (
-                <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
+                <p className="mt-1" style={{ color: 'var(--err-500)', fontSize: 11.5 }}>{errors.email.message}</p>
               )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Password
-              </label>
+              <label className="block mb-1.5" style={fieldLabel}>Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-4)' }} />
                 <input
                   type="password"
                   {...register('password', {
@@ -123,50 +157,49 @@ const Register: React.FC = () => {
                     validate: (value) =>
                       isPasswordValid(value) || 'Password does not meet all requirements',
                   })}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                  className="cw-input"
+                  style={{ paddingLeft: 36 }}
                   placeholder="••••••••"
                 />
               </div>
               {errors.password && (
-                <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
+                <p className="mt-1" style={{ color: 'var(--err-500)', fontSize: 11.5 }}>{errors.password.message}</p>
               )}
               <PasswordStrength password={password || ''} />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Confirm Password
-              </label>
+              <label className="block mb-1.5" style={fieldLabel}>Confirm Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-4)' }} />
                 <input
                   type="password"
                   {...register('confirmPassword', {
                     required: 'Please confirm your password',
-                    validate: (value) =>
-                      value === password || 'Passwords do not match',
+                    validate: (value) => value === password || 'Passwords do not match',
                   })}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                  className="cw-input"
+                  style={{ paddingLeft: 36 }}
                   placeholder="••••••••"
                 />
               </div>
               {errors.confirmPassword && (
-                <p className="mt-1 text-sm text-red-600">{errors.confirmPassword.message}</p>
+                <p className="mt-1" style={{ color: 'var(--err-500)', fontSize: 11.5 }}>{errors.confirmPassword.message}</p>
               )}
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 focus:ring-4 focus:ring-primary-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="cw-btn cw-btn-primary cw-btn-lg w-full mt-2"
             >
-              {isLoading ? 'Creating account...' : 'Create Account'}
+              {isLoading ? 'Creating account…' : 'Create Account'}
             </button>
           </form>
 
-          <p className="mt-6 text-center text-gray-600">
+          <p className="mt-6 text-center" style={{ color: 'var(--text-3)', fontSize: 12.5 }}>
             Already have an account?{' '}
-            <Link to="/login" className="text-primary-600 hover:underline font-medium">
+            <Link to="/login" style={{ color: 'var(--p-700)', fontWeight: 600 }} className="hover:underline">
               Sign in
             </Link>
           </p>

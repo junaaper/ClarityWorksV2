@@ -99,30 +99,46 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  const iconBtnStyle = (hoverBg: string, hoverColor: string) => ({
+    onMouseEnter: (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.currentTarget.style.background = hoverBg;
+      e.currentTarget.style.color = hoverColor;
+    },
+    onMouseLeave: (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.currentTarget.style.background = 'transparent';
+      e.currentTarget.style.color = 'var(--text-3)';
+    },
+  });
+
   return (
-    <div className="max-w-7xl mx-auto">
+    <div>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">User Management</h1>
-        <p className="text-gray-600 mt-1">Manage user accounts, roles, and permissions</p>
+        <div className="cw-eyebrow mb-2">Administration</div>
+        <h1 className="cw-hero" style={{ fontSize: 28 }}>User Management</h1>
+        <p className="mt-2" style={{ color: 'var(--text-3)', fontSize: 12.5 }}>
+          Manage user accounts, roles, and permissions.
+        </p>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 mb-6">
-        <div className="flex flex-wrap gap-4">
-          <div className="flex-1 min-w-[200px]">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by name or email..."
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPagination(p => ({ ...p, page: 1 }));
-                }}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-              />
-            </div>
+      <div className="cw-card cw-card-pad mb-5">
+        <div className="flex flex-wrap gap-3">
+          <div className="flex-1 min-w-[200px] relative">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+              style={{ color: 'var(--text-4)' }}
+            />
+            <input
+              type="text"
+              placeholder="Search by name or email…"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPagination(p => ({ ...p, page: 1 }));
+              }}
+              className="cw-input"
+              style={{ paddingLeft: 36 }}
+            />
           </div>
           <select
             value={roleFilter}
@@ -130,7 +146,8 @@ const UserManagement: React.FC = () => {
               setRoleFilter(e.target.value);
               setPagination(p => ({ ...p, page: 1 }));
             }}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+            className="cw-select"
+            style={{ maxWidth: 180 }}
           >
             <option value="all">All Roles</option>
             <option value="user">Users</option>
@@ -142,7 +159,8 @@ const UserManagement: React.FC = () => {
               setStatusFilter(e.target.value);
               setPagination(p => ({ ...p, page: 1 }));
             }}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+            className="cw-select"
+            style={{ maxWidth: 180 }}
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>
@@ -152,77 +170,85 @@ const UserManagement: React.FC = () => {
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
-          <AlertCircle className="w-5 h-5" />
+        <div
+          className="mb-4 rounded-md flex items-center gap-2"
+          style={{
+            padding: '10px 14px',
+            background: 'var(--err-50)',
+            border: '1px solid color-mix(in srgb, var(--err-500) 22%, transparent)',
+            color: 'var(--err-700)',
+            fontSize: 12.5,
+          }}
+        >
+          <AlertCircle className="w-4 h-4" />
           <span>{error}</span>
         </div>
       )}
 
       {/* Users Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+      <div className="cw-card overflow-hidden">
+        <div className="cw-scroll-x">
+          <table className="cw-table">
+            <thead>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Analyses</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th>User</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Analyses</th>
+                <th>Joined</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+                  <td colSpan={6} className="text-center py-12">
+                    <div
+                      className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto"
+                      style={{ borderColor: 'var(--p-700)' }}
+                    />
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={6} className="text-center py-12" style={{ color: 'var(--text-4)', fontSize: 12.5 }}>
                     No users found
                   </td>
                 </tr>
               ) : (
                 users.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{user.fullName}</p>
-                        <p className="text-sm text-gray-500">{user.email}</p>
-                      </div>
+                  <tr key={user.id}>
+                    <td>
+                      <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)' }}>
+                        {user.fullName}
+                      </p>
+                      <p style={{ fontSize: 11, color: 'var(--text-3)' }}>{user.email}</p>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {user.role === 'admin' ? (
-                          <Shield className="w-3 h-3 mr-1" />
-                        ) : null}
+                    <td>
+                      <span className={user.role === 'admin' ? 'cw-badge cw-badge-teal' : 'cw-badge cw-badge-neutral'}>
+                        {user.role === 'admin' && <Shield className="w-3 h-3 mr-1 inline" />}
                         {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
+                    <td>
+                      <span className={user.isActive ? 'cw-badge cw-badge-ok' : 'cw-badge cw-badge-err'}>
                         {user.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
+                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>
                       {user.analysisCount}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
+                    <td style={{ color: 'var(--text-3)', fontSize: 11.5 }}>
                       {new Date(user.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-end gap-2">
+                    <td>
+                      <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => handleToggleRole(user.id, user.role)}
                           disabled={actionLoading === user.id}
-                          className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
+                          className="p-1.5 rounded transition-colors"
+                          style={{ color: 'var(--text-3)' }}
+                          {...iconBtnStyle('color-mix(in srgb, var(--s-500) 12%, transparent)', 'var(--s-700)')}
                           title={user.role === 'admin' ? 'Remove admin' : 'Make admin'}
                         >
                           {user.role === 'admin' ? <ShieldOff className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
@@ -230,9 +256,12 @@ const UserManagement: React.FC = () => {
                         <button
                           onClick={() => handleToggleStatus(user.id)}
                           disabled={actionLoading === user.id}
-                          className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${
-                            user.isActive ? 'text-gray-500 hover:text-red-600 hover:bg-red-50' : 'text-gray-500 hover:text-green-600 hover:bg-green-50'
-                          }`}
+                          className="p-1.5 rounded transition-colors"
+                          style={{ color: 'var(--text-3)' }}
+                          {...iconBtnStyle(
+                            user.isActive ? 'var(--err-50)' : 'color-mix(in srgb, var(--ok-500) 12%, transparent)',
+                            user.isActive ? 'var(--err-500)' : 'var(--ok-500)'
+                          )}
                           title={user.isActive ? 'Deactivate user' : 'Activate user'}
                         >
                           {user.isActive ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
@@ -240,7 +269,9 @@ const UserManagement: React.FC = () => {
                         <button
                           onClick={() => setDeleteConfirm(user.id)}
                           disabled={actionLoading === user.id}
-                          className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                          className="p-1.5 rounded transition-colors"
+                          style={{ color: 'var(--text-3)' }}
+                          {...iconBtnStyle('var(--err-50)', 'var(--err-500)')}
                           title="Delete user"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -256,27 +287,35 @@ const UserManagement: React.FC = () => {
 
         {/* Pagination */}
         {pagination.totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-            <p className="text-sm text-gray-500">
+          <div
+            className="flex items-center justify-between px-5 py-3"
+            style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-sunk)' }}
+          >
+            <p style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
               Showing {(pagination.page - 1) * pagination.limit + 1} to {Math.min(pagination.page * pagination.limit, pagination.totalCount)} of {pagination.totalCount} users
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setPagination(p => ({ ...p, page: p.page - 1 }))}
                 disabled={pagination.page === 1}
-                className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="cw-btn cw-btn-sm cw-btn-secondary"
+                style={{ padding: '0 8px' }}
               >
-                <ChevronLeft className="w-5 h-5" />
+                <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-sm text-gray-600">
-                Page {pagination.page} of {pagination.totalPages}
+              <span
+                className="px-3"
+                style={{ fontSize: 11.5, color: 'var(--text-2)', fontFamily: 'var(--font-mono)' }}
+              >
+                {pagination.page} / {pagination.totalPages}
               </span>
               <button
                 onClick={() => setPagination(p => ({ ...p, page: p.page + 1 }))}
                 disabled={pagination.page === pagination.totalPages}
-                className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="cw-btn cw-btn-sm cw-btn-secondary"
+                style={{ padding: '0 8px' }}
               >
-                <ChevronRight className="w-5 h-5" />
+                <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -285,25 +324,33 @@ const UserManagement: React.FC = () => {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">Delete User</h3>
-            <p className="text-gray-600 mb-6">
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'color-mix(in srgb, var(--ink-900) 55%, transparent)' }}
+        >
+          <div className="cw-card cw-card-pad-lg max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="p-2 rounded-full"
+                style={{ background: 'var(--err-50)' }}
+              >
+                <AlertCircle className="w-5 h-5" style={{ color: 'var(--err-500)' }} />
+              </div>
+              <h3 className="cw-section-title">Delete User</h3>
+            </div>
+            <p style={{ color: 'var(--text-2)', fontSize: 13, marginBottom: 20, lineHeight: 1.55 }}>
               Are you sure you want to delete this user? This action cannot be undone and will also delete all their analyses.
             </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleteConfirm(null)} className="cw-btn cw-btn-secondary">
                 Cancel
               </button>
               <button
                 onClick={() => handleDelete(deleteConfirm)}
                 disabled={actionLoading === deleteConfirm}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                className="cw-btn cw-btn-danger"
               >
-                {actionLoading === deleteConfirm ? 'Deleting...' : 'Delete'}
+                {actionLoading === deleteConfirm ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>

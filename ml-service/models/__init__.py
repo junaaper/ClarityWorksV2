@@ -1,4 +1,10 @@
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / '.env')
+
 os.environ['THINC_NO_TORCH'] = '1'
 
 from .text_processor import TextProcessor

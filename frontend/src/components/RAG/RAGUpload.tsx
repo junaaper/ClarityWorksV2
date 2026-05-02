@@ -85,24 +85,42 @@ const RAGUpload: React.FC = () => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div>
       {uploading && <LoadingSpinner message="Uploading and processing textbook..." fullScreen />}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">RAG Textbook Upload</h1>
-        <Link
-          to="/rag/query"
-          className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-        >
+
+      <div className="flex items-start justify-between mb-8 gap-4 flex-wrap">
+        <div>
+          <div className="cw-eyebrow mb-2">Library</div>
+          <h1 className="cw-hero" style={{ fontSize: 28 }}>Upload Textbooks</h1>
+          <p className="mt-2" style={{ color: 'var(--text-3)', fontSize: 12.5 }}>
+            Add PDFs or DOCX files to your RAG library for semantic search.
+          </p>
+        </div>
+        <Link to="/rag/query" className="cw-btn cw-btn-secondary">
           <Search className="w-4 h-4" />
           Query Textbooks
         </Link>
       </div>
 
       {/* Upload Area */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Upload Textbook</h2>
+      <div className="cw-card cw-card-pad-lg mb-5">
+        <div className="cw-eyebrow mb-3">Upload Source</div>
 
-        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary-400 transition-colors">
+        <div
+          className="rounded-lg p-10 text-center transition-colors"
+          style={{
+            border: '2px dashed var(--border-strong)',
+            background: 'var(--surface-sunk)',
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--p-500)';
+            (e.currentTarget as HTMLDivElement).style.background = 'color-mix(in srgb, var(--p-50) 50%, var(--surface-sunk))';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-strong)';
+            (e.currentTarget as HTMLDivElement).style.background = 'var(--surface-sunk)';
+          }}
+        >
           <input
             type="file"
             accept=".pdf,.docx"
@@ -111,83 +129,85 @@ const RAGUpload: React.FC = () => {
             className="hidden"
             id="rag-file-upload"
           />
-          <Upload className="w-10 h-10 text-gray-400 mx-auto mb-4" />
-          <label
-            htmlFor="rag-file-upload"
-            className={`cursor-pointer inline-block px-6 py-3 rounded-lg text-white font-medium transition-colors ${
-              uploading
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-primary-600 hover:bg-primary-700'
-            }`}
-          >
+          <Upload className="w-8 h-8 mx-auto mb-4" style={{ color: 'var(--text-4)' }} />
+          <label htmlFor="rag-file-upload" className="cw-btn cw-btn-primary cw-btn-lg cursor-pointer">
             {uploading ? (
-              <span className="flex items-center gap-2">
+              <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Processing...
-              </span>
+                Processing…
+              </>
             ) : (
               'Choose PDF or DOCX File'
             )}
           </label>
 
           {uploadProgress && (
-            <p className="mt-4 text-sm text-gray-700">{uploadProgress}</p>
+            <p className="mt-4" style={{ fontSize: 12, color: 'var(--text-2)' }}>
+              {uploadProgress}
+            </p>
           )}
         </div>
 
-        <p className="text-sm text-gray-500 mt-4">
-          Supports large textbooks (100s-1000s of pages). Processing may take a few minutes for large files.
+        <p className="mt-4" style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.55 }}>
+          Supports large textbooks (hundreds of pages). Processing may take a few minutes.
         </p>
       </div>
 
       {/* Document List */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">
-          Uploaded Textbooks ({documents.length})
-        </h2>
+      <div className="cw-card cw-card-pad-lg">
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="cw-section-title">Uploaded Textbooks</h2>
+          <span className="cw-badge cw-badge-neutral">{documents.length}</span>
+        </div>
 
         {loadingDocs ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--text-4)' }} />
           </div>
         ) : documents.length === 0 ? (
-          <p className="text-gray-400 italic text-center py-8">
+          <p
+            className="text-center py-10"
+            style={{ color: 'var(--text-4)', fontStyle: 'italic', fontSize: 12.5 }}
+          >
             No textbooks uploaded yet. Upload a PDF or DOCX to get started.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
+          <div className="cw-scroll-x">
+            <table className="cw-table">
               <thead>
-                <tr className="border-b">
-                  <th className="py-3 px-4 font-medium text-gray-600">Filename</th>
-                  <th className="py-3 px-4 font-medium text-gray-600">Size</th>
-                  <th className="py-3 px-4 font-medium text-gray-600">Chunks</th>
-                  <th className="py-3 px-4 font-medium text-gray-600">Uploaded</th>
-                  <th className="py-3 px-4 font-medium text-gray-600">Actions</th>
+                <tr>
+                  <th>Filename</th>
+                  <th>Size</th>
+                  <th>Chunks</th>
+                  <th>Uploaded</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {documents.map((doc) => (
-                  <tr key={doc.id} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-4">
+                  <tr key={doc.id}>
+                    <td>
                       <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-gray-400" />
-                        {doc.original_filename}
+                        <FileText className="w-3.5 h-3.5" style={{ color: 'var(--text-4)' }} />
+                        <span>{doc.original_filename}</span>
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-600">
+                    <td style={{ color: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>
                       {formatFileSize(doc.file_size_bytes)}
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{doc.total_chunks}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">
+                    <td style={{ color: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>
+                      {doc.total_chunks}
+                    </td>
+                    <td style={{ color: 'var(--text-3)' }}>
                       {new Date(doc.uploaded_at).toLocaleDateString()}
                     </td>
-                    <td className="py-3 px-4">
+                    <td>
                       <button
                         onClick={() => handleDelete(doc.id)}
-                        className="flex items-center gap-1 text-red-600 hover:text-red-800 text-sm"
+                        className="inline-flex items-center gap-1"
+                        style={{ color: 'var(--err-500)', fontSize: 12, fontWeight: 500 }}
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                         Delete
                       </button>
                     </td>

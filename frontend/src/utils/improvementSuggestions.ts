@@ -171,7 +171,7 @@ export function generateImprovementSuggestions(input: SuggestionInput): Suggesti
  * Helper: Parse grade string to number
  */
 function parseGradeToNumber(grade: string): number {
-  if (grade === 'College') return 13;
+  if (grade === 'College') return 12;
   const match = grade.match(/\d+/);
   return match ? parseInt(match[0]) : 6;
 }

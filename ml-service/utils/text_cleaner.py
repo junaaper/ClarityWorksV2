@@ -1,8 +1,42 @@
 import re
+import unicodedata
 
 
 class TextCleaner:
     """Clean extracted text from PDFs/DOCX/OCR"""
+
+    @staticmethod
+    def normalize_unicode_text(text):
+        """Normalize PDF/OCR Unicode without silently dropping real letters."""
+        replacements = {
+            '\ufb00': 'ff',
+            '\ufb01': 'fi',
+            '\ufb02': 'fl',
+            '\ufb03': 'ffi',
+            '\ufb04': 'ffl',
+            '\ufb05': 'st',
+            '\ufb06': 'st',
+            '\u0398': 'ti',
+            '\u2018': "'",
+            '\u2019': "'",
+            '\u201a': "'",
+            '\u201b': "'",
+            '\u201c': '"',
+            '\u201d': '"',
+            '\u201e': '"',
+            '\u201f': '"',
+            '\u2013': '-',
+            '\u2014': '--',
+            '\u2212': '-',
+            '\u00a0': ' ',
+            '\u2007': ' ',
+            '\u202f': ' ',
+        }
+
+        text = ''.join(replacements.get(ch, ch) for ch in text)
+        text = unicodedata.normalize('NFKC', text)
+        text = re.sub(r'[\u200b-\u200f\u202a-\u202e\ufeff]', '', text)
+        return text
 
     @staticmethod
     def clean_extracted_text(text):
@@ -26,8 +60,10 @@ class TextCleaner:
         # Step 1: Remove null bytes and control characters (except newlines/tabs)
         text = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]', '', text)
 
-        # Step 2: Normalize Unicode (fix special characters)
-        text = text.encode('ascii', 'ignore').decode('ascii')
+        # Step 2: Normalize Unicode while preserving real extracted letters.
+        # PDFs often encode ligatures/private glyphs as non-ASCII text; dropping
+        # them can turn "time" into "me" or "mentioned" into "menoned".
+        text = TextCleaner.normalize_unicode_text(text)
 
         # Step 3: Remove repeated special characters (e.g., "------", "======")
         text = re.sub(r'([^\w\s])\1{3,}', r'\1\1', text)
@@ -42,10 +78,19 @@ class TextCleaner:
         lines = text.split('\n')
         lines = [line.strip() for line in lines]
 
-        # Step 7: Remove nonsensical short lines (likely artifacts)
+        # Step 7: Remove nonsensical short lines (likely artifacts), but keep
+        # legitimate short headings such as "Letter of Motivation".
         cleaned_lines = []
         for line in lines:
-            if len(line) > 20 or re.search(r'[.!?]$', line):
+            word_like_tokens = re.findall(r'[A-Za-z]{2,}', line)
+            alpha_count = sum(1 for ch in line if ch.isalpha())
+            is_short_heading = (
+                8 <= len(line) <= 60
+                and len(word_like_tokens) >= 2
+                and alpha_count >= max(6, len(line) * 0.45)
+            )
+
+            if len(line) > 20 or re.search(r'[.!?]$', line) or is_short_heading:
                 cleaned_lines.append(line)
             elif len(line) == 0:
                 cleaned_lines.append('')

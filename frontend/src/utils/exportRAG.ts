@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import { Document, Paragraph, HeadingLevel, AlignmentType, Packer } from 'docx';
+import { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Packer } from 'docx';
 import { saveAs } from 'file-saver';
 
 interface RAGResult {
@@ -22,181 +22,194 @@ interface RAGExportData {
 
 export async function exportRAGResultsPDF(data: RAGExportData) {
   const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 20;
+  const contentWidth = pageWidth - margin * 2;
   let yPos = 20;
 
-  // Title
-  doc.setFontSize(20);
+  const checkPage = (need: number) => {
+    if (yPos + need > pageHeight - 25) {
+      doc.addPage();
+      yPos = 25;
+    }
+  };
+
+  // Header
+  doc.setFillColor(20, 184, 166);
+  doc.rect(0, 0, pageWidth, 36, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
-  doc.text('ClarityWorks - RAG Query Results', 105, yPos, { align: 'center' });
-  yPos += 15;
+  doc.text('ClarityWorks', pageWidth / 2, 18, { align: 'center' });
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Textbook Query Results', pageWidth / 2, 28, { align: 'center' });
+
+  yPos = 50;
 
   // Query
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
-  doc.text('Query:', 20, yPos);
+  doc.setTextColor(31, 41, 55);
+  doc.text('Query', margin, yPos);
   yPos += 7;
 
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(11);
-  const queryLines = doc.splitTextToSize(`"${data.query}"`, 170);
-  doc.text(queryLines, 20, yPos);
-  yPos += (queryLines.length * 5) + 10;
+  doc.setTextColor(71, 85, 105);
+  const queryLines = doc.splitTextToSize(`"${data.query}"`, contentWidth);
+  doc.text(queryLines, margin, yPos);
+  yPos += queryLines.length * 5.5 + 8;
 
-  // AI-Generated Answer
+  // Metadata
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Documents searched: ${data.documentNames.join(', ')}`, margin, yPos);
+  yPos += 5;
+  doc.text(`Sources retrieved: ${data.results.length}  |  ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin, yPos);
+  yPos += 12;
+
+  // Answer
   if (data.answer) {
-    if (yPos > 240) {
-      doc.addPage();
-      yPos = 20;
-    }
+    checkPage(30);
+    doc.setDrawColor(20, 184, 166);
+    doc.setLineWidth(0.8);
+    doc.line(margin, yPos, margin + 40, yPos);
+    doc.setLineWidth(0.2);
+    yPos += 6;
 
-    doc.setFontSize(14);
+    doc.setFontSize(13);
     doc.setFont('helvetica', 'bold');
-    doc.text('AI-Generated Answer:', 20, yPos);
-    yPos += 10;
+    doc.setTextColor(31, 41, 55);
+    doc.text('Answer', margin, yPos);
+    yPos += 8;
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    const answerLines = doc.splitTextToSize(data.answer, 170);
-    doc.text(answerLines, 20, yPos);
-    yPos += (answerLines.length * 5) + 15;
+    doc.setTextColor(31, 41, 55);
+    const answerLines = doc.splitTextToSize(data.answer, contentWidth);
+    answerLines.forEach((line: string) => {
+      checkPage(6);
+      doc.text(line, margin, yPos);
+      yPos += 5;
+    });
+    yPos += 12;
   }
-
-  // Documents Searched
-  if (yPos > 250) {
-    doc.addPage();
-    yPos = 20;
-  }
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Documents searched: ${data.documentNames.join(', ')}`, 20, yPos);
-  yPos += 7;
-
-  doc.text(`Sources retrieved: ${data.results.length}`, 20, yPos);
-  yPos += 15;
 
   // Source Documents
-  doc.setFontSize(12);
+  checkPage(20);
+  doc.setDrawColor(59, 130, 246);
+  doc.setLineWidth(0.8);
+  doc.line(margin, yPos, margin + 40, yPos);
+  doc.setLineWidth(0.2);
+  yPos += 6;
+
+  doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
-  doc.text('Source Documents:', 20, yPos);
+  doc.setTextColor(31, 41, 55);
+  doc.text('Source Documents', margin, yPos);
   yPos += 10;
 
   data.results.forEach((result, index) => {
-    if (yPos > 250) {
-      doc.addPage();
-      yPos = 20;
-    }
+    checkPage(35);
 
     // Source header
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Source ${index + 1}`, 20, yPos);
-    yPos += 7;
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(margin, yPos - 3, contentWidth, 10, 2, 2, 'F');
 
-    // Metadata
-    doc.setFontSize(9);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(59, 130, 246);
+    doc.text(`Source ${index + 1}`, margin + 4, yPos + 3);
+
     doc.setFont('helvetica', 'normal');
-    doc.text(
-      `Page: ${result.metadata.page_number || 'N/A'} | Similarity: ${(result.similarity_score * 100).toFixed(1)}% | Words: ${result.metadata.word_count}`,
-      20,
-      yPos
-    );
-    yPos += 7;
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    const meta = `${(result.similarity_score * 100).toFixed(1)}% match  |  ${result.metadata.word_count} words${result.metadata.page_number ? `  |  Page ${result.metadata.page_number}` : ''}`;
+    doc.text(meta, margin + contentWidth - 4, yPos + 3, { align: 'right' });
+    yPos += 12;
 
     // Text
-    doc.setFontSize(10);
-    const textLines = doc.splitTextToSize(result.text, 170);
-    doc.text(textLines, 20, yPos);
-    yPos += (textLines.length * 5) + 10;
+    doc.setFontSize(9.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(31, 41, 55);
+    const textLines = doc.splitTextToSize(result.text, contentWidth - 8);
+    textLines.forEach((line: string) => {
+      checkPage(5);
+      doc.text(line, margin + 4, yPos);
+      yPos += 4.5;
+    });
+    yPos += 10;
   });
+
+  // Footer
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7.5);
+    doc.setTextColor(160, 170, 180);
+    doc.text(
+      `Page ${i} of ${totalPages}  |  ClarityWorks Textbook Query`,
+      pageWidth / 2, pageHeight - 8, { align: 'center' }
+    );
+  }
 
   doc.save('rag-query-results.pdf');
 }
 
 export async function exportRAGResultsDOCX(data: RAGExportData) {
-  const children: (typeof Paragraph extends new (...args: never[]) => infer R ? R : never)[] = [
-    // Title
+  const children: Paragraph[] = [
     new Paragraph({
-      text: 'ClarityWorks - RAG Query Results',
+      text: 'ClarityWorks - Textbook Query Results',
       heading: HeadingLevel.HEADING_1,
       alignment: AlignmentType.CENTER,
       spacing: { after: 200 }
     }),
 
-    // Query
-    new Paragraph({
-      text: 'Query',
-      heading: HeadingLevel.HEADING_2,
-      spacing: { before: 200, after: 100 }
-    }),
+    new Paragraph({ text: 'Query', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
+    new Paragraph({ children: [new TextRun({ text: `"${data.query}"`, italics: true })], spacing: { after: 100 } }),
 
     new Paragraph({
-      text: `"${data.query}"`,
-      spacing: { after: 200 }
+      children: [new TextRun({ text: `Documents: ${data.documentNames.join(', ')}  |  Sources: ${data.results.length}`, color: '64748b' })],
+      spacing: { after: 300 },
     }),
   ];
 
-  // AI-Generated Answer
   if (data.answer) {
     children.push(
-      new Paragraph({
-        text: 'AI-Generated Answer',
-        heading: HeadingLevel.HEADING_2,
-        spacing: { before: 300, after: 100 }
-      }),
-
-      new Paragraph({
-        text: data.answer,
-        spacing: { after: 400 }
-      })
+      new Paragraph({ text: 'Answer', heading: HeadingLevel.HEADING_2, spacing: { before: 300, after: 100 } }),
+      new Paragraph({ text: data.answer, spacing: { after: 400 } })
     );
   }
 
-  // Metadata
   children.push(
-    new Paragraph({
-      text: `Documents searched: ${data.documentNames.join(', ')}`,
-      spacing: { before: 200, after: 100 }
-    }),
-
-    new Paragraph({
-      text: `Sources retrieved: ${data.results.length}`,
-      spacing: { after: 400 }
-    }),
-
-    // Source Documents Header
-    new Paragraph({
-      text: 'Source Documents',
-      heading: HeadingLevel.HEADING_2,
-      spacing: { before: 300, after: 200 }
-    })
+    new Paragraph({ text: 'Source Documents', heading: HeadingLevel.HEADING_2, spacing: { before: 300, after: 200 } })
   );
 
-  // Add sources
   data.results.forEach((result, index) => {
     children.push(
       new Paragraph({
         text: `Source ${index + 1}`,
         heading: HeadingLevel.HEADING_3,
-        spacing: { before: 300, after: 100 }
+        spacing: { before: 300, after: 60 }
       }),
-
       new Paragraph({
-        text: `Page: ${result.metadata.page_number || 'N/A'} | Similarity: ${(result.similarity_score * 100).toFixed(1)}% | Words: ${result.metadata.word_count}`,
-        spacing: { after: 100 }
+        children: [
+          new TextRun({
+            text: `${(result.similarity_score * 100).toFixed(1)}% match  |  ${result.metadata.word_count} words${result.metadata.page_number ? `  |  Page ${result.metadata.page_number}` : ''}`,
+            color: '64748b',
+            size: 18,
+          }),
+        ],
+        spacing: { after: 80 },
       }),
-
-      new Paragraph({
-        text: result.text,
-        spacing: { after: 200 }
-      })
+      new Paragraph({ text: result.text, spacing: { after: 200 } })
     );
   });
 
-  const doc = new Document({
-    sections: [{ properties: {}, children }]
-  });
-
-  const blob = await Packer.toBlob(doc);
+  const docx = new Document({ sections: [{ properties: {}, children }] });
+  const blob = await Packer.toBlob(docx);
   saveAs(blob, 'rag-query-results.docx');
 }

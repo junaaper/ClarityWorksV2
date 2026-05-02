@@ -1,11 +1,11 @@
 {
   "use": {
-    "complex": ["utilize", "employ", "leverage", "implement"],
+    "complex": ["utilize", "employ", "apply"],
     "grade": 8,
     "reason": "More formal and technical alternatives"
   },
   "help": {
-    "complex": ["assist", "aid", "facilitate", "support"],
+    "complex": ["assist", "aid", "support"],
     "grade": 7,
     "reason": "More formal synonyms"
   },
@@ -15,12 +15,12 @@
     "reason": "More academic alternatives"
   },
   "get": {
-    "complex": ["obtain", "acquire", "procure", "secure"],
+    "complex": ["obtain", "acquire", "receive"],
     "grade": 8,
     "reason": "More formal verbs"
   },
   "need": {
-    "complex": ["require", "necessitate", "demand"],
+    "complex": ["require", "demand"],
     "grade": 8,
     "reason": "More formal alternatives"
   },
@@ -40,7 +40,7 @@
     "reason": "More formal verbs"
   },
   "buy": {
-    "complex": ["purchase", "acquire", "procure"],
+    "complex": ["purchase", "acquire"],
     "grade": 7,
     "reason": "More formal alternatives"
   },
@@ -50,19 +50,14 @@
     "reason": "More formal verbs"
   },
   "look at": {
-    "complex": ["examine", "observe", "inspect", "scrutinize"],
+    "complex": ["examine", "observe", "inspect"],
     "grade": 8,
     "reason": "More academic verbs"
   },
   "build": {
-    "complex": ["construct", "erect", "fabricate"],
+    "complex": ["construct", "assemble"],
     "grade": 7,
     "reason": "More technical alternatives"
-  },
-  "keep": {
-    "complex": ["maintain", "preserve", "retain"],
-    "grade": 7,
-    "reason": "More formal verbs"
   },
   "save": {
     "complex": ["preserve", "conserve", "protect"],
@@ -75,7 +70,7 @@
     "reason": "More formal verbs"
   },
   "watch": {
-    "complex": ["observe", "monitor", "scrutinize"],
+    "complex": ["observe", "monitor"],
     "grade": 8,
     "reason": "More academic alternatives"
   },
@@ -85,7 +80,7 @@
     "reason": "More formal phrases"
   },
   "give": {
-    "complex": ["provide", "furnish", "supply", "contribute"],
+    "complex": ["provide", "supply"],
     "grade": 7,
     "reason": "More formal verbs"
   },
@@ -109,25 +104,10 @@
     "grade": 8,
     "reason": "More formal temporal words"
   },
-  "so": {
-    "complex": ["therefore", "consequently", "thus", "hence"],
-    "grade": 8,
-    "reason": "More formal connectors"
-  },
-  "but": {
-    "complex": ["however", "nevertheless", "nonetheless"],
-    "grade": 7,
-    "reason": "More formal conjunctions"
-  },
   "also": {
     "complex": ["furthermore", "moreover", "additionally"],
     "grade": 7,
     "reason": "More formal connectors"
-  },
-  "large": {
-    "complex": ["substantial", "considerable", "extensive"],
-    "grade": 8,
-    "reason": "More formal adjectives"
   },
   "person": {
     "complex": ["individual", "entity"],
@@ -145,12 +125,12 @@
     "reason": "More formal alternatives"
   },
   "talk": {
-    "complex": ["communicate", "converse", "discourse"],
+    "complex": ["communicate", "converse", "discuss"],
     "grade": 8,
     "reason": "More formal verbs"
   },
   "right": {
-    "complex": ["appropriate", "suitable", "proper"],
+    "complex": ["appropriate", "correct", "proper"],
     "grade": 7,
     "reason": "More formal adjectives"
   },
@@ -159,18 +139,13 @@
     "grade": 7,
     "reason": "More formal adjectives"
   },
-  "like": {
-    "complex": ["similar", "comparable", "analogous"],
-    "grade": 8,
-    "reason": "More formal comparatives"
-  },
   "different": {
-    "complex": ["various", "diverse", "disparate"],
+    "complex": ["various", "diverse", "distinct"],
     "grade": 8,
     "reason": "More formal alternatives"
   },
   "make": {
-    "complex": ["create", "produce", "generate", "fabricate"],
+    "complex": ["create", "produce", "generate"],
     "grade": 7,
     "reason": "More formal verbs"
   },
@@ -185,7 +160,7 @@
     "reason": "More academic verbs"
   },
   "improve": {
-    "complex": ["enhance", "ameliorate", "refine"],
+    "complex": ["enhance", "refine", "strengthen"],
     "grade": 8,
     "reason": "More formal alternatives"
   },
@@ -205,7 +180,7 @@
     "reason": "More formal verbs"
   },
   "slow down": {
-    "complex": ["decelerate", "retard", "impede"],
+    "complex": ["decelerate", "impede", "hinder"],
     "grade": 8,
     "reason": "More formal alternatives"
   }

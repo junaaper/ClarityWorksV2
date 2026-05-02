@@ -24,7 +24,7 @@ const SimplificationHistory: React.FC = () => {
 
   const fetchSimplifications = async () => {
     try {
-      const response = await api.get('/simplify/history');
+      const response = await api.get('/api/simplify/history');
       setSimplifications(response.data);
     } catch (error) {
       console.error('Failed to fetch simplification history:', error);
@@ -32,14 +32,28 @@ const SimplificationHistory: React.FC = () => {
     setLoading(false);
   };
 
-  if (loading) return <div className="text-center py-8 text-gray-500">Loading simplification history...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-10">
+        <div
+          className="animate-spin rounded-full h-8 w-8 border-b-2"
+          style={{ borderColor: 'var(--p-700)' }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mt-4">
       {simplifications.length === 0 ? (
-        <p className="text-gray-500 italic text-center py-8">No simplifications saved yet.</p>
+        <p
+          className="text-center py-10"
+          style={{ color: 'var(--text-4)', fontStyle: 'italic', fontSize: 12.5 }}
+        >
+          No simplifications saved yet.
+        </p>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {simplifications.map((simp) => {
             const changes = JSON.parse(simp.changes_applied || '[]');
             const metricsOrig = simp.metrics_original ? JSON.parse(simp.metrics_original) : null;
@@ -47,57 +61,72 @@ const SimplificationHistory: React.FC = () => {
             const isExpanded = expandedId === simp.id;
 
             return (
-              <div key={simp.id} className="bg-white border rounded-lg p-6 shadow-sm">
-                {/* Header */}
-                <div className="flex justify-between items-start mb-4">
+              <div key={simp.id} className="cw-card cw-card-pad-lg">
+                <div className="flex justify-between items-start mb-4 gap-3 flex-wrap">
                   <div>
-                    <p className="text-sm text-gray-600">
-                      {new Date(simp.created_at).toLocaleDateString()} {new Date(simp.created_at).toLocaleTimeString()}
+                    <div className="cw-eyebrow mb-1">
+                      {new Date(simp.created_at).toLocaleString()}
+                    </div>
+                    <p style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700, color: 'var(--text-1)' }}>
+                      Rewritten to {simp.target_grade}
                     </p>
-                    <p className="text-lg font-semibold">
-                      Simplified to {simp.target_grade}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      Mode: {simp.mode} | {changes.length} changes applied
-                    </p>
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      <span className="cw-badge cw-badge-neutral">{simp.mode}</span>
+                      <span className="cw-badge cw-badge-primary">
+                        {changes.length} change{changes.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Before/After Comparison */}
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Original */}
-                  <div className="bg-red-50 border border-red-200 rounded p-4">
-                    <p className="font-semibold text-red-800 mb-2">Original</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div
+                    className="rounded-md p-4"
+                    style={{
+                      background: 'color-mix(in srgb, var(--err-500) 5%, var(--surface-raised))',
+                      border: '1px solid color-mix(in srgb, var(--err-500) 18%, transparent)',
+                    }}
+                  >
+                    <div className="cw-eyebrow mb-2" style={{ color: 'var(--err-700)' }}>Original</div>
                     {metricsOrig && (
-                      <div className="text-xs text-gray-600 mb-2">
-                        Grade: {metricsOrig.grade} |
-                        Flesch: {metricsOrig.fleschReadingEase?.toFixed(1) || 'N/A'}
+                      <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
+                        Grade: {metricsOrig.grade} · Flesch: {metricsOrig.fleschReadingEase?.toFixed(1) || 'N/A'}
                       </div>
                     )}
-                    <p className={`text-sm text-gray-700 ${isExpanded ? '' : 'line-clamp-4'}`}>
+                    <p
+                      className={isExpanded ? '' : 'line-clamp-4'}
+                      style={{ fontSize: 12.5, color: 'var(--text-1)', lineHeight: 1.55, fontFamily: 'var(--font-serif)' }}
+                    >
                       {simp.original_text}
                     </p>
                   </div>
 
-                  {/* Simplified */}
-                  <div className="bg-green-50 border border-green-200 rounded p-4">
-                    <p className="font-semibold text-green-800 mb-2">Simplified</p>
+                  <div
+                    className="rounded-md p-4"
+                    style={{
+                      background: 'color-mix(in srgb, var(--s-500) 6%, var(--surface-raised))',
+                      border: '1px solid color-mix(in srgb, var(--s-500) 22%, transparent)',
+                    }}
+                  >
+                    <div className="cw-eyebrow mb-2" style={{ color: 'var(--s-700)' }}>Rewritten</div>
                     {metricsSimp && (
-                      <div className="text-xs text-gray-600 mb-2">
-                        Grade: {metricsSimp.grade} |
-                        Flesch: {metricsSimp.fleschReadingEase?.toFixed(1) || 'N/A'}
+                      <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
+                        Grade: {metricsSimp.grade} · Flesch: {metricsSimp.fleschReadingEase?.toFixed(1) || 'N/A'}
                       </div>
                     )}
-                    <p className={`text-sm text-gray-700 ${isExpanded ? '' : 'line-clamp-4'}`}>
+                    <p
+                      className={isExpanded ? '' : 'line-clamp-4'}
+                      style={{ fontSize: 12.5, color: 'var(--text-1)', lineHeight: 1.55, fontFamily: 'var(--font-serif)' }}
+                    >
                       {simp.simplified_text}
                     </p>
                   </div>
                 </div>
 
-                {/* View Details Button */}
                 <button
                   onClick={() => setExpandedId(isExpanded ? null : simp.id)}
-                  className="mt-4 text-blue-600 hover:underline text-sm"
+                  className="mt-4 hover:underline"
+                  style={{ color: 'var(--p-700)', fontSize: 12, fontWeight: 500 }}
                 >
                   {isExpanded ? 'Show less' : 'View full details'}
                 </button>

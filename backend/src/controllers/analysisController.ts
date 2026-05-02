@@ -5,27 +5,46 @@ import { AuthRequest } from '../middleware/auth';
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'http://localhost:5001';
 
+const MIN_TEXT_LENGTH = 50;
+const MAX_TEXT_LENGTH = 50000;
+
+const validateAnalysisText = (text: unknown): { text: string | null; error?: string } => {
+  if (typeof text !== 'string') {
+    return { text: null, error: 'Text must be provided' };
+  }
+
+  const trimmed = text.trim();
+  if (trimmed.length < MIN_TEXT_LENGTH) {
+    return { text: null, error: `Text must be at least ${MIN_TEXT_LENGTH} characters long` };
+  }
+
+  if (trimmed.length > MAX_TEXT_LENGTH) {
+    return { text: null, error: `Text must be less than ${MAX_TEXT_LENGTH.toLocaleString()} characters` };
+  }
+
+  return { text: trimmed };
+};
+
+const fetchAnalysisFromPython = async (text: string) => {
+  const analysisResponse = await axios.post(`${PYTHON_SERVICE_URL}/analyze`, {
+    text,
+  });
+
+  return analysisResponse.data.analysis;
+};
+
 export const analyzeText = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { text, title } = req.body;
     const userId = req.userId;
 
-    if (!text || text.trim().length < 50) {
-      res.status(400).json({ error: 'Text must be at least 50 characters long' });
+    const validation = validateAnalysisText(text);
+    if (!validation.text) {
+      res.status(400).json({ error: validation.error });
       return;
     }
 
-    if (text.length > 50000) {
-      res.status(400).json({ error: 'Text must be less than 50,000 characters' });
-      return;
-    }
-
-    // Send to Python service for analysis
-    const analysisResponse = await axios.post(`${PYTHON_SERVICE_URL}/analyze`, {
-      text: text.trim(),
-    });
-
-    const analysis = analysisResponse.data.analysis;
+    const analysis = await fetchAnalysisFromPython(validation.text);
 
     // Save to database
     const result = await pool.query(
@@ -40,7 +59,7 @@ export const analyzeText = async (req: AuthRequest, res: Response): Promise<void
       RETURNING id, created_at`,
       [
         userId,
-        text.trim(),
+        validation.text,
         title || `Analysis ${new Date().toLocaleDateString()}`,
         analysis.basic_metrics.word_count,
         analysis.basic_metrics.sentence_count,
@@ -69,6 +88,32 @@ export const analyzeText = async (req: AuthRequest, res: Response): Promise<void
     });
   } catch (error) {
     console.error('Analysis error:', error);
+    if (axios.isAxiosError(error) && error.code === 'ECONNREFUSED') {
+      res.status(503).json({ error: 'Analysis service unavailable. Please try again later.' });
+    } else {
+      res.status(500).json({ error: 'Error analyzing text' });
+    }
+  }
+};
+
+export const analyzeTextPreview = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { text } = req.body;
+    const validation = validateAnalysisText(text);
+
+    if (!validation.text) {
+      res.status(400).json({ error: validation.error });
+      return;
+    }
+
+    const analysis = await fetchAnalysisFromPython(validation.text);
+
+    res.json({
+      success: true,
+      analysis,
+    });
+  } catch (error) {
+    console.error('Analysis preview error:', error);
     if (axios.isAxiosError(error) && error.code === 'ECONNREFUSED') {
       res.status(503).json({ error: 'Analysis service unavailable. Please try again later.' });
     } else {
@@ -112,13 +157,21 @@ export const getAnalyses = async (req: AuthRequest, res: Response): Promise<void
 
     const result = await pool.query(query, params);
 
-    // Get total count
+    // Get total count (must mirror the same filters as the main query)
     let countQuery = 'SELECT COUNT(*) FROM analyses WHERE user_id = $1';
     const countParams: (string | number)[] = [userId!];
+    let countParamIndex = 2;
 
     if (search) {
-      countQuery += ' AND (title ILIKE $2 OR original_text ILIKE $2)';
+      countQuery += ` AND (title ILIKE $${countParamIndex} OR original_text ILIKE $${countParamIndex})`;
       countParams.push(`%${search}%`);
+      countParamIndex++;
+    }
+
+    if (gradeLevel) {
+      countQuery += ` AND predicted_grade_level = $${countParamIndex}`;
+      countParams.push(gradeLevel);
+      countParamIndex++;
     }
 
     const countResult = await pool.query(countQuery, countParams);

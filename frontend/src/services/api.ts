@@ -1,5 +1,17 @@
 import axios from 'axios';
-import type { AuthResponse, AnalysisResponse, SavedAnalysis, AnalysisListItem, Pagination, StatsResponse, AdminUser, AdminAnalysis, AdminStats } from '../types';
+import type {
+  AuthResponse,
+  AnalysisResponse,
+  SavedAnalysis,
+  AnalysisListItem,
+  Pagination,
+  StatsResponse,
+  AdminUser,
+  AdminAnalysis,
+  AdminStats,
+  SimplificationChange,
+  SimplifyAnalyzeResponse,
+} from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -71,7 +83,7 @@ export const authApi = {
     const formData = new FormData();
     formData.append('profilePicture', file);
     const response = await api.post('/api/auth/profile-picture', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     });
     return response.data;
   },
@@ -86,6 +98,11 @@ export const authApi = {
 export const analysisApi = {
   analyze: async (text: string, title?: string): Promise<AnalysisResponse> => {
     const response = await api.post('/api/analyses', { text, title });
+    return response.data;
+  },
+
+  preview: async (text: string): Promise<{ success: boolean; analysis: AnalysisResponse['analysis'] }> => {
+    const response = await api.post('/api/analyses/preview', { text });
     return response.data;
   },
 
@@ -120,7 +137,7 @@ export const textApi = {
     const formData = new FormData();
     formData.append('file', file);
     const response = await api.post('/api/text/extract-pdf', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     });
     return response.data;
   },
@@ -129,7 +146,7 @@ export const textApi = {
     const formData = new FormData();
     formData.append('file', file);
     const response = await api.post('/api/text/extract-doc', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     });
     return response.data;
   },
@@ -138,7 +155,7 @@ export const textApi = {
     const formData = new FormData();
     formData.append('file', file);
     const response = await api.post('/api/text/extract-image', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     });
     return response.data;
   },
@@ -146,16 +163,16 @@ export const textApi = {
 
 // Simplification API
 export const simplifyApi = {
-  analyze: async (data: { analysisId?: number; targetGrade: number; text?: string }): Promise<{
-    original_text: string;
-    suggested_changes: any[];
-    preview_text: string;
-  }> => {
+  analyze: async (data: { analysisId?: number; targetGrade: number; text?: string; mode?: 'auto' | 'interactive' }): Promise<SimplifyAnalyzeResponse> => {
     const response = await api.post('/api/simplify/analyze', data);
     return response.data;
   },
 
-  apply: async (data: { text: string; acceptedChanges: number[]; allChanges: any[] }): Promise<{ simplified_text: string }> => {
+  apply: async (data: {
+    text: string;
+    acceptedChanges: number[];
+    allChanges: SimplificationChange[];
+  }): Promise<{ simplified_text: string }> => {
     const response = await api.post('/api/simplify/apply', data);
     return response.data;
   },
@@ -164,7 +181,7 @@ export const simplifyApi = {
     analysisId: number;
     simplifiedText: string;
     targetGrade: number;
-    changes: any[];
+    changes: SimplificationChange[];
     mode: 'auto' | 'interactive';
   }): Promise<any> => {
     const response = await api.post('/api/simplify/save', data);
@@ -178,7 +195,7 @@ export const ragApi = {
     const formData = new FormData();
     formData.append('file', file);
     const response = await api.post('/api/rag/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
       timeout: 300000,
     });
     return response.data;

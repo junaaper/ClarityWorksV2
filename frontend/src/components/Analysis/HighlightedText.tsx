@@ -46,8 +46,8 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
     const rect = event.currentTarget.getBoundingClientRect();
     setTooltip({
       content,
-      x: rect.left + window.scrollX,
-      y: rect.top + window.scrollY - 10,
+      x: rect.left + rect.width / 2,
+      y: rect.top - 8,
     });
   };
 
@@ -63,11 +63,11 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
       return (
         <span
           key={wordKey}
-          className="text-red-600 font-medium cursor-help underline decoration-dotted decoration-red-400"
+          className="text-red-600 font-medium cursor-help underline decoration-wavy decoration-red-400 underline-offset-2 hover:bg-red-100 rounded px-0.5 transition-colors"
           onMouseEnter={(e) =>
             handleMouseEnter(
               e,
-              `${details.reason}\nSyllables: ${details.syllables}`
+              `Why "${details.word}" is flagged:\n${details.reason}`
             )
           }
           onMouseLeave={handleMouseLeave}
@@ -95,11 +95,11 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
       return (
         <span
           key={`sentence-${sentenceIndex}`}
-          className="bg-red-50 border-l-2 border-red-400 pl-1 inline"
+          className="bg-red-50 border-l-2 border-red-400 pl-1 inline cursor-help hover:bg-red-100 transition-colors"
           onMouseEnter={(e) =>
             handleMouseEnter(
               e,
-              `${details.reason}\nFlesch Score: ${details.flesch_score}`
+              `Why this sentence is difficult:\n${details.reason}\n• ${details.word_count} words\n• Flesch score: ${details.flesch_score} (lower = harder)`
             )
           }
           onMouseLeave={handleMouseLeave}
@@ -121,15 +121,14 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
       {/* Tooltip */}
       {tooltip && (
         <div
-          className="fixed z-50 bg-gray-900 text-white text-sm px-3 py-2 rounded-lg shadow-lg max-w-xs whitespace-pre-line"
+          className="fixed z-50 bg-gray-900 text-white text-sm px-3 py-2 rounded-lg shadow-xl max-w-sm whitespace-pre-line pointer-events-none leading-snug"
           style={{
-            left: tooltip.x,
+            left: Math.max(8, Math.min(tooltip.x - 160, window.innerWidth - 336)),
             top: tooltip.y,
             transform: 'translateY(-100%)',
           }}
         >
           {tooltip.content}
-          <div className="absolute top-full left-4 w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-gray-900"></div>
         </div>
       )}
 

@@ -54,117 +54,152 @@ const AnalysisManagement: React.FC = () => {
     }
   };
 
-  const getComplexityColor = (complexity: string): string => {
+  const getComplexityBadge = (complexity: string): string => {
     switch (complexity) {
       case 'Elementary':
-        return 'bg-green-100 text-green-800';
+      case 'Beginner':
+        return 'cw-badge cw-badge-ok';
       case 'Intermediate':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'cw-badge cw-badge-warn';
       case 'Advanced':
-        return 'bg-orange-100 text-orange-800';
+        return 'cw-badge cw-badge-primary';
       case 'Expert':
-        return 'bg-red-100 text-red-800';
+        return 'cw-badge cw-badge-err';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'cw-badge cw-badge-neutral';
     }
   };
 
+  const iconBtnStyle = (hoverBg: string, hoverColor: string) => ({
+    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
+      e.currentTarget.style.background = hoverBg;
+      e.currentTarget.style.color = hoverColor;
+    },
+    onMouseLeave: (e: React.MouseEvent<HTMLElement>) => {
+      e.currentTarget.style.background = 'transparent';
+      e.currentTarget.style.color = 'var(--text-3)';
+    },
+  });
+
   return (
-    <div className="max-w-7xl mx-auto">
+    <div>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Analysis Management</h1>
-        <p className="text-gray-600 mt-1">View and manage all text analyses</p>
+        <div className="cw-eyebrow mb-2">Administration</div>
+        <h1 className="cw-hero" style={{ fontSize: 28 }}>Analysis Management</h1>
+        <p className="mt-2" style={{ color: 'var(--text-3)', fontSize: 12.5 }}>
+          View and manage all text analyses across the platform.
+        </p>
       </div>
 
       {/* Search */}
-      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 mb-6">
+      <div className="cw-card cw-card-pad mb-5">
         <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+            style={{ color: 'var(--text-4)' }}
+          />
           <input
             type="text"
-            placeholder="Search by title or content..."
+            placeholder="Search by title or content…"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
               setPagination(p => ({ ...p, page: 1 }));
             }}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+            className="cw-input"
+            style={{ paddingLeft: 36 }}
           />
         </div>
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
-          <AlertCircle className="w-5 h-5" />
+        <div
+          className="mb-4 rounded-md flex items-center gap-2"
+          style={{
+            padding: '10px 14px',
+            background: 'var(--err-50)',
+            border: '1px solid color-mix(in srgb, var(--err-500) 22%, transparent)',
+            color: 'var(--err-700)',
+            fontSize: 12.5,
+          }}
+        >
+          <AlertCircle className="w-4 h-4" />
           <span>{error}</span>
         </div>
       )}
 
       {/* Analyses Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+      <div className="cw-card overflow-hidden">
+        <div className="cw-scroll-x">
+          <table className="cw-table">
+            <thead>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade Level</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Complexity</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Words</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Flesch Score</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th>Title</th>
+                <th>User</th>
+                <th>Grade</th>
+                <th>Complexity</th>
+                <th>Words</th>
+                <th>Flesch</th>
+                <th>Created</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+                  <td colSpan={8} className="text-center py-12">
+                    <div
+                      className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto"
+                      style={{ borderColor: 'var(--p-700)' }}
+                    />
                   </td>
                 </tr>
               ) : analyses.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={8} className="text-center py-12" style={{ color: 'var(--text-4)', fontSize: 12.5 }}>
                     No analyses found
                   </td>
                 </tr>
               ) : (
                 analyses.map((analysis) => (
-                  <tr key={analysis.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-medium text-gray-900 max-w-xs truncate">
+                  <tr key={analysis.id}>
+                    <td style={{ maxWidth: 260 }}>
+                      <div className="truncate" style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)' }}>
                         {analysis.title || 'Untitled'}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{analysis.userName}</p>
-                        <p className="text-xs text-gray-500">{analysis.userEmail}</p>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {analysis.predictedGradeLevel}
+                    <td>
+                      <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)' }}>
+                        {analysis.userName}
+                      </p>
+                      <p style={{ fontSize: 11, color: 'var(--text-3)' }}>{analysis.userEmail}</p>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getComplexityColor(analysis.predictedComplexity)}`}>
+                    <td>
+                      <span className="cw-badge cw-badge-primary">
+                        {analysis.predictedGradeLevel}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={getComplexityBadge(analysis.predictedComplexity)}>
                         {analysis.predictedComplexity}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
+                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>
                       {analysis.wordCount?.toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
+                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>
                       {analysis.fleschReadingEase?.toFixed(1)}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
+                    <td style={{ color: 'var(--text-3)', fontSize: 11.5 }}>
                       {new Date(analysis.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-end gap-2">
+                    <td>
+                      <div className="flex items-center justify-end gap-1">
                         <Link
                           to={`/analysis/${analysis.id}`}
-                          className="p-1.5 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                          className="p-1.5 rounded transition-colors"
+                          style={{ color: 'var(--text-3)' }}
+                          {...iconBtnStyle('var(--p-50)', 'var(--p-700)')}
                           title="View analysis"
                         >
                           <Eye className="w-4 h-4" />
@@ -172,7 +207,9 @@ const AnalysisManagement: React.FC = () => {
                         <button
                           onClick={() => setDeleteConfirm(analysis.id)}
                           disabled={actionLoading === analysis.id}
-                          className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                          className="p-1.5 rounded transition-colors"
+                          style={{ color: 'var(--text-3)' }}
+                          {...iconBtnStyle('var(--err-50)', 'var(--err-500)')}
                           title="Delete analysis"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -188,27 +225,35 @@ const AnalysisManagement: React.FC = () => {
 
         {/* Pagination */}
         {pagination.totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-            <p className="text-sm text-gray-500">
+          <div
+            className="flex items-center justify-between px-5 py-3"
+            style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-sunk)' }}
+          >
+            <p style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
               Showing {(pagination.page - 1) * pagination.limit + 1} to {Math.min(pagination.page * pagination.limit, pagination.totalCount)} of {pagination.totalCount} analyses
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setPagination(p => ({ ...p, page: p.page - 1 }))}
                 disabled={pagination.page === 1}
-                className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="cw-btn cw-btn-sm cw-btn-secondary"
+                style={{ padding: '0 8px' }}
               >
-                <ChevronLeft className="w-5 h-5" />
+                <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-sm text-gray-600">
-                Page {pagination.page} of {pagination.totalPages}
+              <span
+                className="px-3"
+                style={{ fontSize: 11.5, color: 'var(--text-2)', fontFamily: 'var(--font-mono)' }}
+              >
+                {pagination.page} / {pagination.totalPages}
               </span>
               <button
                 onClick={() => setPagination(p => ({ ...p, page: p.page + 1 }))}
                 disabled={pagination.page === pagination.totalPages}
-                className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="cw-btn cw-btn-sm cw-btn-secondary"
+                style={{ padding: '0 8px' }}
               >
-                <ChevronRight className="w-5 h-5" />
+                <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -217,25 +262,30 @@ const AnalysisManagement: React.FC = () => {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">Delete Analysis</h3>
-            <p className="text-gray-600 mb-6">
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'color-mix(in srgb, var(--ink-900) 55%, transparent)' }}
+        >
+          <div className="cw-card cw-card-pad-lg max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-full" style={{ background: 'var(--err-50)' }}>
+                <AlertCircle className="w-5 h-5" style={{ color: 'var(--err-500)' }} />
+              </div>
+              <h3 className="cw-section-title">Delete Analysis</h3>
+            </div>
+            <p style={{ color: 'var(--text-2)', fontSize: 13, marginBottom: 20, lineHeight: 1.55 }}>
               Are you sure you want to delete this analysis? This action cannot be undone.
             </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleteConfirm(null)} className="cw-btn cw-btn-secondary">
                 Cancel
               </button>
               <button
                 onClick={() => handleDelete(deleteConfirm)}
                 disabled={actionLoading === deleteConfirm}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                className="cw-btn cw-btn-danger"
               >
-                {actionLoading === deleteConfirm ? 'Deleting...' : 'Delete'}
+                {actionLoading === deleteConfirm ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>

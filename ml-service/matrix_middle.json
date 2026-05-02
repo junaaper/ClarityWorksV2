@@ -1,0 +1,705 @@
+[fireworks] pass1: actual grade=0.0, syl=1.09, wps=5.3 (targets: grade=3, syl=1.20, wps=8, range 5-10)
+[fireworks] pass2: grade=2.7, syl=1.24, wps=9.5
+[fireworks] pass1: actual grade=0.3, syl=1.09, wps=6.8 (targets: grade=4, syl=1.26, wps=10, range 7-13)
+[fireworks] severe miss (3.6 grades off), retrying from original
+[fireworks] pass2: actual grade=0.1, syl=1.08, wps=5.9 (targets: grade=4, syl=1.26, wps=10, range 7-13)
+[fireworks] pass3: grade=3.8, syl=1.21, wps=10.7
+[fireworks] pass1: actual grade=1.1, syl=1.15, wps=8.1 (targets: grade=5, syl=1.32, wps=12, range 8-16)
+[fireworks] severe miss (3.9 grades off), retrying from original
+[fireworks] pass2: actual grade=0.7, syl=1.15, wps=6.9 (targets: grade=5, syl=1.32, wps=12, range 8-16)
+[fireworks] pass3: grade=2.6, syl=1.20, wps=10.0
+[fireworks] pass4: grade=6.0, syl=1.26, wps=15.1
+[fireworks] pass1: actual grade=2.2, syl=1.15, wps=9.0 (targets: grade=6, syl=1.35, wps=14, range 10-18)
+[fireworks] severe miss (3.8 grades off), retrying from original
+[fireworks] pass2: actual grade=1.0, syl=1.14, wps=7.8 (targets: grade=6, syl=1.35, wps=14, range 10-18)
+[fireworks] pass3: grade=9.8, syl=1.38, wps=19.3
+[fireworks] pass4: grade=3.0, syl=1.23, wps=9.2
+[fireworks] pass1: actual grade=10.6, syl=1.52, wps=18.1 (targets: grade=8, syl=1.41, wps=17, range 12-22)
+[fireworks] pass2: grade=4.5, syl=1.31, wps=9.9
+[fireworks] pass3: grade=4.5, syl=1.31, wps=10.0
+[fireworks] pass4: grade=4.4, syl=1.23, wps=13.3
+[fireworks] pass1: actual grade=12.6, syl=1.59, wps=21.8 (targets: grade=9, syl=1.45, wps=19, range 13-25)
+[fireworks] severe miss (3.6 grades off), retrying from original
+[fireworks] pass2: actual grade=13.3, syl=1.71, wps=21.7 (targets: grade=9, syl=1.45, wps=19, range 13-25)
+[fireworks] pass3: grade=6.1, syl=1.24, wps=17.1
+[fireworks] pass4: grade=13.1, syl=1.81, wps=17.4
+[fireworks] Rate limited, waiting 10s (attempt 1/3)
+[fireworks] pass1: actual grade=12.6, syl=1.71, wps=18.6 (targets: grade=10, syl=1.48, wps=21, range 14-28)
+[fireworks] pass2: grade=5.6, syl=1.24, wps=15.6
+[fireworks] pass3: grade=6.6, syl=1.27, wps=15.5
+[fireworks] pass4: grade=6.0, syl=1.26, wps=15.3
+[fireworks] pass1: actual grade=15.4, syl=1.75, wps=22.6 (targets: grade=11, syl=1.51, wps=23, range 16-30)
+[fireworks] severe miss (4.4 grades off), retrying from original
+[fireworks] pass2: actual grade=15.8, syl=1.74, wps=24.9 (targets: grade=11, syl=1.51, wps=23, range 16-30)
+[fireworks] pass3: grade=6.9, syl=1.38, wps=13.6
+[fireworks] pass4: grade=12.9, syl=1.61, wps=24.1
+[fireworks] pass1: actual grade=15.9, syl=1.75, wps=25.2 (targets: grade=12, syl=1.55, wps=25, range 18-33)
+[fireworks] severe miss (3.9 grades off), retrying from original
+[fireworks] pass2: actual grade=15.4, syl=1.74, wps=25.2 (targets: grade=12, syl=1.55, wps=25, range 18-33)
+[fireworks] pass3: grade=7.2, syl=1.35, wps=14.5
+[fireworks] pass4: grade=7.2, syl=1.35, wps=14.5
+[fireworks] pass1: actual grade=16.6, syl=1.85, wps=26.2 (targets: grade=13, syl=1.60, wps=28, range 20-38)
+[fireworks] severe miss (3.6 grades off), retrying from original
+[fireworks] pass2: actual grade=16.4, syl=1.81, wps=26.2 (targets: grade=13, syl=1.60, wps=28, range 20-38)
+[fireworks] pass3: grade=9.0, syl=1.51, wps=14.5
+[fireworks] pass4: grade=9.4, syl=1.55, wps=12.8
+[fireworks] pass1: actual grade=0.4, syl=1.14, wps=6.1 (targets: grade=3, syl=1.20, wps=8, range 5-10)
+[fireworks] pass2: grade=1.3, syl=1.21, wps=6.3
+[fireworks] pass3: grade=1.0, syl=1.18, wps=6.3
+[fireworks] pass4: grade=1.0, syl=1.18, wps=6.3
+[fireworks] pass1: actual grade=1.4, syl=1.17, wps=7.6 (targets: grade=4, syl=1.26, wps=10, range 7-13)
+[fireworks] pass2: grade=5.5, syl=1.44, wps=5.1
+[fireworks] pass3: grade=9.3, syl=1.42, wps=8.6
+[fireworks] pass4: grade=6.8, syl=1.33, wps=9.2
+[fireworks] pass1: actual grade=2.7, syl=1.26, wps=7.4 (targets: grade=5, syl=1.32, wps=12, range 8-16)
+[fireworks] pass2: grade=6.8, syl=1.52, wps=8.7
+[fireworks] pass3: grade=8.6, syl=1.49, wps=13.7
+[fireworks] pass4: grade=8.2, syl=1.51, wps=12.6
+[fireworks] pass1: actual grade=1.8, syl=1.23, wps=6.8 (targets: grade=6, syl=1.35, wps=14, range 10-18)
+[fireworks] severe miss (4.2 grades off), retrying from original
+[fireworks] pass2: actual grade=2.8, syl=1.27, wps=7.3 (targets: grade=6, syl=1.35, wps=14, range 10-18)
+[fireworks] pass3: grade=12.2, syl=1.45, wps=24.0
+[fireworks] pass4: grade=12.2, syl=1.45, wps=24.0
+[fireworks] pass1: actual grade=6.2, syl=1.41, wps=11.2 (targets: grade=7, syl=1.38, wps=16, range 11-21)
+[fireworks] pass1: actual grade=13.1, syl=1.76, wps=17.6 (targets: grade=9, syl=1.45, wps=19, range 13-25)
+[fireworks] severe miss (4.1 grades off), retrying from original
+[fireworks] pass2: actual grade=13.0, syl=1.74, wps=19.2 (targets: grade=9, syl=1.45, wps=19, range 13-25)
+[fireworks] pass3: grade=6.6, syl=1.55, wps=8.7
+[fireworks] pass4: grade=12.5, syl=1.54, wps=23.6
+[fireworks] pass1: actual grade=14.4, syl=1.74, wps=22.9 (targets: grade=10, syl=1.48, wps=21, range 14-28)
+[fireworks] severe miss (4.4 grades off), retrying from original
+[fireworks] pass2: actual grade=15.4, syl=1.77, wps=21.4 (targets: grade=10, syl=1.48, wps=21, range 14-28)
+[fireworks] pass3: grade=8.6, syl=1.60, wps=11.1
+[fireworks] pass4: grade=12.6, syl=1.60, wps=23.4
+[fireworks] pass1: actual grade=15.5, syl=1.70, wps=25.2 (targets: grade=11, syl=1.51, wps=23, range 16-30)
+[fireworks] severe miss (4.5 grades off), retrying from original
+[fireworks] pass2: actual grade=15.3, syl=1.67, wps=25.3 (targets: grade=11, syl=1.51, wps=23, range 16-30)
+[fireworks] pass3: grade=7.9, syl=1.52, wps=12.2
+[fireworks] pass4: grade=14.9, syl=1.61, wps=27.1
+[fireworks] pass1: actual grade=15.3, syl=1.71, wps=25.5 (targets: grade=12, syl=1.55, wps=25, range 18-33)
+[fireworks] severe miss (3.3 grades off), retrying from original
+[fireworks] pass2: actual grade=16.3, syl=1.72, wps=28.4 (targets: grade=12, syl=1.55, wps=25, range 18-33)
+[fireworks] pass3: grade=8.2, syl=1.50, wps=12.5
+[fireworks] pass4: grade=10.2, syl=1.56, wps=13.9
+[fireworks] pass1: actual grade=15.4, syl=1.78, wps=23.1 (targets: grade=13, syl=1.60, wps=28, range 20-38)
+[fireworks] pass2: grade=12.6, syl=1.81, wps=13.4
+[fireworks] pass3: grade=13.4, syl=1.79, wps=18.3
+[fireworks] pass4: grade=13.4, syl=1.79, wps=18.3
+[fireworks] pass1: actual grade=0.9, syl=1.19, wps=5.4 (targets: grade=3, syl=1.20, wps=8, range 5-10)
+[fireworks] pass2: grade=1.9, syl=1.28, wps=3.9
+[fireworks] pass3: grade=3.5, syl=1.27, wps=7.0
+[fireworks] pass1: actual grade=1.1, syl=1.23, wps=5.2 (targets: grade=4, syl=1.26, wps=10, range 7-13)
+[fireworks] pass2: grade=3.8, syl=1.24, wps=11.9
+[fireworks] pass1: actual grade=2.5, syl=1.26, wps=6.7 (targets: grade=5, syl=1.32, wps=12, range 8-16)
+[fireworks] pass2: grade=10.2, syl=1.59, wps=15.0
+[fireworks] pass3: grade=10.6, syl=1.62, wps=16.5
+[fireworks] pass4: grade=10.4, syl=1.61, wps=16.3
+[fireworks] pass1: actual grade=4.3, syl=1.30, wps=10.3 (targets: grade=6, syl=1.35, wps=14, range 10-18)
+[fireworks] pass2: grade=4.5, syl=1.31, wps=10.3
+[fireworks] pass3: grade=4.5, syl=1.31, wps=10.3
+[fireworks] pass4: grade=4.6, syl=1.33, wps=10.3
+[fireworks] pass1: actual grade=4.4, syl=1.32, wps=9.8 (targets: grade=7, syl=1.38, wps=16, range 11-21)
+[fireworks] pass2: grade=12.7, syl=1.48, wps=25.3
+[fireworks] pass3: grade=14.9, syl=1.50, wps=33.1
+[fireworks] pass4: grade=13.8, syl=1.54, wps=28.7
+[fireworks] pass1: actual grade=5.8, syl=1.40, wps=10.3 (targets: grade=8, syl=1.41, wps=17, range 12-22)
+[fireworks] pass2: grade=12.6, syl=1.56, wps=20.1
+[fireworks] pass3: grade=13.1, syl=1.49, wps=26.6
+[fireworks] pass4: grade=11.0, syl=1.50, wps=19.9
+[fireworks] pass1: actual grade=17.6, syl=1.83, wps=29.3 (targets: grade=11, syl=1.51, wps=23, range 16-30)
+[fireworks] severe miss (6.6 grades off), retrying from original
+[fireworks] pass2: actual grade=16.3, syl=1.85, wps=25.4 (targets: grade=11, syl=1.51, wps=23, range 16-30)
+[fireworks] pass3: grade=11.7, syl=1.80, wps=11.8
+[fireworks] pass4: grade=14.6, syl=1.80, wps=20.1
+[fireworks] pass1: actual grade=13.8, syl=1.83, wps=18.6 (targets: grade=12, syl=1.55, wps=25, range 18-33)
+[fireworks] pass2: grade=13.2, syl=1.77, wps=18.0
+[fireworks] pass3: grade=13.0, syl=1.74, wps=16.7
+[fireworks] pass4: grade=14.2, syl=1.71, wps=22.7
+[fireworks] pass1: actual grade=18.9, syl=1.78, wps=29.1 (targets: grade=13, syl=1.60, wps=28, range 20-38)
+[fireworks] severe miss (5.9 grades off), retrying from original
+[fireworks] pass2: actual grade=18.8, syl=1.82, wps=28.4 (targets: grade=13, syl=1.60, wps=28, range 20-38)
+[fireworks] pass3: grade=13.2, syl=1.81, wps=13.8
+[fireworks] pass4: grade=14.6, syl=1.78, wps=21.0
+LLM validation error: Expecting ',' delimiter: line 1 column 1100 (char 1099)
+{
+  "mode": "auto",
+  "llm_enabled": true,
+  "tolerance": 1.5,
+  "summary": {
+    "total": 30,
+    "passed": 14,
+    "failed": 16,
+    "pass_rate": 0.467
+  },
+  "results": {
+    "Grade 7": {
+      "3": {
+        "skip": false,
+        "pass": true,
+        "predicted": 2.66,
+        "distance": 0.34,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 2.66,
+            "label": "Grade 3",
+            "elapsed": 45.6,
+            "changes": 1
+          }
+        ]
+      },
+      "4": {
+        "skip": false,
+        "pass": true,
+        "predicted": 3.76,
+        "distance": 0.24,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 3.76,
+            "label": "Grade 3",
+            "elapsed": 75.5,
+            "changes": 1
+          }
+        ]
+      },
+      "5": {
+        "skip": false,
+        "pass": true,
+        "predicted": 5.98,
+        "distance": 0.98,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 5.98,
+            "label": "Grade 5",
+            "elapsed": 67.9,
+            "changes": 15
+          }
+        ]
+      },
+      "6": {
+        "skip": false,
+        "pass": false,
+        "predicted": 2.95,
+        "distance": 3.05,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 2.95,
+            "label": "Grade 3",
+            "elapsed": 44.4,
+            "changes": 1
+          }
+        ]
+      },
+      "7": {
+        "skip": true,
+        "pass": true,
+        "predicted": 7.0
+      },
+      "8": {
+        "skip": false,
+        "pass": false,
+        "predicted": 10.58,
+        "distance": 2.58,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 10.58,
+            "label": "Grade 10",
+            "elapsed": 27.8,
+            "changes": 1
+          }
+        ]
+      },
+      "9": {
+        "skip": false,
+        "pass": false,
+        "predicted": 6.08,
+        "distance": 2.92,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 6.08,
+            "label": "Grade 6",
+            "elapsed": 25.4,
+            "changes": 15
+          }
+        ]
+      },
+      "10": {
+        "skip": false,
+        "pass": false,
+        "predicted": 12.57,
+        "distance": 2.57,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 12.57,
+            "label": "Grade 12",
+            "elapsed": 45.5,
+            "changes": 1
+          }
+        ]
+      },
+      "11": {
+        "skip": false,
+        "pass": false,
+        "predicted": 12.93,
+        "distance": 1.93,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 12.93,
+            "label": "Grade 12",
+            "elapsed": 20.2,
+            "changes": 18
+          }
+        ]
+      },
+      "12": {
+        "skip": false,
+        "pass": false,
+        "predicted": 15.37,
+        "distance": 3.37,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 15.37,
+            "label": "College",
+            "elapsed": 29.7,
+            "changes": 32
+          }
+        ]
+      },
+      "13": {
+        "skip": false,
+        "pass": false,
+        "predicted": 16.36,
+        "distance": 3.36,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 16.36,
+            "label": "College",
+            "elapsed": 27.6,
+            "changes": 1
+          }
+        ]
+      }
+    },
+    "Grade 8": {
+      "3": {
+        "skip": false,
+        "pass": false,
+        "predicted": 1.28,
+        "distance": 1.72,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 1.28,
+            "label": "Grade 3",
+            "elapsed": 44.1,
+            "changes": 1
+          }
+        ]
+      },
+      "4": {
+        "skip": false,
+        "pass": true,
+        "predicted": 5.46,
+        "distance": 1.46,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 5.46,
+            "label": "Grade 5",
+            "elapsed": 44.1,
+            "changes": 9
+          }
+        ]
+      },
+      "5": {
+        "skip": false,
+        "pass": false,
+        "predicted": 6.83,
+        "distance": 1.83,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 6.83,
+            "label": "Grade 6",
+            "elapsed": 42.8,
+            "changes": 9
+          }
+        ]
+      },
+      "6": {
+        "skip": false,
+        "pass": false,
+        "predicted": 2.76,
+        "distance": 3.24,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 2.76,
+            "label": "Grade 3",
+            "elapsed": 40.6,
+            "changes": 1
+          }
+        ]
+      },
+      "7": {
+        "skip": false,
+        "pass": true,
+        "predicted": 6.24,
+        "distance": 0.76,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 6.24,
+            "label": "Grade 6",
+            "elapsed": 21.5,
+            "changes": 24
+          }
+        ]
+      },
+      "8": {
+        "skip": true,
+        "pass": true,
+        "predicted": 8.0
+      },
+      "9": {
+        "skip": false,
+        "pass": false,
+        "predicted": 6.63,
+        "distance": 2.37,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 6.63,
+            "label": "Grade 6",
+            "elapsed": 32.4,
+            "changes": 1
+          }
+        ]
+      },
+      "10": {
+        "skip": false,
+        "pass": true,
+        "predicted": 8.58,
+        "distance": 1.42,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 8.58,
+            "label": "Grade 8",
+            "elapsed": 38.7,
+            "changes": 1
+          }
+        ]
+      },
+      "11": {
+        "skip": false,
+        "pass": false,
+        "predicted": 7.88,
+        "distance": 3.12,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 7.88,
+            "label": "Grade 7",
+            "elapsed": 31.0,
+            "changes": 1
+          }
+        ]
+      },
+      "12": {
+        "skip": false,
+        "pass": false,
+        "predicted": 10.24,
+        "distance": 1.76,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 10.24,
+            "label": "Grade 10",
+            "elapsed": 40.6,
+            "changes": 1
+          }
+        ]
+      },
+      "13": {
+        "skip": false,
+        "pass": true,
+        "predicted": 12.63,
+        "distance": 0.37,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 12.63,
+            "label": "Grade 12",
+            "elapsed": 30.2,
+            "changes": 1
+          }
+        ]
+      }
+    },
+    "Grade 9": {
+      "3": {
+        "skip": false,
+        "pass": true,
+        "predicted": 3.53,
+        "distance": 0.53,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 3.53,
+            "label": "Grade 3",
+            "elapsed": 67.5,
+            "changes": 2
+          }
+        ]
+      },
+      "4": {
+        "skip": false,
+        "pass": true,
+        "predicted": 3.78,
+        "distance": 0.22,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 3.78,
+            "label": "Grade 3",
+            "elapsed": 25.4,
+            "changes": 1
+          }
+        ]
+      },
+      "5": {
+        "skip": false,
+        "pass": false,
+        "predicted": 2.52,
+        "distance": 2.48,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 2.52,
+            "label": "Grade 3",
+            "elapsed": 58.9,
+            "changes": 1
+          }
+        ]
+      },
+      "6": {
+        "skip": false,
+        "pass": true,
+        "predicted": 4.63,
+        "distance": 1.37,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 4.63,
+            "label": "Grade 4",
+            "elapsed": 39.6,
+            "changes": 10
+          }
+        ]
+      },
+      "7": {
+        "skip": false,
+        "pass": false,
+        "predicted": 4.4,
+        "distance": 2.6,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 4.4,
+            "label": "Grade 4",
+            "elapsed": 50.7,
+            "changes": 1
+          }
+        ]
+      },
+      "8": {
+        "skip": false,
+        "pass": false,
+        "predicted": 5.81,
+        "distance": 2.19,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 5.81,
+            "label": "Grade 5",
+            "elapsed": 45.5,
+            "changes": 1
+          }
+        ]
+      },
+      "9": {
+        "skip": true,
+        "pass": true,
+        "predicted": 9.0
+      },
+      "10": {
+        "skip": false,
+        "pass": true,
+        "predicted": 10.41,
+        "distance": 0.41,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 10.41,
+            "label": "Grade 10",
+            "elapsed": 21.6,
+            "changes": 0
+          }
+        ]
+      },
+      "11": {
+        "skip": false,
+        "pass": true,
+        "predicted": 11.69,
+        "distance": 0.69,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 11.69,
+            "label": "Grade 11",
+            "elapsed": 40.5,
+            "changes": 1
+          }
+        ]
+      },
+      "12": {
+        "skip": false,
+        "pass": true,
+        "predicted": 12.98,
+        "distance": 0.98,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 12.98,
+            "label": "Grade 12",
+            "elapsed": 28.5,
+            "changes": 1
+          }
+        ]
+      },
+      "13": {
+        "skip": false,
+        "pass": true,
+        "predicted": 13.23,
+        "distance": 0.23,
+        "deterministic": null,
+        "runs": [
+          {
+            "raw_score": 13.23,
+            "label": "College",
+            "elapsed": 39.8,
+            "changes": 1
+          }
+        ]
+      }
+    }
+  },
+  "failed_cases": [
+    {
+      "source": "Grade 7",
+      "target": "Grade 6",
+      "predicted": 2.95,
+      "distance": 3.05
+    },
+    {
+      "source": "Grade 7",
+      "target": "Grade 8",
+      "predicted": 10.58,
+      "distance": 2.58
+    },
+    {
+      "source": "Grade 7",
+      "target": "Grade 9",
+      "predicted": 6.08,
+      "distance": 2.92
+    },
+    {
+      "source": "Grade 7",
+      "target": "Grade 10",
+      "predicted": 12.57,
+      "distance": 2.57
+    },
+    {
+      "source": "Grade 7",
+      "target": "Grade 11",
+      "predicted": 12.93,
+      "distance": 1.93
+    },
+    {
+      "source": "Grade 7",
+      "target": "Grade 12",
+      "predicted": 15.37,
+      "distance": 3.37
+    },
+    {
+      "source": "Grade 7",
+      "target": "College",
+      "predicted": 16.36,
+      "distance": 3.36
+    },
+    {
+      "source": "Grade 8",
+      "target": "Grade 3",
+      "predicted": 1.28,
+      "distance": 1.72
+    },
+    {
+      "source": "Grade 8",
+      "target": "Grade 5",
+      "predicted": 6.83,
+      "distance": 1.83
+    },
+    {
+      "source": "Grade 8",
+      "target": "Grade 6",
+      "predicted": 2.76,
+      "distance": 3.24
+    },
+    {
+      "source": "Grade 8",
+      "target": "Grade 9",
+      "predicted": 6.63,
+      "distance": 2.37
+    },
+    {
+      "source": "Grade 8",
+      "target": "Grade 11",
+      "predicted": 7.88,
+      "distance": 3.12
+    },
+    {
+      "source": "Grade 8",
+      "target": "Grade 12",
+      "predicted": 10.24,
+      "distance": 1.76
+    },
+    {
+      "source": "Grade 9",
+      "target": "Grade 5",
+      "predicted": 2.52,
+      "distance": 2.48
+    },
+    {
+      "source": "Grade 9",
+      "target": "Grade 7",
+      "predicted": 4.4,
+      "distance": 2.6
+    },
+    {
+      "source": "Grade 9",
+      "target": "Grade 8",
+      "predicted": 5.81,
+      "distance": 2.19
+    }
+  ]
+}

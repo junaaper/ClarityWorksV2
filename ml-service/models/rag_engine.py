@@ -12,53 +12,83 @@ class RAGEngine:
     Retrieval-Augmented Generation engine for textbook processing
     Uses ChromaDB (local vector database) + E5-small-v2 embeddings
     + FlashRank re-ranking + RecursiveCharacterTextSplitter chunking
-    + Groq LLM for answer generation (True RAG)
+    + Fireworks AI LLM for answer generation (True RAG)
     """
 
     EMBEDDING_MODEL_NAME = 'intfloat/e5-small-v2'
 
     def __init__(self):
+        self.data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
+        self.embedding_cache_dir = os.path.join(self.data_dir, 'hf_cache')
+        self.local_embedding_dir = os.path.join(self.embedding_cache_dir, 'intfloat-e5-small-v2')
+        os.makedirs(self.embedding_cache_dir, exist_ok=True)
+
         # Initialize ChromaDB with persistent storage
-        persist_dir = os.path.join(os.path.dirname(__file__), '..', 'data', 'chromadb')
+        persist_dir = os.path.join(self.data_dir, 'chromadb')
         os.makedirs(persist_dir, exist_ok=True)
 
-        self.client = chromadb.PersistentClient(path=persist_dir)
+        self.client = chromadb.PersistentClient(
+            path=persist_dir,
+            settings=Settings(anonymized_telemetry=False)
+        )
 
         # Check if embedding model changed — if so, clear old incompatible data
         self._check_model_migration(persist_dir)
 
         # Load embedding model (e5-small-v2: 384 dims, much more accurate than MiniLM)
         print("Loading embedding model (e5-small-v2)...")
-        self.embedding_model = SentenceTransformer(self.EMBEDDING_MODEL_NAME)
+        embedding_source = self._get_embedding_source()
+        local_only = embedding_source == self.local_embedding_dir
+        self.embedding_model = SentenceTransformer(
+            embedding_source,
+            cache_folder=self.embedding_cache_dir,
+            local_files_only=local_only
+        )
         print("Embedding model loaded!")
 
         # Initialize text splitter (replaces custom chunking)
+        # Larger chunks (1500 chars) capture more context per retrieval hit,
+        # producing richer answers without losing paragraph coherence.
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
+            chunk_size=1500,
+            chunk_overlap=300,
             separators=["\n\n", "\n", ". ", " ", ""],
             keep_separator=True,
         )
 
         # Initialize FlashRank re-ranker (~4MB, CPU-only, no PyTorch needed)
         print("Loading re-ranker model...")
-        self.ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir=os.path.join(
-            os.path.dirname(__file__), '..', 'data', 'flashrank_cache'
-        ))
-        print("Re-ranker loaded!")
+        try:
+            self.ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir=os.path.join(
+                self.data_dir, 'flashrank_cache'
+            ))
+            print("Re-ranker loaded!")
+        except Exception as e:
+            print(f"FlashRank init failed, will use embedding similarity fallback: {e}")
+            self.ranker = None
 
-        # Initialize Groq client for answer generation (True RAG)
-        self.groq_client = None
-        groq_key = os.getenv('GROQ_API_KEY')
-        if groq_key:
+        # Initialize Fireworks AI client for answer generation (True RAG)
+        self.llm_client = None
+        fireworks_key = os.getenv('FIREWORKS_API_KEY')
+        if fireworks_key:
             try:
-                from groq import Groq
-                self.groq_client = Groq(api_key=groq_key)
-                print("Groq client initialized for RAG answer generation")
+                from openai import OpenAI
+                self.llm_client = OpenAI(
+                    base_url="https://api.fireworks.ai/inference/v1",
+                    api_key=fireworks_key,
+                )
+                print("Fireworks client initialized for RAG answer generation")
             except Exception as e:
-                print(f"Groq initialization failed: {e}")
+                print(f"Fireworks initialization failed: {e}")
         else:
-            print("GROQ_API_KEY not found - answer generation disabled")
+            print("FIREWORKS_API_KEY not found - answer generation disabled")
+
+    def _get_embedding_source(self):
+        """Prefer repo-local model snapshots to avoid runtime network fetches."""
+        required_files = ('config.json', 'modules.json')
+        if all(os.path.exists(os.path.join(self.local_embedding_dir, name)) for name in required_files):
+            return self.local_embedding_dir
+        return self.EMBEDDING_MODEL_NAME
 
     def _check_model_migration(self, persist_dir):
         """Clear ChromaDB data if embedding model has changed (incompatible vectors)"""
@@ -126,7 +156,8 @@ class RAGEngine:
                 'chunk_id': str(i),
                 'char_count': str(len(chunk)),
                 'word_count': str(len(chunk.split())),
-                'document_id': document_id
+                'document_id': document_id,
+                'filename': str(metadata.get("filename", ""))
             } for i, chunk in enumerate(chunk_texts)],
             ids=[f"chunk_{i}" for i in range(len(chunk_texts))]
         )
@@ -145,7 +176,7 @@ class RAGEngine:
         Strategy:
         1. Retrieve top-20 candidates via embedding similarity
         2. Re-rank with FlashRank cross-encoder to get precise top-k
-        3. Generate coherent answer from top-k using Groq LLM
+        3. Generate coherent answer from top-k using Fireworks AI LLM
 
         Args:
             query_text: Natural language query
@@ -180,6 +211,7 @@ class RAGEngine:
         for coll_name in collection_names:
             try:
                 collection = self.client.get_collection(coll_name)
+                collection_metadata = collection.metadata or {}
 
                 results = collection.query(
                     query_embeddings=[query_embedding.tolist()],
@@ -190,10 +222,15 @@ class RAGEngine:
                 for i, doc in enumerate(results['documents'][0]):
                     distance = results['distances'][0][i]
                     similarity = max(0.0, min(1.0, 1 - (distance / 2)))
+                    raw_metadata = results['metadatas'][0][i] or {}
+                    merged_metadata = {
+                        **raw_metadata,
+                        'filename': raw_metadata.get('filename') or str(collection_metadata.get('filename', ''))
+                    }
 
                     all_candidates.append({
                         'text': doc,
-                        'metadata': results['metadatas'][0][i],
+                        'metadata': merged_metadata,
                         'similarity_score': round(similarity, 4),
                         'collection': coll_name
                     })
@@ -218,26 +255,45 @@ class RAGEngine:
             "collection": c['collection']
         }} for i, c in enumerate(all_candidates)]
 
-        rerank_request = RerankRequest(query=query_text, passages=passages)
-        reranked = self.ranker.rerank(rerank_request)
+        if self.ranker is not None:
+            try:
+                rerank_request = RerankRequest(query=query_text, passages=passages)
+                reranked = self.ranker.rerank(rerank_request)
+                use_reranked = True
+            except Exception as e:
+                print(f"FlashRank re-ranking failed, falling back to embedding similarity: {e}")
+                use_reranked = False
+        else:
+            use_reranked = False
 
-        # Build final results from re-ranked order
+        # Build final results from re-ranked order (or embedding similarity fallback)
         final_results = []
-        for item in reranked[:top_k]:
-            meta = item.get("meta", {})
-            final_results.append({
-                'text': item['text'],
-                'metadata': meta.get('metadata', {}),
-                'similarity_score': meta.get('similarity_score', 0),
-                'rerank_score': round(item['score'], 4),
-                'collection': meta.get('collection', '')
-            })
+        if use_reranked:
+            for item in reranked[:top_k]:
+                meta = item.get("meta", {})
+                final_results.append({
+                    'text': item['text'],
+                    'metadata': meta.get('metadata', {}),
+                    'similarity_score': float(meta.get('similarity_score', 0)),
+                    'rerank_score': round(float(item['score']), 4),
+                    'collection': meta.get('collection', '')
+                })
+        else:
+            all_candidates.sort(key=lambda c: c['similarity_score'], reverse=True)
+            for c in all_candidates[:top_k]:
+                final_results.append({
+                    'text': c['text'],
+                    'metadata': c['metadata'],
+                    'similarity_score': float(c['similarity_score']),
+                    'rerank_score': float(c['similarity_score']),
+                    'collection': c['collection']
+                })
 
         print(f"Returning top {len(final_results)} re-ranked results")
 
-        # Stage 3: Generate answer from top results using Groq (True RAG)
+        # Stage 3: Generate answer from top results using Fireworks AI (True RAG)
         answer = None
-        if self.groq_client and final_results:
+        if self.llm_client and final_results:
             answer = self._generate_answer(query_text, final_results)
 
         return {
@@ -248,11 +304,11 @@ class RAGEngine:
 
     def _generate_answer(self, query, top_results):
         """
-        Generate a coherent answer from retrieved chunks using Groq LLM.
+        Generate a coherent answer from retrieved chunks using Fireworks AI LLM.
         This is the "Generation" step in RAG — synthesizes information from
         multiple sources into a single answer with [Source N] citations.
         """
-        if not self.groq_client:
+        if not self.llm_client:
             return None
 
         try:
@@ -265,7 +321,7 @@ class RAGEngine:
 
             context = "\n\n---\n\n".join(context_parts)
 
-            prompt = f"""You are an intelligent textbook assistant. Answer the user's question based ONLY on the provided textbook excerpts.
+            prompt = f"""You are a knowledgeable textbook assistant. Your job is to provide comprehensive, well-structured answers based ONLY on the provided textbook excerpts.
 
 QUESTION:
 {query}
@@ -274,23 +330,26 @@ RELEVANT TEXTBOOK SECTIONS:
 {context}
 
 INSTRUCTIONS:
-1. Answer the question clearly and concisely
-2. Synthesize information from multiple sources if needed
-3. Cite sources using [Source N] notation after each claim
-4. If the question asks for multiple items, format as a numbered list
-5. If the sources don't contain enough information to answer, say: "The provided textbook sections don't contain sufficient information to answer this question."
-6. Do NOT make up information - only use what's in the sources
-7. Keep your answer focused and to the point
+1. Write a thorough, detailed answer — aim for at least 3-4 substantial paragraphs when the sources contain enough material.
+2. Open with a clear thesis or direct answer to the question in 1-2 sentences.
+3. Then develop each major point in its own paragraph, explaining concepts fully rather than listing bullet points. Use examples, definitions, and elaborations from the source material.
+4. Cite sources inline using [Source N] notation after each claim or paraphrase.
+5. When the sources contain definitions, examples, or data, include them — they make the answer concrete.
+6. If the question asks for a list or comparison, structure it clearly but still explain each item in depth.
+7. End with a brief synthesis or conclusion that ties the key ideas together.
+8. If the sources don't contain enough information, say so honestly, but still share whatever partial information IS available.
+9. Do NOT fabricate information — only use what's in the sources.
+10. Write in clear, flowing prose. Avoid choppy bullet-point lists when a paragraph would be more informative.
 
 ANSWER:"""
 
-            response = self.groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+            response = self.llm_client.chat.completions.create(
+                model="accounts/fireworks/models/llama-v3p3-70b-instruct",
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2,
-                max_tokens=1500,
+                temperature=0.25,
+                max_tokens=2500,
                 top_p=0.9
             )
 

@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PlusCircle, Clock, BarChart3, FileText, TrendingUp, BookOpen } from 'lucide-react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  PlusCircle, BookOpen, ArrowRight, Sparkles, TrendingUp, ArrowUpRight,
+  FileText, Hash, Gauge, BarChart3,
+} from 'lucide-react';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { analysisApi } from '../../services/api';
 import type { StatsResponse, AnalysisListItem } from '../../types';
@@ -23,7 +26,6 @@ const Dashboard: React.FC = () => {
         ]);
         setStats(statsData);
 
-        // Build trend data from history (oldest first)
         const trend = historyData.analyses
           .slice()
           .reverse()
@@ -33,7 +35,7 @@ const Dashboard: React.FC = () => {
             return {
               date: new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
               grade,
-              flesch: Math.round(a.flesch_reading_ease),
+              flesch: Math.round(Math.max(0, Math.min(100, a.flesch_reading_ease))),
             };
           });
         setTrendData(trend);
@@ -47,187 +49,342 @@ const Dashboard: React.FC = () => {
     fetchData();
   }, []);
 
-  const getReadabilityLabel = (score: number): string => {
-    if (score >= 70) return 'Easy to read';
+  const readabilityLabel = (score: number): string => {
+    if (score >= 70) return 'Easy';
     if (score >= 50) return 'Moderate';
     return 'Difficult';
   };
 
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (d: string) =>
+    new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div className="space-y-4">
+        <div className="cw-skeleton h-8 w-72" />
+        <div className="grid grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="cw-skeleton h-24" />
+          ))}
+        </div>
+        <div className="cw-skeleton h-64" />
       </div>
     );
   }
 
-  return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">
-          Welcome back, {user?.fullName?.split(' ')[0]}!
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Analyze text readability and improve your writing
-        </p>
-      </div>
+  const totalAnalyses = stats?.stats.totalAnalyses || 0;
+  const avgFlesch = stats?.stats.avgReadingEase || 0;
+  const avgGrade = stats?.stats.avgGradeLevel || 0;
+  const totalWords = stats?.stats.totalWordsAnalyzed || 0;
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+  return (
+    <div className="space-y-8">
+      {/* Hero */}
+      <section>
+        <span className="cw-eyebrow">Researcher Dashboard</span>
+        <h1 className="cw-hero mt-2">
+          Welcome back, {user?.fullName?.split(' ')[0]}
+        </h1>
+        <p className="mt-2" style={{ color: 'var(--text-2)', fontSize: 13 }}>
+          Your linguistics models are synchronized. Analyze, compare, and refine with precision.
+        </p>
+      </section>
+
+      {/* Metric strip */}
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <MetricCard
+          label="Total Analyses"
+          icon={FileText}
+          value={totalAnalyses.toLocaleString()}
+          sub={`${stats?.recentAnalyses?.length || 0} in recent activity`}
+          accent
+        />
+        <MetricCard
+          label="Average Flesch"
+          icon={Gauge}
+          value={avgFlesch.toFixed(1)}
+          sub={readabilityLabel(avgFlesch) + ' reading level'}
+        />
+        <MetricCard
+          label="Average Grade"
+          icon={BarChart3}
+          value={avgGrade.toFixed(1)}
+          sub="US grade level"
+        />
+        <MetricCard
+          label="Words Analyzed"
+          icon={Hash}
+          value={totalWords.toLocaleString()}
+          sub="Across all texts"
+          tonal
+        />
+      </section>
+
+      {/* Action row */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Primary CTA */}
         <Link
           to="/analyze"
-          className="bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl p-6 hover:from-primary-600 hover:to-primary-700 transition-all shadow-lg group"
+          className="lg:col-span-2 relative overflow-hidden rounded-lg p-7 group"
+          style={{ background: 'var(--g-scholar)', color: '#fff', minHeight: 150 }}
         >
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-white/20 rounded-lg group-hover:scale-110 transition-transform">
-              <PlusCircle className="w-8 h-8" />
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold">Start New Analysis</h2>
-              <p className="text-white/80 mt-1">
-                Analyze text from various sources
-              </p>
+          <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:opacity-20 transition-opacity pointer-events-none">
+            <Sparkles className="w-36 h-36" />
+          </div>
+          <div className="relative">
+            <span
+              className="cw-eyebrow"
+              style={{ color: 'rgba(255,255,255,0.7)' }}
+            >
+              Quick Action
+            </span>
+            <h3
+              className="mt-2"
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 24,
+                fontWeight: 800,
+                letterSpacing: '-0.02em',
+                color: '#fff',
+                lineHeight: 1.1,
+              }}
+            >
+              Start a New Analysis
+            </h3>
+            <p className="mt-2 max-w-lg" style={{ fontSize: 13, color: 'rgba(255,255,255,0.82)', lineHeight: 1.5 }}>
+              Upload raw text or academic PDFs for instant linguistic decomposition and readability scoring.
+            </p>
+            <div
+              className="mt-4 inline-flex items-center gap-2 px-3.5 h-9 rounded-md group-hover:translate-x-1 transition-transform"
+              style={{ background: '#fff', color: 'var(--p-900)', fontSize: 12.5, fontWeight: 700 }}
+            >
+              <PlusCircle className="w-4 h-4" />
+              Launch Tool
+              <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
         </Link>
 
-        <Link
-          to="/history"
-          className="bg-white rounded-xl p-6 hover:shadow-lg transition-all border border-gray-200 group"
+        {/* AI insight card (teal) */}
+        <div
+          className="rounded-lg p-6"
+          style={{ background: 'var(--s-200)', color: 'var(--s-700)' }}
         >
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-primary-50 rounded-lg group-hover:scale-110 transition-transform">
-              <Clock className="w-8 h-8 text-primary-600" />
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold text-gray-800">View History</h2>
-              <p className="text-gray-600 mt-1">
-                Access your past analyses
-              </p>
-            </div>
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="w-4 h-4" />
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
+              }}
+            >
+              AI Observation
+            </span>
           </div>
-        </Link>
-      </div>
-
-      {/* Statistics Overview */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-        <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center gap-2">
-          <BarChart3 className="w-6 h-6 text-primary-600" />
-          Statistics Overview
-        </h2>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <div className="text-center p-4 bg-gray-50 rounded-lg">
-            <div className="text-3xl font-bold text-primary-600">
-              {stats?.stats.totalAnalyses || 0}
-            </div>
-            <div className="text-sm text-gray-600 mt-1">Total Analyses</div>
-          </div>
-
-          <div className="text-center p-4 bg-gray-50 rounded-lg">
-            <div className="text-3xl font-bold text-green-600">
-              {stats?.stats.avgReadingEase?.toFixed(1) || '0'}
-            </div>
-            <div className="text-sm text-gray-600 mt-1">
-              Avg. Flesch Score
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              {getReadabilityLabel(stats?.stats.avgReadingEase || 0)}
-            </div>
-          </div>
-
-          <div className="text-center p-4 bg-gray-50 rounded-lg">
-            <div className="text-3xl font-bold text-blue-600">
-              {stats?.stats.avgGradeLevel?.toFixed(1) || '0'}
-            </div>
-            <div className="text-sm text-gray-600 mt-1">Avg. Grade Level</div>
-          </div>
-
-          <div className="text-center p-4 bg-gray-50 rounded-lg">
-            <div className="text-3xl font-bold text-purple-600">
-              {(stats?.stats.totalWordsAnalyzed || 0).toLocaleString()}
-            </div>
-            <div className="text-sm text-gray-600 mt-1">Words Analyzed</div>
-          </div>
+          <p
+            className="italic"
+            style={{
+              fontSize: 13,
+              lineHeight: 1.5,
+              color: 'var(--s-900)',
+              fontFamily: 'var(--font-serif)',
+            }}
+          >
+            {totalAnalyses >= 3
+              ? `Your corpus trends ${avgGrade >= 9 ? 'advanced' : 'accessible'} at an average grade ${avgGrade.toFixed(1)}. Consider ${avgGrade >= 9 ? 'simplifying transitions for wider readability' : 'varying sentence complexity to challenge readers'}.`
+              : 'Analyze a few texts to unlock pattern-based observations about your writing corpus.'}
+          </p>
         </div>
-      </div>
+      </section>
 
-      {/* Readability Trend Chart */}
+      {/* Trend chart */}
       {trendData.length >= 2 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center gap-2">
-            <TrendingUp className="w-6 h-6 text-primary-600" />
-            Readability Trend
-          </h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={trendData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-              <YAxis yAxisId="grade" domain={[0, 14]} label={{ value: 'Grade', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }} />
-              <YAxis yAxisId="flesch" orientation="right" domain={[0, 100]} label={{ value: 'Flesch', angle: 90, position: 'insideRight', style: { fontSize: 12 } }} />
-              <Tooltip />
-              <Legend />
-              <Line yAxisId="grade" type="monotone" dataKey="grade" stroke="#3b82f6" strokeWidth={2} name="Grade Level" dot={{ r: 4 }} />
-              <Line yAxisId="flesch" type="monotone" dataKey="flesch" stroke="#10b981" strokeWidth={2} name="Flesch Score" dot={{ r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        <section className="cw-card cw-card-pad-lg">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" style={{ color: 'var(--p-700)' }} />
+              <h3 className="cw-section-title">Readability Trend</h3>
+            </div>
+            <span className="cw-eyebrow">Last 20 · Grade & Flesch</span>
+          </div>
+          <div style={{ height: 240 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendData} margin={{ top: 8, right: 10, bottom: 4, left: 0 }}>
+                <CartesianGrid strokeDasharray="2 4" stroke="var(--border)" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10.5, fill: 'var(--text-3)' }}
+                  axisLine={{ stroke: 'var(--border)' }}
+                  tickLine={false}
+                />
+                <YAxis
+                  yAxisId="grade"
+                  domain={[0, 14]}
+                  tick={{ fontSize: 10.5, fill: 'var(--text-3)' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={30}
+                />
+                <YAxis
+                  yAxisId="flesch"
+                  orientation="right"
+                  domain={[0, 100]}
+                  tick={{ fontSize: 10.5, fill: 'var(--text-3)' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={30}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'var(--surface-raised)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    fontSize: 11.5,
+                    boxShadow: 'var(--sh-2)',
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                <Line yAxisId="grade" type="monotone" dataKey="grade" stroke="var(--p-700)" strokeWidth={2} name="Grade" dot={{ r: 3, fill: 'var(--p-700)' }} />
+                <Line yAxisId="flesch" type="monotone" dataKey="flesch" stroke="var(--s-500)" strokeWidth={2} name="Flesch" dot={{ r: 3, fill: 'var(--s-500)' }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
       )}
 
-      {/* Recent Analyses */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center gap-2">
-          <TrendingUp className="w-6 h-6 text-primary-600" />
-          Recent Analyses
-        </h2>
+      {/* Recent analyses table */}
+      <section className="cw-card cw-card-pad-lg">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="cw-section-title">Recent Analyses</h3>
+          <Link
+            to="/history"
+            className="cw-btn cw-btn-ghost cw-btn-sm"
+          >
+            View all
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
 
         {stats?.recentAnalyses && stats.recentAnalyses.length > 0 ? (
-          <div className="space-y-4">
-            {stats.recentAnalyses.map((analysis) => (
-              <Link
-                key={analysis.id}
-                to={`/analysis/${analysis.id}`}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-white rounded-lg">
-                    <FileText className="w-5 h-5 text-gray-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-gray-800">{analysis.title}</h3>
-                    <p className="text-sm text-gray-500">
-                      {formatDate(analysis.created_at)}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className="inline-block px-3 py-1 bg-primary-100 text-primary-700 text-sm font-medium rounded-full">
-                    {analysis.predicted_grade_level}
-                  </span>
-                </div>
-              </Link>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="cw-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th className="text-center">Grade Level</th>
+                  <th className="text-right">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.recentAnalyses.map((a) => {
+                  const gradeNum = (() => {
+                    const s = a.predicted_grade_level.replace('Grade ', '');
+                    return s === 'College' ? 13 : parseInt(s) || 0;
+                  })();
+                  return (
+                    <tr key={a.id}>
+                      <td>
+                        <Link
+                          to={`/analysis/${a.id}`}
+                          className="flex flex-col hover:underline"
+                          style={{ color: 'var(--text-1)' }}
+                        >
+                          <span style={{ fontWeight: 600, fontSize: 12.5 }}>{a.title}</span>
+                          <span style={{ fontSize: 10.5, color: 'var(--text-4)', marginTop: 1 }}>
+                            {a.predicted_grade_level}
+                          </span>
+                        </Link>
+                      </td>
+                      <td className="text-center">
+                        <span
+                          className="cw-badge cw-badge-primary"
+                          style={{ fontFamily: 'var(--font-mono)' }}
+                        >
+                          {gradeNum ? `Grade ${gradeNum}` : a.predicted_grade_level}
+                        </span>
+                      </td>
+                      <td className="text-right" style={{ color: 'var(--text-3)', fontSize: 11.5 }}>
+                        {formatDate(a.created_at)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : (
           <div className="text-center py-12">
-            <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">No analyses yet</p>
-            <Link
-              to="/analyze"
-              className="text-primary-600 hover:underline font-medium mt-2 inline-block"
-            >
+            <BookOpen className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--text-4)' }} />
+            <p style={{ color: 'var(--text-3)', fontSize: 13 }}>No analyses yet.</p>
+            <Link to="/analyze" className="cw-btn cw-btn-primary cw-btn-sm mt-4 inline-flex">
+              <PlusCircle className="w-3.5 h-3.5" />
               Start your first analysis
             </Link>
           </div>
         )}
+      </section>
+    </div>
+  );
+};
+
+type MetricProps = {
+  label: string;
+  value: string;
+  sub: string;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  accent?: boolean;
+  tonal?: boolean;
+};
+
+const MetricCard: React.FC<MetricProps> = ({ label, value, sub, icon: Icon, accent, tonal }) => {
+  const base: React.CSSProperties = {
+    background: tonal ? 'var(--s-200)' : 'var(--surface-raised)',
+    borderRadius: 'var(--r-lg)',
+    padding: '16px 18px',
+    borderLeft: accent ? '3px solid var(--p-900)' : 'none',
+    boxShadow: 'var(--sh-1)',
+    border: tonal ? 'none' : '1px solid var(--border)',
+    minHeight: 112,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+  };
+  const valueColor = tonal ? 'var(--s-900)' : 'var(--p-900)';
+  const labelColor = tonal ? 'var(--s-700)' : 'var(--text-3)';
+  const subColor = tonal ? 'var(--s-700)' : 'var(--text-3)';
+
+  return (
+    <div style={base}>
+      <div className="flex items-start justify-between">
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: labelColor,
+          }}
+        >
+          {label}
+        </span>
+        <Icon className="w-4 h-4" style={{ color: labelColor }} />
+      </div>
+      <div>
+        <div
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 28,
+            fontWeight: 800,
+            letterSpacing: '-0.02em',
+            color: valueColor,
+            lineHeight: 1.1,
+          }}
+        >
+          {value}
+        </div>
+        <div style={{ fontSize: 11, color: subColor, marginTop: 4 }}>{sub}</div>
       </div>
     </div>
   );

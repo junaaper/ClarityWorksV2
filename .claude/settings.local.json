@@ -17,7 +17,13 @@
       "Bash(node -e:*)",
       "Bash(\"c:/Programming/clarityworksv2/ml-service/venv/Scripts/python.exe\":*)",
       "Bash(powershell:*)",
-      "Bash(venv/Scripts/python.exe:*)"
+      "Bash(venv/Scripts/python.exe:*)",
+      "Bash(jobs -l)",
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(mkdir -p /tmp/design_bundle)",
+      "Read(//tmp/**)",
+      "Bash(tar -xzf \"C:\\\\Users\\\\trash\\\\.claude\\\\projects\\\\c--Programming-clarityworkscodex\\\\a5f7201d-7435-40c6-bfe9-adb9dd08d0b4\\\\tool-results\\\\webfetch-1776626720589-25zqhn.bin\")",
+      "Bash(npx tsc *)"
     ],
     "deny": [],
     "ask": []

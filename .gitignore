@@ -18,3 +18,20 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Environment files (contain secrets)
+.env
+*.env
+
+# ML service generated/downloaded data
+ml-service/data/chromadb/
+ml-service/data/flashrank_cache/
+ml-service/data/hf_cache/
+ml-service/nltk_data/
+ml-service/trained_models/
+
+# Uploaded files
+backend/uploads/profiles/
+backend/uploads/documents/
+
+stitchexports/
