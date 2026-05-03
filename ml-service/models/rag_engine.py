@@ -38,11 +38,9 @@ class RAGEngine:
         # Load embedding model (e5-small-v2: 384 dims, much more accurate than MiniLM)
         print("Loading embedding model (e5-small-v2)...")
         embedding_source = self._get_embedding_source()
-        local_only = embedding_source == self.local_embedding_dir
         self.embedding_model = SentenceTransformer(
             embedding_source,
             cache_folder=self.embedding_cache_dir,
-            local_files_only=local_only
         )
         print("Embedding model loaded!")
 
