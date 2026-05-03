@@ -457,7 +457,13 @@ def analyze_for_simplification():
     try:
         data = request.get_json()
         text = data.get('text', '')
-        target_grade = int(data.get('target_grade', 6))
+        target_grade_raw = data.get('target_grade', 6)
+        if isinstance(target_grade_raw, str):
+            import re as _re
+            m = _re.search(r'\d+', target_grade_raw)
+            target_grade = int(m.group()) if m else 6
+        else:
+            target_grade = int(target_grade_raw)
         mode = data.get('mode', 'auto')  # 'auto' or 'interactive'
 
         if not text or len(text.strip()) < 10:

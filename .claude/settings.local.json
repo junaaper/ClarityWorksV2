@@ -26,6 +26,7 @@
       "Bash(npx tsc *)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "model": "claude-opus-4-6"
   }
 }
