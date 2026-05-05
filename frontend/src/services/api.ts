@@ -129,6 +129,11 @@ export const analysisApi = {
     const response = await api.get('/api/analyses/stats');
     return response.data;
   },
+
+  generateConceptGraph: async (id: number): Promise<{ success: boolean; conceptGraph: import('../types').ConceptGraph | null }> => {
+    const response = await api.post(`/api/analyses/${id}/concepts`);
+    return response.data;
+  },
 };
 
 // Text extraction API
@@ -220,6 +225,16 @@ export const ragApi = {
 
   deleteDocument: async (id: number): Promise<void> => {
     await api.delete(`/api/rag/documents/${id}`);
+  },
+
+  generateConceptGraph: async (id: number): Promise<{ success: boolean; conceptGraph: import('../types').ConceptGraph | null }> => {
+    const response = await api.post(`/api/rag/documents/${id}/concepts`);
+    return response.data;
+  },
+
+  getConceptGraph: async (id: number): Promise<{ conceptGraph: import('../types').ConceptGraph | null }> => {
+    const response = await api.get(`/api/rag/documents/${id}/concepts`);
+    return response.data;
   },
 };
 

@@ -10,7 +10,10 @@
   },
   "dependencies": {
     "@radix-ui/react-tooltip": "^1.0.7",
+    "@types/dagre": "^0.7.54",
+    "@xyflow/react": "^12.10.2",
     "axios": "^1.6.2",
+    "dagre": "^0.8.5",
     "docx": "^9.6.0",
     "file-saver": "^2.0.5",
     "jspdf": "^2.5.2",

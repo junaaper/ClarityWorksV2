@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, PlusCircle, Clock, User, LogOut,
   Shield, Users, FileText, Upload, Search,
-  ArrowLeftRight, FolderUp, Moon, Sun, Settings,
+  ArrowLeftRight, FolderUp, Moon, Sun, Settings, BookOpen,
 } from 'lucide-react';
 import { useAuth } from '../../utils/auth';
 
@@ -123,14 +123,10 @@ const Sidebar: React.FC = () => {
             height: 30,
             borderRadius: 7,
             background: 'var(--g-scholar)',
-            fontFamily: 'var(--font-display)',
-            fontWeight: 800,
-            fontSize: 14,
-            letterSpacing: '-0.02em',
             boxShadow: 'inset 0 -4px 10px rgba(0,0,0,.18)',
           }}
         >
-          CW
+          <BookOpen className="w-4 h-4" />
         </div>
         <div className="min-w-0">
           <div

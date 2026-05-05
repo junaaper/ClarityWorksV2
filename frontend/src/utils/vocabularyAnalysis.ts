@@ -38,7 +38,7 @@ export interface VocabularyAnalysisResult {
  * - Simple (Grades 1-3): Very common words, Zipf >= 5.5
  * - Medium (Grades 4-8): Common words, Zipf 4.0-5.5
  * - Advanced (Grades 9-12): Less common, Zipf 2.5-4.0
- * - Expert (College+): Rare/technical, Zipf < 2.5
+ * - Expert (College): Rare/technical, Zipf < 2.5
  */
 export function analyzeVocabulary(input: VocabularyAnalysisInput): VocabularyAnalysisResult {
   // Extract all words from text (alphabetic only, lowercase)
@@ -131,7 +131,7 @@ export function analyzeVocabulary(input: VocabularyAnalysisInput): VocabularyAna
     },
     {
       level: 'Expert',
-      gradeRange: 'College+',
+      gradeRange: 'College',
       count: expert.length,
       percentage: totalWords > 0 ? (expert.length / totalWords) * 100 : 0,
       examples: getUniqueExamples(expert),

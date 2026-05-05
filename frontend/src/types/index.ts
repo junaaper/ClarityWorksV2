@@ -236,11 +236,30 @@ export interface SimplifyAnalyzeResponse {
   selection_summary?: SimplificationSelectionSummary;
 }
 
+export interface ConceptNode {
+  id: string;
+  label: string;
+  tier: 'prerequisite' | 'intermediate' | 'target';
+  description: string;
+}
+
+export interface ConceptEdge {
+  from: string;
+  to: string;
+  relationship: string;
+}
+
+export interface ConceptGraph {
+  concepts: ConceptNode[];
+  edges: ConceptEdge[];
+}
+
 export interface SavedAnalysis {
   id: number;
   title: string;
   originalText: string;
   createdAt: string;
+  conceptGraph?: ConceptGraph | null;
   analysis: Analysis;
 }
 

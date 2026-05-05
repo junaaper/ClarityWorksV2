@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, Trash2, FileText, Loader2, Search } from 'lucide-react';
+import { Upload, Trash2, FileText, Loader2, Search, Network } from 'lucide-react';
 import { ragApi } from '../../services/api';
 import LoadingSpinner from '../common/LoadingSpinner';
+import ConceptGraphSection from '../Analysis/ConceptGraph';
+import { ConceptGraph } from '../../types';
 
 interface RagDocument {
   id: number;
@@ -10,6 +12,7 @@ interface RagDocument {
   file_size_bytes: number;
   total_chunks: number;
   uploaded_at: string;
+  concept_graph?: ConceptGraph | null;
 }
 
 const RAGUpload: React.FC = () => {
@@ -17,6 +20,8 @@ const RAGUpload: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [loadingDocs, setLoadingDocs] = useState(true);
+  const [expandedGraphId, setExpandedGraphId] = useState<number | null>(null);
+  const [conceptLoading, setConceptLoading] = useState(false);
 
   useEffect(() => {
     fetchDocuments();
@@ -75,6 +80,43 @@ const RAGUpload: React.FC = () => {
     } catch (error) {
       console.error('Delete error:', error);
       alert('Failed to delete document');
+    }
+  };
+
+  const handleConceptGraph = async (docId: number) => {
+    if (expandedGraphId === docId) {
+      setExpandedGraphId(null);
+      return;
+    }
+
+    setExpandedGraphId(docId);
+    const doc = documents.find((d) => d.id === docId);
+    if (doc?.concept_graph) return;
+
+    setConceptLoading(true);
+    try {
+      const result = await ragApi.generateConceptGraph(docId);
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === docId ? { ...d, concept_graph: result.conceptGraph } : d))
+      );
+    } catch (err) {
+      console.error('Failed to generate concept graph:', err);
+    } finally {
+      setConceptLoading(false);
+    }
+  };
+
+  const handleRegenerateConceptGraph = async (docId: number) => {
+    setConceptLoading(true);
+    try {
+      const result = await ragApi.generateConceptGraph(docId);
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === docId ? { ...d, concept_graph: result.conceptGraph } : d))
+      );
+    } catch (err) {
+      console.error('Failed to regenerate concept graph:', err);
+    } finally {
+      setConceptLoading(false);
     }
   };
 
@@ -185,7 +227,8 @@ const RAGUpload: React.FC = () => {
               </thead>
               <tbody>
                 {documents.map((doc) => (
-                  <tr key={doc.id}>
+                  <React.Fragment key={doc.id}>
+                  <tr>
                     <td>
                       <div className="flex items-center gap-2">
                         <FileText className="w-3.5 h-3.5" style={{ color: 'var(--text-4)' }} />
@@ -202,16 +245,44 @@ const RAGUpload: React.FC = () => {
                       {new Date(doc.uploaded_at).toLocaleDateString()}
                     </td>
                     <td>
-                      <button
-                        onClick={() => handleDelete(doc.id)}
-                        className="inline-flex items-center gap-1"
-                        style={{ color: 'var(--err-500)', fontSize: 12, fontWeight: 500 }}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Delete
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => handleConceptGraph(doc.id)}
+                          className="inline-flex items-center gap-1 transition-colors"
+                          style={{
+                            color: expandedGraphId === doc.id ? 'var(--p-600)' : 'var(--text-3)',
+                            fontSize: 12,
+                            fontWeight: 500,
+                          }}
+                        >
+                          <Network className="w-3.5 h-3.5" />
+                          Concept Map
+                        </button>
+                        <button
+                          onClick={() => handleDelete(doc.id)}
+                          className="inline-flex items-center gap-1"
+                          style={{ color: 'var(--err-500)', fontSize: 12, fontWeight: 500 }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
+                  {expandedGraphId === doc.id && (
+                    <tr>
+                      <td colSpan={5} style={{ padding: 0 }}>
+                        <div className="px-4 py-4">
+                          <ConceptGraphSection
+                            conceptGraph={doc.concept_graph}
+                            onGenerate={() => handleRegenerateConceptGraph(doc.id)}
+                            loading={conceptLoading}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
                 ))}
               </tbody>
             </table>

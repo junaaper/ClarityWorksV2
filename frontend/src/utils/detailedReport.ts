@@ -14,6 +14,7 @@ import {
   generateImprovementSuggestions,
   SuggestionInput
 } from './improvementSuggestions';
+import type { ConceptGraph } from '../types';
 
 export interface DetailedReportInput {
   title: string;
@@ -41,6 +42,7 @@ export interface DetailedReportInput {
   difficult_sentences: Array<{ sentence: string; position: number; word_count: number; reason: string; flesch_score?: number }>;
 
   original_text: string;
+  conceptGraph?: ConceptGraph | null;
 }
 
 const BLUE: [number, number, number] = [59, 130, 246];
@@ -388,6 +390,162 @@ export async function generateDetailedReport(input: DetailedReportInput) {
         },
       });
     }
+  }
+
+  // ===== CONCEPT PREREQUISITE GRAPH (only if generated) =====
+  if (input.conceptGraph && input.conceptGraph.concepts.length > 0) {
+    doc.addPage();
+    yPos = 25;
+
+    sectionHeader('Concept Prerequisite Graph');
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...GRAY);
+    doc.text('Arrows mean "is required before". The graph shows what a reader must already know.', margin, yPos);
+    yPos += 12;
+
+    const tierFills: Record<string, [number, number, number]> = {
+      prerequisite: [30, 58, 95],
+      intermediate: [45, 106, 79],
+      target: [154, 52, 18],
+    };
+    const tierBorders: Record<string, [number, number, number]> = {
+      prerequisite: [59, 130, 246],
+      intermediate: [34, 197, 94],
+      target: [249, 115, 22],
+    };
+    const tierLabels: Record<string, string> = {
+      prerequisite: 'Prerequisite',
+      intermediate: 'Intermediate',
+      target: 'Target',
+    };
+
+    // Legend
+    Object.entries(tierFills).forEach(([tier, fill], i) => {
+      const lx = margin + i * 55;
+      doc.setFillColor(...fill);
+      doc.roundedRect(lx, yPos - 3, 8, 8, 1.5, 1.5, 'F');
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...GRAY);
+      doc.text(tierLabels[tier], lx + 11, yPos + 3);
+    });
+    yPos += 12;
+
+    // Layout — dynamically size nodes to fit within page width
+    const concepts = input.conceptGraph.concepts;
+    const edges = input.conceptGraph.edges;
+
+    const tiers: Record<string, typeof concepts> = { prerequisite: [], intermediate: [], target: [] };
+    concepts.forEach((c) => {
+      (tiers[c.tier] || tiers.intermediate).push(c);
+    });
+    const layers = [tiers.prerequisite, tiers.intermediate, tiers.target].filter((l) => l.length > 0);
+
+    const maxNodesInRow = Math.max(...layers.map((l) => l.length));
+    const nodeGap = 5;
+    const nodeW = Math.min(38, (contentWidth - (maxNodesInRow - 1) * nodeGap) / maxNodesInRow);
+    const nodeH = 12;
+    const layerGap = 24;
+    const diagramStartY = yPos;
+
+    const positions: Record<string, { x: number; y: number; w: number }> = {};
+
+    // Max chars that fit in a node at font size 6.5
+    const maxChars = Math.max(8, Math.floor(nodeW / 2.1));
+
+    layers.forEach((layer, li) => {
+      const rowWidth = layer.length * (nodeW + nodeGap) - nodeGap;
+      const startX = margin + (contentWidth - rowWidth) / 2;
+      const cy = diagramStartY + li * (nodeH + layerGap);
+
+      layer.forEach((c, ci) => {
+        const cx = startX + ci * (nodeW + nodeGap);
+        positions[c.id] = { x: cx, y: cy, w: nodeW };
+
+        const fill = tierFills[c.tier] || tierFills.intermediate;
+        const border = tierBorders[c.tier] || tierBorders.intermediate;
+
+        doc.setFillColor(...fill);
+        doc.setDrawColor(...border);
+        doc.setLineWidth(0.5);
+        doc.roundedRect(cx, cy, nodeW, nodeH, 2, 2, 'FD');
+
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        const label = c.label.length > maxChars ? c.label.substring(0, maxChars - 1) + '…' : c.label;
+        doc.text(label, cx + nodeW / 2, cy + nodeH / 2 + 1.2, { align: 'center' });
+      });
+    });
+
+    // Draw arrows
+    doc.setLineWidth(0.4);
+    edges.forEach((e) => {
+      const from = positions[e.from];
+      const to = positions[e.to];
+      if (!from || !to) return;
+
+      const x1 = from.x + from.w / 2;
+      const y1 = from.y + nodeH;
+      const x2 = to.x + to.w / 2;
+      const y2 = to.y;
+
+      const sourceTier = concepts.find((c) => c.id === e.from)?.tier || 'intermediate';
+      const color = tierBorders[sourceTier] || tierBorders.intermediate;
+      doc.setDrawColor(...color);
+
+      doc.line(x1, y1, x2, y2);
+
+      const angle = Math.atan2(y2 - y1, x2 - x1);
+      const headLen = 2.5;
+      doc.setFillColor(...color);
+      doc.triangle(
+        x2, y2,
+        x2 - headLen * Math.cos(angle - 0.4), y2 - headLen * Math.sin(angle - 0.4),
+        x2 - headLen * Math.cos(angle + 0.4), y2 - headLen * Math.sin(angle + 0.4),
+        'F'
+      );
+    });
+
+    yPos = diagramStartY + layers.length * (nodeH + layerGap) + 8;
+
+    // Concept descriptions table
+    checkPage(30);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...DARK);
+    doc.text('Concept Descriptions', margin, yPos);
+    yPos += 8;
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Concept', 'Tier', 'Description']],
+      body: concepts.map((c) => [
+        c.label,
+        tierLabels[c.tier] || c.tier,
+        c.description || '—',
+      ]),
+      headStyles: { fillColor: BLUE, fontSize: 9, fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 4 },
+      alternateRowStyles: { fillColor: [250, 251, 253] },
+      columnStyles: {
+        0: { cellWidth: 38, fontStyle: 'bold' },
+        1: { cellWidth: 32, halign: 'center' },
+        2: { cellWidth: 'auto' },
+      },
+      didParseCell: (data) => {
+        if (data.section === 'body' && data.column.index === 1) {
+          const tierKey = concepts[data.row.index]?.tier;
+          if (tierKey && tierFills[tierKey]) {
+            data.cell.styles.textColor = [255, 255, 255];
+            data.cell.styles.fillColor = tierFills[tierKey];
+            data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      },
+    });
   }
 
   // ===== FOOTER ON ALL PAGES =====

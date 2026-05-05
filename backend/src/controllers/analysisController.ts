@@ -217,6 +217,7 @@ export const getAnalysisById = async (req: AuthRequest, res: Response): Promise<
       title: row.title,
       originalText: row.original_text,
       createdAt: row.created_at,
+      conceptGraph: row.concept_graph || null,
       analysis: {
         basic_metrics: {
           word_count: row.word_count,
@@ -249,6 +250,48 @@ export const getAnalysisById = async (req: AuthRequest, res: Response): Promise<
   } catch (error) {
     console.error('Get analysis error:', error);
     res.status(500).json({ error: 'Error fetching analysis' });
+  }
+};
+
+export const generateConceptGraph = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+    const userRole = req.userRole;
+
+    let result;
+    if (userRole === 'admin') {
+      result = await pool.query('SELECT id, original_text FROM analyses WHERE id = $1', [id]);
+    } else {
+      result = await pool.query('SELECT id, original_text FROM analyses WHERE id = $1 AND user_id = $2', [id, userId]);
+    }
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'Analysis not found' });
+      return;
+    }
+
+    const originalText = result.rows[0].original_text;
+
+    const conceptResponse = await axios.post(`${PYTHON_SERVICE_URL}/concepts/extract`, {
+      text: originalText,
+    });
+
+    const conceptGraph = conceptResponse.data.concept_graph || null;
+
+    await pool.query(
+      'UPDATE analyses SET concept_graph = $1 WHERE id = $2',
+      [JSON.stringify(conceptGraph), id]
+    );
+
+    res.json({ success: true, conceptGraph });
+  } catch (error) {
+    console.error('Concept graph generation error:', error);
+    if (axios.isAxiosError(error) && error.code === 'ECONNREFUSED') {
+      res.status(503).json({ error: 'Analysis service unavailable. Please try again later.' });
+    } else {
+      res.status(500).json({ error: 'Error generating concept graph' });
+    }
   }
 };
 

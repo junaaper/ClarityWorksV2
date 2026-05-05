@@ -17,6 +17,7 @@ import HighlightedText from './HighlightedText';
 import GradeExplanation from './GradeExplanation';
 import ComplexityScoreCard from './ComplexityScoreCard';
 import VocabularyAnalysis from './VocabularyAnalysis';
+import ConceptGraphSection from './ConceptGraph';
 import { calculateReadingTime, getReadingPaceDescription } from '../../utils/readingTime';
 import { generateDetailedReport } from '../../utils/detailedReport';
 
@@ -93,6 +94,7 @@ const AnalysisResults: React.FC = () => {
   const [data, setData] = useState<SavedAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [conceptLoading, setConceptLoading] = useState(false);
 
   const freshAnalysis = location.state?.analysis as { analysis: Analysis; analysisId: number } | undefined;
   const freshOriginalText = (location.state?.originalText as string | undefined) || '';
@@ -124,6 +126,19 @@ const AnalysisResults: React.FC = () => {
       fetchAnalysis();
     }
   }, [id, freshAnalysis]);
+
+  const handleGenerateConceptGraph = async () => {
+    if (!data?.id) return;
+    setConceptLoading(true);
+    try {
+      const result = await analysisApi.generateConceptGraph(data.id);
+      setData((prev) => prev ? { ...prev, conceptGraph: result.conceptGraph } : prev);
+    } catch (err) {
+      console.error('Failed to generate concept graph:', err);
+    } finally {
+      setConceptLoading(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -223,6 +238,7 @@ const AnalysisResults: React.FC = () => {
               difficult_words: analysis.difficult_elements.difficult_words,
               difficult_sentences: analysis.difficult_elements.difficult_sentences,
               original_text: data.originalText,
+              conceptGraph: data.conceptGraph,
             })}
             className="cw-btn cw-btn-primary"
           >
@@ -370,6 +386,15 @@ const AnalysisResults: React.FC = () => {
           />
         </div>
       )}
+
+      {/* Concept Prerequisite Graph */}
+      <div className="mb-6">
+        <ConceptGraphSection
+          conceptGraph={data.conceptGraph}
+          onGenerate={handleGenerateConceptGraph}
+          loading={conceptLoading}
+        />
+      </div>
 
       {/* Readability Metrics Table */}
       <div className="cw-card cw-card-pad-lg mb-6">

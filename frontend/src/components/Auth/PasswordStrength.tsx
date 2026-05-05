@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, X } from 'lucide-react';
+import { Check, Circle } from 'lucide-react';
 import type { PasswordRequirements } from '../../types';
 
 interface PasswordStrengthProps {
@@ -55,15 +55,15 @@ const PasswordStrength: React.FC<PasswordStrengthProps> = ({ password }) => {
     weak: 'Weak',
     fair: 'Fair',
     good: 'Good',
-    strong: 'Strong',
+    strong: 'Optimal',
   };
 
   const requirementsList = [
-    { key: 'minLength', label: 'At least 8 characters', met: requirements.minLength },
-    { key: 'hasUppercase', label: 'One uppercase letter', met: requirements.hasUppercase },
-    { key: 'hasLowercase', label: 'One lowercase letter', met: requirements.hasLowercase },
-    { key: 'hasNumber', label: 'One number', met: requirements.hasNumber },
-    { key: 'hasSpecialChar', label: 'One special character (!@#$%^&*)', met: requirements.hasSpecialChar },
+    { key: 'minLength', label: '8+ Characters', met: requirements.minLength },
+    { key: 'hasNumber', label: '1+ Number', met: requirements.hasNumber },
+    { key: 'hasSpecialChar', label: 'Special Symbol', met: requirements.hasSpecialChar },
+    { key: 'hasUppercase', label: 'Uppercase Char', met: requirements.hasUppercase },
+    { key: 'hasLowercase', label: 'Lowercase Char', met: requirements.hasLowercase },
   ];
 
   if (password.length === 0) {
@@ -73,38 +73,72 @@ const PasswordStrength: React.FC<PasswordStrengthProps> = ({ password }) => {
   const barColor = strengthColors[strength];
 
   return (
-    <div className="mt-3 space-y-3">
-      {/* Strength Bar */}
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <span style={{ fontSize: 11, color: 'var(--text-3)', letterSpacing: 0.2, textTransform: 'uppercase', fontWeight: 600 }}>
-            Password Strength
-          </span>
-          <span style={{ fontSize: 11, fontWeight: 600, color: barColor }}>
-            {strengthLabels[strength]}
-          </span>
-        </div>
-        <div
-          className="rounded-full overflow-hidden"
-          style={{ height: 5, background: 'var(--surface-sunk)', border: '1px solid var(--border)' }}
+    <div
+      className="rounded-lg"
+      style={{
+        padding: '14px 16px',
+        background: 'var(--surface-alt)',
+        border: '1px solid var(--border)',
+      }}
+    >
+      {/* Header + Bar */}
+      <div className="flex items-center justify-between mb-2.5">
+        <span style={{
+          fontSize: 10.5,
+          fontWeight: 700,
+          color: 'var(--text-2)',
+          letterSpacing: 0.4,
+          textTransform: 'uppercase',
+        }}>
+          Complexity Score
+        </span>
+        <span
+          className="rounded-full"
+          style={{
+            fontSize: 10.5,
+            fontWeight: 600,
+            color: barColor,
+            background: strength === 'strong'
+              ? 'color-mix(in srgb, var(--ok-500) 12%, transparent)'
+              : 'transparent',
+            padding: strength === 'strong' ? '2px 10px' : '2px 0',
+          }}
         >
-          <div
-            className="h-full transition-all duration-300 rounded-full"
-            style={{ width: `${percentage}%`, background: barColor }}
-          />
-        </div>
+          {strengthLabels[strength]}
+        </span>
       </div>
 
-      {/* Requirements List */}
-      <div className="space-y-1">
+      {/* Segmented bar */}
+      <div className="flex gap-1 mb-3">
+        {[25, 50, 75, 100].map((threshold) => (
+          <div
+            key={threshold}
+            className="flex-1 rounded-full"
+            style={{
+              height: 5,
+              background: percentage >= threshold ? barColor : 'var(--surface-highest)',
+              transition: 'background 200ms ease',
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Requirements grid */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
         {requirementsList.map((req) => (
           <div
             key={req.key}
-            className="flex items-center gap-2"
-            style={{ fontSize: 11.5, color: req.met ? 'var(--ok-500)' : 'var(--text-4)' }}
+            className="flex items-center gap-1.5"
+            style={{ fontSize: 11.5 }}
           >
-            {req.met ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
-            <span>{req.label}</span>
+            {req.met ? (
+              <Check className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--ok-500)' }} />
+            ) : (
+              <Circle className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--text-4)' }} />
+            )}
+            <span style={{ color: req.met ? 'var(--ok-500)' : 'var(--text-4)' }}>
+              {req.label}
+            </span>
           </div>
         ))}
       </div>

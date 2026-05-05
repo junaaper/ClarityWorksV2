@@ -941,7 +941,7 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
     return true;
   });
 
-  const wordHighlights = accepted
+  const rawWordHighlights = accepted
     .filter((c) => c.review_scope === 'word' || !c.review_scope)
     .map((c) => { const r = ranges[c.id]; return r ? { start: Math.max(0, Math.min(text.length, r.start)), end: Math.max(0, Math.min(text.length, r.end)), change: c, scope: 'word' as const } : null; })
     .filter((h): h is NonNullable<typeof h> => Boolean(h && h.end > h.start))
@@ -952,6 +952,10 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
     .map((c) => { const r = ranges[c.id]; return r ? { start: Math.max(0, Math.min(text.length, r.start)), end: Math.max(0, Math.min(text.length, r.end)), change: c, scope: 'sentence' as const } : null; })
     .filter((h): h is NonNullable<typeof h> => Boolean(h && h.end > h.start))
     .sort((a, b) => a.start - b.start);
+
+  const wordHighlights = rawWordHighlights.filter(
+    (word) => !sentenceHighlights.some((sentence) => word.start < sentence.end && word.end > sentence.start)
+  );
 
   type Segment = { start: number; end: number; change: Change; scope: 'word' | 'sentence' };
   const segments: Segment[] = [...wordHighlights];
@@ -993,7 +997,7 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
     const isPending = seg.change.accepted === null;
     const isWord = seg.scope === 'word';
 
-    let highlightClass = 'px-0.5 rounded cursor-help transition-colors ';
+    let highlightClass = 'rounded-sm cursor-help transition-colors ';
     if (hoveredChange === seg.change.id) {
       highlightClass += isPending
         ? 'bg-amber-400 text-amber-900'

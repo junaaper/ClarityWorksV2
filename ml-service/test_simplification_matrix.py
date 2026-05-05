@@ -37,6 +37,13 @@ def grade_label(g: int) -> str:
     return 'College' if g >= 13 else f'Grade {g}'
 
 
+def parse_target_label(label: str) -> int:
+    value = label.strip()
+    if value.lower() == 'college':
+        return 13
+    return int(value)
+
+
 def passes(predicted: float, target: int, tolerance: float = TOLERANCE) -> bool:
     return abs(predicted - target) <= tolerance
 
@@ -66,8 +73,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         '--targets',
-        default='3,5,8,10,12,13',
-        help='Comma-separated target grades. Default: 3,5,8,10,12,13 (representative subset).'
+        default='3,5,8,10,12,college',
+        help='Comma-separated target labels. Use "college" for the College band. Default: 3,5,8,10,12,college.'
     )
     parser.add_argument(
         '--sources',
@@ -156,7 +163,7 @@ def print_table(rows, targets, tolerance, mode, llm_enabled):
 def main() -> int:
     args = build_parser().parse_args()
 
-    targets = [int(t.strip()) for t in args.targets.split(',') if t.strip()]
+    targets = [parse_target_label(t) for t in args.targets.split(',') if t.strip()]
     test_dir = ROOT / 'data' / 'test_files'
     all_files = sorted(test_dir.glob('*.txt'), key=expected_grade)
 

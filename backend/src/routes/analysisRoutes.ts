@@ -6,6 +6,7 @@ import {
   getAnalysisById,
   deleteAnalysis,
   getStats,
+  generateConceptGraph,
 } from '../controllers/analysisController';
 import { authMiddleware } from '../middleware/auth';
 
@@ -17,6 +18,7 @@ router.post('/', analyzeText);
 router.post('/preview', analyzeTextPreview);
 router.get('/', getAnalyses);
 router.get('/stats', getStats);
+router.post('/:id/concepts', generateConceptGraph);
 router.get('/:id', getAnalysisById);
 router.delete('/:id', deleteAnalysis);
 

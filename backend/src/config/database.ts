@@ -157,6 +157,19 @@ export const initDatabase = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_rag_queries_user ON rag_queries(user_id)
     `);
 
+    // Add concept_graph column to analyses and rag_documents
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'analyses' AND column_name = 'concept_graph') THEN
+          ALTER TABLE analyses ADD COLUMN concept_graph JSONB;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'rag_documents' AND column_name = 'concept_graph') THEN
+          ALTER TABLE rag_documents ADD COLUMN concept_graph JSONB;
+        END IF;
+      END $$;
+    `);
+
     console.log('Database tables initialized successfully');
   } catch (error) {
     console.error('Error initializing database:', error);

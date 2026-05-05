@@ -6,10 +6,10 @@ interface SimplificationRecord {
   original_text: string;
   simplified_text: string;
   target_grade: string;
-  changes_applied: string;
+  changes_applied: string | unknown[];
   mode: string;
-  metrics_original: string | null;
-  metrics_simplified: string | null;
+  metrics_original: string | Record<string, unknown> | null;
+  metrics_simplified: string | Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -55,9 +55,9 @@ const SimplificationHistory: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {simplifications.map((simp) => {
-            const changes = JSON.parse(simp.changes_applied || '[]');
-            const metricsOrig = simp.metrics_original ? JSON.parse(simp.metrics_original) : null;
-            const metricsSimp = simp.metrics_simplified ? JSON.parse(simp.metrics_simplified) : null;
+            const changes = typeof simp.changes_applied === 'string' ? JSON.parse(simp.changes_applied || '[]') : (simp.changes_applied || []);
+            const metricsOrig = simp.metrics_original ? (typeof simp.metrics_original === 'string' ? JSON.parse(simp.metrics_original) : simp.metrics_original) : null;
+            const metricsSimp = simp.metrics_simplified ? (typeof simp.metrics_simplified === 'string' ? JSON.parse(simp.metrics_simplified) : simp.metrics_simplified) : null;
             const isExpanded = expandedId === simp.id;
 
             return (

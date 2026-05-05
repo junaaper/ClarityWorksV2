@@ -18,6 +18,7 @@ import uuid
 from models import ReadabilityModel
 from models.simplifier import TextSimplifier
 from models.rag_engine import RAGEngine
+from models.concept_extractor import ConceptExtractor
 from utils.change_patches import apply_changes_by_span
 from utils.text_cleaner import TextCleaner
 
@@ -40,6 +41,9 @@ simplifier = TextSimplifier(readability_model=model)
 
 # Initialize RAG engine
 rag_engine = RAGEngine()
+
+# Initialize concept extractor
+concept_extractor = ConceptExtractor()
 
 # If models not found, they will use heuristic fallback
 if not model.is_trained:
@@ -500,6 +504,55 @@ def apply_selected_changes():
     except Exception as e:
         print(f"Apply changes error: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/concepts/extract', methods=['POST'])
+def extract_concepts():
+    """Extract concept prerequisite graph from text or chunks"""
+    try:
+        data = request.get_json()
+        text = data.get('text', '')
+        chunks = data.get('chunks', [])
+
+        if chunks:
+            concept_graph = concept_extractor.extract_from_chunks(chunks)
+        elif text:
+            concept_graph = concept_extractor.extract(text)
+        else:
+            return jsonify({'error': 'Provide either text or chunks'}), 400
+
+        return jsonify({
+            'success': True,
+            'concept_graph': concept_graph,
+        })
+
+    except Exception as e:
+        print(f"Concept extraction error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/rag/documents/<doc_id>/chunks', methods=['GET'])
+def get_document_chunks(doc_id):
+    """Retrieve all text chunks for a document from ChromaDB"""
+    try:
+        collection_name = f"doc_{doc_id}"
+        try:
+            collection = rag_engine.client.get_collection(collection_name)
+        except Exception:
+            return jsonify({'error': 'Document not found in vector database'}), 404
+
+        result = collection.get(include=['documents'])
+        chunks = result.get('documents', [])
+
+        return jsonify({
+            'success': True,
+            'chunks': chunks,
+            'total_chunks': len(chunks),
+        })
+
+    except Exception as e:
+        print(f"Get chunks error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5001))

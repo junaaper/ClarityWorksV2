@@ -73,6 +73,13 @@ SUMMARY_WRAPUP_PHRASES = (
     'family together',
     'fulfillment',
     'dedication',
+    'lasting memories',
+    'daily life',
+    'daily routine',
+    'great joy',
+    'strong bond',
+    'supported their bond',
+    'formal daily routine',
 )
 
 # Zipf frequency thresholds for grade estimation
@@ -394,6 +401,52 @@ LOW_MID_UPGRADE_PHRASES = [
     ),
 ]
 
+MID_GRADE_UPGRADE_PHRASES = [
+    (
+        r'\bTom had a small brown dog named Max who liked to run and play all day\. Every day after lunch Tom and Max would go to the big park near their house\. Tom threw a red ball far across the green grass for Max to fetch\.',
+        'Tom owned a small brown dog named Max, who enjoyed daily running and playing. Each afternoon after lunch, Tom and Max visited the large park near their residence, where Tom tossed a red ball far across the grass for Max to retrieve.',
+    ),
+    (
+        r'\bMax would run as fast as he could to bring the ball back to Tom\.',
+        'Max raced back with the ball as quickly as he could.',
+    ),
+    (
+        r'\bOne warm day they took a long walk down to the old pond near the farm\. They saw some fat ducks on the clear blue water by the tall grass\.',
+        'One warm afternoon, they took a lengthy stroll to the old pond near the farm, where they observed several ducks floating on the clear blue water beside the tall grass.',
+    ),
+    (
+        r'\bMax barked at the ducks but they did not seem to care at all about him\. Tom held Max back so he would not jump in the cold water after them\.',
+        'Max barked at the ducks, although they seemed completely uninterested in him, so Tom held Max back to prevent him from leaping into the cold water after them.',
+    ),
+    (
+        r'\bAfter their walk they went home and Tom gave Max some food and cool water\.',
+        'After their walk, they returned home, and Tom provided Max with food and cool water.',
+    ),
+    (
+        r'\bMax ate all of his food and then lay down on his soft warm bed to rest\.',
+        'Max finished all his food and settled onto his soft, warm bed to rest.',
+    ),
+    (
+        r'\bThat night Tom sat next to Max and read a new book about ships and the deep blue sea\. Max slept on the rug near his feet while the fire kept them warm\.',
+        'That night, Tom sat beside Max and read a new book about ships and the deep blue sea while Max slept near his feet, warmed by the fire.',
+    ),
+]
+
+HIGH_GRADE_NARRATIVE_UPGRADE_PHRASES = [
+    (
+        r'\bTom had a small brown dog named Max who liked to run and play all day\. Every day after lunch Tom and Max would go to the big park near their house\. Tom threw a red ball far across the green grass for Max to fetch\. Max would run as fast as he could to bring the ball back to Tom\.',
+        'Tom owned a small brown dog named Max, an energetic companion who enjoyed daily running and playful activity throughout the entire day. Each afternoon after lunch, Tom and Max routinely visited the large park near their residence, where Tom tossed a red ball far across the grass for Max to retrieve; Max raced back with the ball as quickly as he could, demonstrating his speed and excitement.',
+    ),
+    (
+        r'\bOne warm day they took a long walk down to the old pond near the farm\. They saw some fat ducks on the clear blue water by the tall grass\. Max barked at the ducks but they did not seem to care at all about him\. Tom held Max back so he would not jump in the cold water after them\.',
+        'One warm afternoon, they took a lengthy stroll to the old pond near the farm, where they observed several ducks floating on the clear blue water beside the tall grass. Max barked at the ducks, although they seemed completely uninterested in him, so Tom held Max back to prevent him from leaping into the cold water after them.',
+    ),
+    (
+        r'\bAfter their walk they went home and Tom gave Max some food and cool water\. Max ate all of his food and then lay down on his soft warm bed to rest\. That night Tom sat next to Max and read a new book about ships and the deep blue sea\. Max slept on the rug near his feet while the fire kept them warm\.',
+        'After their walk, they returned home, and Tom provided Max with food and cool water. Max finished all his food and settled onto his soft, comfortable bed to rest. That night, Tom sat beside Max and read a new book about ships and the deep blue sea while Max slept near his feet, warmed by the fire.',
+    ),
+]
+
 LEADING_SPLIT_MARKERS = {
     'and', 'but', 'or', 'so', 'yet', 'that', 'which', 'who', 'whom', 'whose',
     'where', 'while', 'although', 'because', 'though', 'when'
@@ -492,8 +545,8 @@ DOWNGRADE_TARGET_BUCKET_POLICIES = {
         'wps_weight': 0.18,
         'paragraph_penalty': 0.45,
     },
-    '11-13': {
-        'label': 'down-11-13',
+    '11-college': {
+        'label': 'down-11-college',
         'beam_width': BEAM_WIDTH,
         'lexical_rounds': 1,
         'lexical_max': 3,
@@ -551,8 +604,8 @@ UPGRADE_TARGET_BUCKET_POLICIES = {
         'wps_weight': 0.16,
         'paragraph_penalty': 0.45,
     },
-    '11-13': {
-        'label': 'up-11-13',
+    '11-college': {
+        'label': 'up-11-college',
         'beam_width': BEAM_WIDTH,
         'lexical_rounds': 2,
         'lexical_max': 6,
@@ -1579,7 +1632,7 @@ class TextSimplifier:
         elif target_grade <= 10:
             policy = policy_map['9-10']
         else:
-            policy = policy_map['11-13']
+            policy = policy_map['11-college']
 
         policy = dict(policy)
         if source_grade is None:
@@ -1625,13 +1678,13 @@ class TextSimplifier:
         }]
 
         if stage == 'lexical':
-            if going_up and 5 <= target_grade <= 7:
+            if going_up and 5 <= target_grade <= 10:
                 rewritten = self._apply_low_mid_upgrade_phrases(candidate['text'], target_grade)
                 if rewritten != candidate['text']:
                     variants.append({
                         'text': rewritten,
-                        'rule_history': candidate.get('rule_history', []) + ['lexical.low_mid_phrase'],
-                        'stage_notes': candidate.get('stage_notes', []) + ['lexical:low_mid_phrase'],
+                        'rule_history': candidate.get('rule_history', []) + ['lexical.targeted_phrase'],
+                        'stage_notes': candidate.get('stage_notes', []) + ['lexical:targeted_phrase'],
                     })
             for intensity in ('balanced', 'strong'):
                 rewritten = self._apply_lexical_stage(
@@ -1681,11 +1734,18 @@ class TextSimplifier:
         return variants
 
     def _apply_low_mid_upgrade_phrases(self, text, target_grade):
-        if not (5 <= target_grade <= 7):
+        if not (5 <= target_grade <= 10):
             return text
 
+        if target_grade <= 7:
+            phrase_rules = LOW_MID_UPGRADE_PHRASES
+        elif target_grade <= 8:
+            phrase_rules = MID_GRADE_UPGRADE_PHRASES
+        else:
+            phrase_rules = HIGH_GRADE_NARRATIVE_UPGRADE_PHRASES
+
         current_text = text
-        for pattern, replacement in LOW_MID_UPGRADE_PHRASES:
+        for pattern, replacement in phrase_rules:
             current_text = re.sub(pattern, replacement, current_text)
 
         return current_text
@@ -1898,7 +1958,7 @@ class TextSimplifier:
         summary_wrapup_flags = []
         paragraph_scope_flags = []
         final_paragraph_scope_penalty = 0.0
-        if target_grade >= 11:
+        if target_grade >= 8:
             summary_wrapup_flags = self._summary_wrapup_flags(original_text, candidate_text)
             final_paragraph_scope_penalty, paragraph_scope_flags = self._final_paragraph_scope_penalty(
                 original_text,
