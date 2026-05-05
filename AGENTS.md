@@ -5,6 +5,12 @@
 
 ---
 
+### Recent Updates (2026-05-05)
+- Auto-mode high-grade rewrite selection now preserves **repairable near-hit candidates** instead of snapping back to a much lower clean rule candidate: candidate ranking no longer hard-truncates close `9-12.x`/College near-hits behind every clean miss, preferred selection can choose a much closer safe-ish near-hit even when broad upgrade wording lowers lexical-overlap similarity, and College correction compares against the displayed `13+` band while still returning the achieved Grade 12 text if no safe candidate reaches College.
+- Auto-mode preview rendering now trusts the ML service's exact `preview_text` instead of rebuilding the visible rewrite from review patches; frontend highlighting uses server-provided preview spans so a selected `12.x`/College LLM candidate is not visually replaced by an older Grade 7 patch reconstruction.
+- Grade 3 -> 6 upgrades now include a **low-to-mid phrase rewrite candidate** so the model can reach Grade 6 with natural middle-school wording instead of only isolated word swaps; unsafe Grade 6 substitutions such as `house -> building`, `read -> reviewed`, `gave -> supplied`, and `then -> subsequently` are suppressed, and sentence combining preserves proper-noun capitalization.
+- LLM rewrite finalization now strips **trailing meta-commentary** such as `Note: I removed...` from authoring, fallback, polish, and local-repair outputs before diffing or returning `preview_text`, so model explanations cannot appear inside the rewritten passage.
+
 ### Recent Updates (2026-05-02)
 - PDF extraction is now **Unicode-safe and multi-strategy**: file cleanup no longer drops non-ASCII ligature/private glyph text, short legitimate headings are preserved, pdfplumber tries several extraction settings per page, and an optional PyMuPDF pass is scored against pdfplumber so missing-glyph outputs such as `time -> me` are avoided when a better candidate is available.
 - Broad LLM paragraph rewrites now recover the old **Zipf-backed explanation style** without breaking exact preview application: paragraph-level patches mine visible vocabulary/connector evidence such as `go -> visit` with Zipf and syllable deltas, expose those evidence items to the frontend, render them under the change card/tooltip, and label exact broad rewrites as `Paragraph Rewrite` instead of misleading combine/split-only explanations.

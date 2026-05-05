@@ -176,6 +176,153 @@ def run_grade_12_to_10_case(simplifier):
         )
 
 
+def run_near_hit_candidate_selection_case(simplifier):
+    original_score_candidate = simplifier._score_candidate
+    try:
+        score_map = {
+            'clean low candidate 1': {
+                'candidate_score': 55.0,
+                'raw_score': 7.6,
+                'target_distance': 5.4,
+                'direction_hit': True,
+                'invalid_sentence_count': 0,
+                'invalid_sentence_delta': 0,
+                'semantic_similarity_score': 0.94,
+                'validation_flags': [],
+                'paragraph_rewrite_count': 0,
+            },
+            'clean low candidate 2': {
+                'candidate_score': 56.0,
+                'raw_score': 7.4,
+                'target_distance': 5.6,
+                'direction_hit': True,
+                'invalid_sentence_count': 0,
+                'invalid_sentence_delta': 0,
+                'semantic_similarity_score': 0.94,
+                'validation_flags': [],
+                'paragraph_rewrite_count': 0,
+            },
+            'clean low candidate 3': {
+                'candidate_score': 57.0,
+                'raw_score': 7.2,
+                'target_distance': 5.8,
+                'direction_hit': True,
+                'invalid_sentence_count': 0,
+                'invalid_sentence_delta': 0,
+                'semantic_similarity_score': 0.94,
+                'validation_flags': [],
+                'paragraph_rewrite_count': 0,
+            },
+            'near college candidate': {
+                'candidate_score': 92.0,
+                'raw_score': 12.3,
+                'target_distance': 0.7,
+                'direction_hit': True,
+                'invalid_sentence_count': 3,
+                'invalid_sentence_delta': 3,
+                'semantic_similarity_score': 0.36,
+                'validation_flags': [
+                    'new_invalid_sentence_structure',
+                    'meaning_drift_risk',
+                    'final_paragraph_expanded',
+                    'inherited_invalid_sentence_structure',
+                ],
+                'paragraph_rewrite_count': 1,
+            },
+        }
+
+        simplifier._score_candidate = (
+            lambda original_text, candidate_text, target_grade, mode, source_grade, policy:
+            score_map[candidate_text]
+        )
+        ranked = simplifier._rank_candidates(
+            original_text='source',
+            candidates=[
+                {'text': 'clean low candidate 1', 'rule_history': ['rule.1']},
+                {'text': 'clean low candidate 2', 'rule_history': ['rule.2']},
+                {'text': 'clean low candidate 3', 'rule_history': ['rule.3']},
+                {'text': 'near college candidate', 'rule_history': ['llm.rule_seeded']},
+            ],
+            target_grade=13,
+            mode='auto',
+            source_grade=3.1,
+            policy={'beam_width': 3},
+        )
+        if not any(candidate['text'] == 'near college candidate' for candidate in ranked):
+            raise AssertionError(
+                "Near-hit selection case: a repairable Grade 12 candidate should stay in the beam "
+                "instead of being truncated behind clean Grade 7 candidates."
+            )
+
+        selected = simplifier._select_preferred_candidate(ranked, target_grade=13)
+        if selected['text'] != 'near college candidate':
+            raise AssertionError(
+                "Near-hit selection case: expected the repairable Grade 12 near-hit to beat "
+                "a much lower clean Grade 7 candidate."
+            )
+    finally:
+        simplifier._score_candidate = original_score_candidate
+
+
+def run_grade_3_to_6_upgrade_case(simplifier):
+    text = load_test_text('grade_3.txt')
+    original_client = simplifier.llm_validator.client
+    simplifier.llm_validator.client = None
+    try:
+        result = simplifier.simplify_to_grade(
+            text,
+            6,
+            mode='auto',
+            prefer_rule_based=True,
+        )
+    finally:
+        simplifier.llm_validator.client = original_client
+    metrics = result.get('preview_metrics') or {}
+    raw_score = metrics.get('raw_score', 0)
+    if not (6.0 <= raw_score < 7.0):
+        raise AssertionError(
+            f"Grade 3 -> 6 upgrade case: expected Grade 6 preview, got raw {raw_score}."
+        )
+
+    rewritten = result.get('simplified_text', '')
+    blocked_fragments = [
+        'their building',
+        'reviewed a new book',
+        'subsequently',
+        'supplied Max some food',
+    ]
+    for fragment in blocked_fragments:
+        if fragment in rewritten:
+            raise AssertionError(
+                f"Grade 3 -> 6 upgrade case: found awkward low-mid upgrade fragment {fragment!r}."
+            )
+
+    expected_fragments = [
+        'enjoyed running and playing throughout the entire day',
+        'usually visited the large park located near their home',
+        'provided Max with food',
+    ]
+    for fragment in expected_fragments:
+        if fragment not in rewritten:
+            raise AssertionError(
+                f"Grade 3 -> 6 upgrade case: missing expected phrase-level upgrade {fragment!r}."
+            )
+
+
+def run_llm_meta_commentary_strip_case(simplifier):
+    text = (
+        "Tom had a small brown dog named Max.\n\n"
+        "Note: I removed extra sentences that were not present in the original text."
+    )
+    stripped = simplifier._strip_llm_meta_commentary(text)
+    expected = "Tom had a small brown dog named Max."
+    if stripped != expected:
+        raise AssertionError(
+            "LLM meta-commentary strip case: trailing Note text should not be delivered "
+            f"as rewritten content. Got: {stripped!r}"
+        )
+
+
 def run_final_review_reflection_case(simplifier):
     text = load_test_text('grade_12.txt')
     original_client = simplifier.llm_validator.client
@@ -295,6 +442,9 @@ def main() -> int:
         run_dependency_group_case(simplifier)
         run_mixed_granularity_diff_case(simplifier)
         run_grade_12_to_10_case(simplifier)
+        run_near_hit_candidate_selection_case(simplifier)
+        run_grade_3_to_6_upgrade_case(simplifier)
+        run_llm_meta_commentary_strip_case(simplifier)
         run_final_review_reflection_case(simplifier)
         run_water_cycle_grade_3_case(simplifier)
 

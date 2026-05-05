@@ -270,6 +270,27 @@ const buildPreviewState = (
   return { text: previewText, ranges };
 };
 
+const buildServerPreviewRanges = (
+  previewText: string,
+  updatedChanges: Change[]
+): Record<number, ChangeRange> => {
+  const ranges: Record<number, ChangeRange> = {};
+
+  for (const change of updatedChanges) {
+    if (typeof change.preview_start !== 'number' || typeof change.preview_end !== 'number') {
+      continue;
+    }
+
+    const start = Math.max(0, Math.min(previewText.length, change.preview_start));
+    const end = Math.max(start, Math.min(previewText.length, change.preview_end));
+    if (end > start) {
+      ranges[change.id] = { start, end };
+    }
+  }
+
+  return ranges;
+};
+
 const SimplifyPage: React.FC = () => {
   const { analysisId } = useParams<{ analysisId: string }>();
   const navigate = useNavigate();
@@ -365,8 +386,15 @@ const SimplifyPage: React.FC = () => {
       );
 
       const previewState = buildPreviewState(sourceText, newChanges, mode);
-      const previewText = newChanges.length > 0 ? previewState.text : (response.preview_text || sourceText);
-      const ranges = previewState.ranges;
+      const serverPreviewText = response.preview_text || '';
+      const shouldUseServerPreview = mode === 'auto' && serverPreviewText.trim().length > 0;
+      const previewText = shouldUseServerPreview
+        ? serverPreviewText
+        : newChanges.length > 0 ? previewState.text : sourceText;
+      const serverRanges = shouldUseServerPreview
+        ? buildServerPreviewRanges(previewText, newChanges)
+        : {};
+      const ranges = shouldUseServerPreview ? serverRanges : previewState.ranges;
 
       setChanges(newChanges);
       setRenderedRanges(ranges);

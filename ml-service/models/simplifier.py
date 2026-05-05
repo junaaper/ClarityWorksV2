@@ -318,6 +318,82 @@ SUPPLEMENTAL_COMPLEXIFICATIONS = {
     'wide': ['widespread'],
 }
 
+LOW_MID_UPGRADE_BLOCKED_WORDS = {
+    'give',
+    'gave',
+    'home',
+    'house',
+    'read',
+    'then',
+}
+
+LOW_MID_UPGRADE_PHRASES = [
+    (
+        r'\bhad a small brown dog named Max who liked to run and play all day\b',
+        'owned a small brown dog named Max, who enjoyed running and playing throughout the entire day',
+    ),
+    (
+        r'\bEvery day after lunch\b',
+        'Each afternoon after lunch',
+    ),
+    (
+        r'\bwould go to the big park near their house\b',
+        'usually visited the large park located near their home',
+    ),
+    (
+        r'\bthrew a red ball far across\b',
+        'tossed a red ball far across',
+    ),
+    (
+        r'\bfor Max to fetch\b',
+        'for Max to retrieve',
+    ),
+    (
+        r'\bMax would run as fast as he could to bring the ball back\b',
+        'Max raced quickly so he could return the ball',
+    ),
+    (
+        r'\bOne warm day\b',
+        'One warm afternoon',
+    ),
+    (
+        r'\blong walk\b',
+        'lengthy stroll',
+    ),
+    (
+        r'\bThey saw some fat ducks\b',
+        'They noticed several fat ducks floating peacefully',
+    ),
+    (
+        r'\bby the tall grass\b',
+        'beside the tall grass',
+    ),
+    (
+        r'\bdid not seem to care at all about him\b',
+        'appeared completely uninterested in him',
+    ),
+    (
+        r'\bjump in the cold water\b',
+        'leap into the cold water',
+    ),
+    (
+        r'\bthey went home\b',
+        'they returned home',
+    ),
+    (
+        r'\bTom gave Max some food\b',
+        'Tom provided Max with food',
+    ),
+    (
+        r'\blay down on his soft warm bed\b',
+        'settled down on his soft, warm bed',
+    ),
+    (
+        r'\bthe fire kept them warm\b',
+        'the fire kept them comfortable',
+    ),
+]
+
 LEADING_SPLIT_MARKERS = {
     'and', 'but', 'or', 'so', 'yet', 'that', 'which', 'who', 'whom', 'whose',
     'where', 'while', 'although', 'because', 'though', 'when'
@@ -615,6 +691,32 @@ class TextSimplifier:
             return float(m.group(1))
         return None
 
+    @staticmethod
+    def _strip_llm_meta_commentary(text):
+        if not text:
+            return text
+
+        cleaned = text.strip()
+        for prefix in ["REWRITTEN TEXT:", "UPGRADED TEXT:", "SIMPLIFIED TEXT:", "Here is", "Grade", "College"]:
+            if cleaned.startswith(prefix) and '\n' in cleaned:
+                cleaned = cleaned[cleaned.index('\n') + 1:].strip()
+
+        meta_patterns = [
+            r'(?:\n\s*)+(?:Note|Notes|Changes made|Changes|Rationale|Explanation)\s*:',
+            r'(?:\n\s*)+I (?:removed|made|adjusted|changed|kept)\b',
+            r'(?:\n\s*)+The rewritten text\b',
+        ]
+        cut_points = [
+            match.start()
+            for pattern in meta_patterns
+            for match in [re.search(pattern, cleaned, flags=re.IGNORECASE)]
+            if match
+        ]
+        if cut_points:
+            cleaned = cleaned[:min(cut_points)].strip()
+
+        return cleaned
+
     # ------------------------------------------------------------------ #
     #  Main entry point
     # ------------------------------------------------------------------ #
@@ -764,6 +866,7 @@ class TextSimplifier:
         going_up,
         prefer_sentence_level=False,
     ):
+        candidate_text = self._strip_llm_meta_commentary(candidate_text)
         desired_candidate_text = candidate_text
 
         def exact_fallback():
@@ -1186,6 +1289,10 @@ class TextSimplifier:
         flags = candidate.get('validation_flags', []) or []
         return any(flag.startswith('summary_wrapup:') for flag in flags)
 
+    @staticmethod
+    def _candidate_invalid_delta(candidate):
+        return int(candidate.get('invalid_sentence_delta', candidate.get('invalid_sentence_count', 0)) or 0)
+
     @classmethod
     def _candidate_has_paragraph_scope_drift(cls, candidate):
         flags = candidate.get('validation_flags', []) or []
@@ -1196,32 +1303,100 @@ class TextSimplifier:
             'paragraph_count_changed' in flags
         )
 
-    @staticmethod
-    def _select_preferred_candidate(ranked_candidates, target_grade=None):
+    @classmethod
+    def _candidate_is_repairable_near_hit(cls, candidate, target_grade=None):
+        flags = candidate.get('validation_flags', []) or []
+        blocking_flags = [
+            flag for flag in flags
+            if (
+                flag.startswith('blocked_substitution:') or
+                flag.startswith('summary_wrapup:')
+            )
+        ]
+        target_distance = candidate.get('target_distance', 999)
+        semantic_floor = 0.35 if target_distance <= 1.0 else 0.72
+        target_floor = max(6.0, float(target_grade or 9) - 2.0)
+        return (
+            candidate.get('direction_hit') and
+            target_distance <= 2.0 and
+            cls._candidate_invalid_delta(candidate) <= 3 and
+            candidate.get('semantic_similarity_score', 0.0) >= semantic_floor and
+            not blocking_flags and
+            candidate.get('raw_score', 0.0) >= target_floor
+        )
+
+    @classmethod
+    def _select_preferred_candidate(cls, ranked_candidates, target_grade=None):
         if not ranked_candidates:
             return None
 
         best_overall = ranked_candidates[0]
+
+        def near_hit_override(strict_choice):
+            if target_grade is None or target_grade < 9:
+                return strict_choice
+
+            repairable = [
+                candidate for candidate in ranked_candidates
+                if cls._candidate_is_repairable_near_hit(candidate, target_grade)
+            ]
+            if not repairable:
+                return strict_choice
+
+            best_repairable = min(
+                repairable,
+                key=lambda candidate: (
+                    candidate['target_distance'],
+                    cls._candidate_invalid_delta(candidate),
+                    candidate['candidate_score'],
+                    -candidate['semantic_similarity_score'],
+                    candidate['paragraph_rewrite_count'],
+                ),
+            )
+            if strict_choice is None:
+                return best_repairable
+            if best_repairable is strict_choice:
+                return strict_choice
+
+            strict_distance = strict_choice.get('target_distance', 999)
+            repair_distance = best_repairable.get('target_distance', 999)
+            strict_invalid_delta = cls._candidate_invalid_delta(strict_choice)
+
+            # A target miss is not a rejection. If the closest safe-ish candidate
+            # is much nearer to the requested band, keep it for final repair
+            # instead of snapping back to a much lower clean rule candidate.
+            if repair_distance == 0 and (strict_distance > 0 or strict_invalid_delta > 0):
+                return best_repairable
+            if repair_distance + 0.75 < strict_distance:
+                return best_repairable
+            if (
+                repair_distance + 0.35 < strict_distance and
+                best_repairable['candidate_score'] <= strict_choice['candidate_score'] + 8.0
+            ):
+                return best_repairable
+
+            return strict_choice
+
         if target_grade is not None and target_grade >= 11:
             clean_valid_directional = [
                 candidate for candidate in ranked_candidates
                 if (
-                    candidate.get('invalid_sentence_delta', candidate.get('invalid_sentence_count', 0)) == 0 and
+                    cls._candidate_invalid_delta(candidate) == 0 and
                     candidate.get('direction_hit') and
-                    not TextSimplifier._candidate_has_paragraph_scope_drift(candidate)
+                    not cls._candidate_has_paragraph_scope_drift(candidate)
                 )
             ]
             exact_valid = [
                 candidate for candidate in ranked_candidates
                 if (
-                    candidate.get('invalid_sentence_delta', candidate.get('invalid_sentence_count', 0)) == 0 and
+                    cls._candidate_invalid_delta(candidate) == 0 and
                     candidate.get('direction_hit') and
                     candidate.get('target_distance', 999) == 0
                 )
             ]
             clean_exact_valid = [
                 candidate for candidate in exact_valid
-                if not TextSimplifier._candidate_has_paragraph_scope_drift(candidate)
+                if not cls._candidate_has_paragraph_scope_drift(candidate)
             ]
             if clean_exact_valid:
                 return min(
@@ -1255,19 +1430,19 @@ class TextSimplifier:
                         best_clean['target_distance'] <= best_exact['target_distance'] + 0.35 or
                         best_clean['candidate_score'] <= best_exact['candidate_score'] + 2.0
                     ):
-                        return best_clean
+                        return near_hit_override(best_clean)
                 return best_exact
 
         valid_directional = [
             candidate for candidate in ranked_candidates
             if (
-                candidate.get('invalid_sentence_delta', candidate.get('invalid_sentence_count', 0)) == 0 and
+                cls._candidate_invalid_delta(candidate) == 0 and
                 candidate.get('direction_hit')
             )
         ]
         valid_any = [
             candidate for candidate in ranked_candidates
-            if candidate.get('invalid_sentence_delta', candidate.get('invalid_sentence_count', 0)) == 0
+            if cls._candidate_invalid_delta(candidate) == 0
         ]
 
         for pool in (valid_directional, valid_any):
@@ -1276,11 +1451,11 @@ class TextSimplifier:
             if target_grade is not None and target_grade >= 11:
                 clean_pool = [
                     candidate for candidate in pool
-                    if not TextSimplifier._candidate_has_paragraph_scope_drift(candidate)
+                    if not cls._candidate_has_paragraph_scope_drift(candidate)
                 ]
                 if clean_pool:
                     pool = clean_pool
-                return min(
+                strict_choice = min(
                     pool,
                     key=lambda candidate: (
                         candidate['target_distance'],
@@ -1289,7 +1464,8 @@ class TextSimplifier:
                         candidate['paragraph_rewrite_count'],
                     ),
                 )
-            return min(
+                return near_hit_override(strict_choice)
+            strict_choice = min(
                 pool,
                 key=lambda candidate: (
                     candidate['target_distance'],
@@ -1298,8 +1474,9 @@ class TextSimplifier:
                     candidate['paragraph_rewrite_count'],
                 ),
             )
+            return near_hit_override(strict_choice)
 
-        return best_overall
+        return near_hit_override(best_overall)
 
     def _select_rewrite_candidate(self, text, target_grade, mode):
         source_grade, _, _ = self._measure_text_metrics(text)
@@ -1448,6 +1625,14 @@ class TextSimplifier:
         }]
 
         if stage == 'lexical':
+            if going_up and 5 <= target_grade <= 7:
+                rewritten = self._apply_low_mid_upgrade_phrases(candidate['text'], target_grade)
+                if rewritten != candidate['text']:
+                    variants.append({
+                        'text': rewritten,
+                        'rule_history': candidate.get('rule_history', []) + ['lexical.low_mid_phrase'],
+                        'stage_notes': candidate.get('stage_notes', []) + ['lexical:low_mid_phrase'],
+                    })
             for intensity in ('balanced', 'strong'):
                 rewritten = self._apply_lexical_stage(
                     candidate['text'],
@@ -1494,6 +1679,16 @@ class TextSimplifier:
                     })
 
         return variants
+
+    def _apply_low_mid_upgrade_phrases(self, text, target_grade):
+        if not (5 <= target_grade <= 7):
+            return text
+
+        current_text = text
+        for pattern, replacement in LOW_MID_UPGRADE_PHRASES:
+            current_text = re.sub(pattern, replacement, current_text)
+
+        return current_text
 
     def _apply_lexical_stage(self, text, target_grade, going_up, policy, intensity='balanced'):
         rounds = policy['lexical_rounds'] + (1 if intensity == 'strong' else 0)
@@ -1560,7 +1755,7 @@ class TextSimplifier:
         return current_text
 
     def _apply_discourse_stage(self, text, target_grade, going_up, policy, intensity='balanced'):
-        current_text = self._rewrite_discourse_markers(text, going_up, intensity=intensity)
+        current_text = self._rewrite_discourse_markers(text, going_up, target_grade=target_grade, intensity=intensity)
         if current_text != text:
             return current_text
 
@@ -1572,7 +1767,10 @@ class TextSimplifier:
 
         return text
 
-    def _rewrite_discourse_markers(self, text, going_up, intensity='balanced'):
+    def _rewrite_discourse_markers(self, text, going_up, target_grade=None, intensity='balanced'):
+        if going_up and target_grade is not None and target_grade <= 6:
+            return text
+
         mapping = DISCOURSE_UPGRADE_MAP if going_up else DISCOURSE_DOWNGRADE_MAP
         if not text.strip():
             return text
@@ -1624,19 +1822,57 @@ class TextSimplifier:
             if existing is None or enriched['candidate_score'] < existing['candidate_score']:
                 ranked[normalized_key] = enriched
 
-        ordered = sorted(
-            ranked.values(),
-            key=lambda candidate: (
-                candidate.get('invalid_sentence_delta', candidate['invalid_sentence_count']) > 0,
-                candidate.get('invalid_sentence_delta', candidate['invalid_sentence_count']),
-                candidate['invalid_sentence_count'],
-                candidate['candidate_score'],
-                candidate['target_distance'],
-                -candidate['semantic_similarity_score'],
-                len(candidate.get('rule_history', [])),
+        high_upgrade = target_grade >= 9 and target_grade > source_grade
+        if high_upgrade:
+            ordered = sorted(
+                ranked.values(),
+                key=lambda candidate: (
+                    candidate['candidate_score'],
+                    candidate['target_distance'],
+                    self._candidate_invalid_delta(candidate),
+                    candidate['invalid_sentence_count'],
+                    -candidate['semantic_similarity_score'],
+                    len(candidate.get('rule_history', [])),
+                )
             )
-        )
-        return ordered[:policy['beam_width']]
+        else:
+            ordered = sorted(
+                ranked.values(),
+                key=lambda candidate: (
+                    self._candidate_invalid_delta(candidate) > 0,
+                    self._candidate_invalid_delta(candidate),
+                    candidate['invalid_sentence_count'],
+                    candidate['candidate_score'],
+                    candidate['target_distance'],
+                    -candidate['semantic_similarity_score'],
+                    len(candidate.get('rule_history', [])),
+                )
+            )
+        selected = ordered[:policy['beam_width']]
+        if high_upgrade and ordered:
+            near_hits = [
+                candidate for candidate in ordered
+                if self._candidate_is_repairable_near_hit(candidate, target_grade)
+            ]
+            if near_hits:
+                closest_near_hit = min(
+                    near_hits,
+                    key=lambda candidate: (
+                        candidate['target_distance'],
+                        self._candidate_invalid_delta(candidate),
+                        candidate['candidate_score'],
+                        -candidate['semantic_similarity_score'],
+                    ),
+                )
+                if closest_near_hit not in selected:
+                    farthest_selected_distance = max(
+                        (candidate['target_distance'] for candidate in selected),
+                        default=float('inf'),
+                    )
+                    if closest_near_hit['target_distance'] + 0.75 < farthest_selected_distance:
+                        selected = selected[:-1] + [closest_near_hit]
+
+        return selected
 
     def _score_candidate(self, original_text, candidate_text, target_grade, mode, source_grade, policy):
         candidate_grade, avg_syl, avg_wps = self._measure_text_metrics(candidate_text)
@@ -3236,6 +3472,9 @@ class TextSimplifier:
         orig_freq = zipf_frequency(word_lower, 'en')
         orig_syl = self.text_processor.count_syllables(word_lower)
 
+        if target_grade <= 6 and (word_lower in LOW_MID_UPGRADE_BLOCKED_WORDS or lemma in LOW_MID_UPGRADE_BLOCKED_WORDS):
+            return None
+
         # --- Strategy 1: Curated complexification_map ---
         if complex_options is None:
             complex_options = (self.synonym_lookup.get_complex_synonyms(lemma) or
@@ -3336,7 +3575,11 @@ class TextSimplifier:
 
                     if should_consider_pair and combined_words <= combine_cap:
                         text1 = sent.text.rstrip('.!?')
-                        text2 = next_sent.text[0].lower() + next_sent.text[1:]
+                        first_alpha = next((token for token in next_sent if token.is_alpha), None)
+                        if first_alpha is not None and (first_alpha.pos_ == 'PROPN' or first_alpha.ent_type_):
+                            text2 = next_sent.text
+                        else:
+                            text2 = next_sent.text[0].lower() + next_sent.text[1:]
                         if target_grade >= 9:
                             combined = f"{text1}; {text2}"
                         else:
@@ -5860,15 +6103,7 @@ TEXT TO REWRITE:
 SIMPLIFIED TEXT ({grade_label}):"""
 
             def _strip_preamble(text):
-                for prefix in ["REWRITTEN TEXT:", "UPGRADED TEXT:", "SIMPLIFIED TEXT:", "Here is", "Grade", "College"]:
-                    if text.startswith(prefix) and '\n' in text:
-                        text = text[text.index('\n') + 1:].strip()
-                # Strip trailing meta-commentary the LLM sometimes appends
-                for marker in ["\nI made the following", "\nI made no other", "\nNote:", "\nChanges made:", "\nChanges:"]:
-                    idx = text.find(marker)
-                    if idx != -1:
-                        text = text[:idx].strip()
-                return text
+                return self._strip_llm_meta_commentary(text)
 
             # ---- Estimate ideal sentence count from the original text ----
             orig_doc = nlp(original_text)
@@ -5948,7 +6183,7 @@ ADJUSTED TEXT:"""
                 adjusted = text_to_fix
                 g, s, w = cur_grade, cur_syl, cur_wps
                 for tune_round in range(max_rounds):
-                    grade_ok = abs(g - target_grade) <= 1.0
+                    grade_ok = self._distance_to_target_band(g, target_grade) == 0
                     wps_ok = min_wps - 2 <= w <= max_wps + 3
                     syl_ok = abs(s - target_syl) <= 0.10
                     if grade_ok and wps_ok and syl_ok:
@@ -5974,7 +6209,11 @@ ADJUSTED TEXT:"""
             # Safety net for paid/unrestricted environments only. Free-tier
             # runs keep one authoring call per request and rely on rule-based
             # metric correction after that draft.
-            if not self.rate_limited_llm and abs(actual_grade - target_grade) > 2.0:
+            needs_llm_metric_correction = (
+                abs(actual_grade - target_grade) > 2.0 or
+                (target_grade >= 13 and self._distance_to_target_band(actual_grade, target_grade) > 0)
+            )
+            if not self.rate_limited_llm and needs_llm_metric_correction:
                 correction_prompt = _build_correction_prompt(
                     rewritten,
                     actual_grade,
@@ -5994,7 +6233,9 @@ ADJUSTED TEXT:"""
                         f"[fireworks] {plan_label}/correction: grade={c_grade:.1f}, "
                         f"syl={c_syl:.2f}, wps={c_wps:.1f}"
                     )
-                    if abs(c_grade - target_grade) < abs(actual_grade - target_grade):
+                    current_band_distance = self._distance_to_target_band(actual_grade, target_grade)
+                    correction_band_distance = self._distance_to_target_band(c_grade, target_grade)
+                    if correction_band_distance < current_band_distance:
                         rewritten, actual_grade, actual_syl, actual_wps = corrected, c_grade, c_syl, c_wps
                         rewritten, actual_grade, actual_syl, actual_wps = _rule_correct(
                             rewritten, actual_grade, actual_syl, actual_wps
@@ -6069,11 +6310,7 @@ Simplified version:"""
             )
             if response is None:
                 return text, []
-            simplified = response.choices[0].message.content.strip()
-            for marker in ["\nI made the following", "\nI made no other", "\nNote:", "\nChanges made:", "\nChanges:"]:
-                idx = simplified.find(marker)
-                if idx != -1:
-                    simplified = simplified[:idx].strip()
+            simplified = self._strip_llm_meta_commentary(response.choices[0].message.content.strip())
             return simplified, [{
                 'type': 'ai_enhanced',
                 'original': text,
