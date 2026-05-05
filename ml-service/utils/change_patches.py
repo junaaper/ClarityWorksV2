@@ -18,7 +18,7 @@ def apply_changes_by_span(text, changes, accepted_change_ids=None):
         end = max(start, min(len(text), end))
         included_changes.append((start, end, replacement_text))
 
-    included_changes.sort(key=lambda item: (item[0], item[1]))
+    included_changes.sort(key=lambda item: (item[0], -item[1]))
 
     filtered = []
     prev_end = -1

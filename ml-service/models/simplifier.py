@@ -115,6 +115,9 @@ GRADE_TARGET_METRICS = {
     13: {'target_syl': 1.60, 'target_wps': 28, 'min_wps': 20, 'max_wps': 38},
 }
 
+AUTO_GREEDY_TOLERANCE = 0.5
+AUTO_GREEDY_MAX_MEASUREMENTS = 40
+
 GRADE_PROFILES = {
     3: (
         "Grade 3 reads like a story for 8-year-olds. "
@@ -659,6 +662,18 @@ class TextSimplifier:
             going_up=going_up,
         )
 
+        if mode == 'auto' and changes and final_metrics.get('target_distance', 0) > 0:
+            greedy_changes, greedy_text, greedy_metrics = self._greedy_select_changes_for_target(
+                original_text=text,
+                changes=changes,
+                target_grade=target_grade,
+                going_up=going_up,
+            )
+            if greedy_metrics['target_distance'] <= final_metrics['target_distance']:
+                changes = greedy_changes
+                current_text = greedy_text
+                final_metrics = greedy_metrics
+
         post_review_allowed = not self.rate_limited_llm
         validation = (
             self.llm_validator.validate_changes(text, current_text, changes)
@@ -713,9 +728,9 @@ class TextSimplifier:
 
         current_text = re.sub(r'\n +', '\n', current_text).strip()
 
-        display_changes = self._build_display_changes(text, current_text, target_grade, going_up)
-        if display_changes:
-            changes = display_changes
+        display_items = self._build_display_changes(text, current_text, target_grade, going_up)
+        if display_items:
+            self._enrich_changes_with_display_items(changes, display_items)
 
         return {
             'simplified_text': current_text,
@@ -1945,6 +1960,105 @@ class TextSimplifier:
             'semantic_similarity_score': round(self._semantic_similarity_score(text, text), 2),
             'target_distance': 0.0,
         }
+
+    def _greedy_select_changes_for_target(self, original_text, changes, target_grade, going_up):
+        """Auto-mode optimization: incrementally apply changes, keep only the subset that hits the target."""
+        if not changes:
+            metrics = self._measure_preview_metrics(original_text)
+            metrics['target_distance'] = self._distance_to_target_band(metrics['raw_score'], target_grade)
+            return changes, original_text, metrics
+
+        units = self._build_change_units(changes, going_up)
+        units.sort(key=lambda u: u['sort_key'], reverse=True)
+
+        baseline_grade, _, _ = self._measure_text_metrics(original_text)
+        baseline_distance = self._distance_to_target_band(baseline_grade, target_grade)
+        measurements = 1
+
+        best_ids = set()
+        best_text = original_text
+        best_distance = baseline_distance
+        applied_ids = set()
+
+        for unit in units:
+            if measurements >= AUTO_GREEDY_MAX_MEASUREMENTS:
+                break
+
+            candidate_ids = applied_ids | set(unit['change_ids'])
+            rebuilt = apply_changes_by_span(original_text, changes, list(candidate_ids))
+            grade, _, _ = self._measure_text_metrics(rebuilt)
+            measurements += 1
+            distance = self._distance_to_target_band(grade, target_grade)
+
+            if distance < best_distance:
+                best_ids = set(candidate_ids)
+                best_text = rebuilt
+                best_distance = distance
+                applied_ids = set(candidate_ids)
+                if distance == 0:
+                    break
+            elif distance <= best_distance + AUTO_GREEDY_TOLERANCE:
+                applied_ids = set(candidate_ids)
+
+        selected_changes = [c for c in changes if c['id'] in best_ids]
+        final_metrics = self._measure_preview_metrics(best_text)
+        final_metrics['semantic_similarity_score'] = round(
+            self._semantic_similarity_score(original_text, best_text), 2
+        )
+        final_metrics['target_distance'] = round(best_distance, 2)
+        return selected_changes, best_text, final_metrics
+
+    def _build_change_units(self, changes, going_up):
+        """Group changes into atomic units respecting dependency groups."""
+        groups = {}
+        ungrouped = []
+
+        for change in changes:
+            dep_id = change.get('dependency_group_id')
+            if dep_id:
+                groups.setdefault(dep_id, []).append(change)
+            else:
+                ungrouped.append(change)
+
+        units = []
+        for change in ungrouped:
+            impact = self._estimate_change_grade_impact(change, going_up)
+            units.append({
+                'change_ids': [change['id']],
+                'sort_key': impact,
+            })
+
+        for dep_id, group_changes in groups.items():
+            total_impact = sum(self._estimate_change_grade_impact(c, going_up) for c in group_changes)
+            units.append({
+                'change_ids': [c['id'] for c in group_changes],
+                'sort_key': total_impact,
+            })
+
+        return units
+
+    def _estimate_change_grade_impact(self, change, going_up):
+        """Heuristic: estimate how much this patch moves the grade toward the target."""
+        original_text = change.get('original_text', change.get('original', ''))
+        replacement_text = change.get('replacement_text', change.get('simplified', ''))
+
+        orig_words = re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", original_text)
+        repl_words = re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", replacement_text)
+
+        if not orig_words and not repl_words:
+            return 0.0
+
+        orig_syls = sum(self.text_processor.count_syllables(w.lower()) for w in orig_words) if orig_words else 0
+        repl_syls = sum(self.text_processor.count_syllables(w.lower()) for w in repl_words) if repl_words else 0
+        syl_impact = (repl_syls - orig_syls) * 0.5
+
+        orig_sents = len(re.findall(r'[.!?]+', original_text)) if original_text.strip() else 0
+        repl_sents = len(re.findall(r'[.!?]+', replacement_text)) if replacement_text.strip() else 0
+        sent_delta = repl_sents - orig_sents
+        wps_impact = -sent_delta * 2.0 + (len(repl_words) - len(orig_words)) * 0.1
+
+        raw_impact = syl_impact + wps_impact
+        return raw_impact if going_up else -raw_impact
 
     def _confidence_label(self, candidate_score, invalid_sentence_count, semantic_similarity_score, target_distance):
         if invalid_sentence_count:
@@ -4386,6 +4500,20 @@ class TextSimplifier:
                 items.append(item)
 
         return items
+
+    def _enrich_changes_with_display_items(self, changes, display_items):
+        """Copy explanation metadata from display items onto the composable patches."""
+        word_items = [d for d in display_items if d.get('review_scope') == 'word']
+        for change in changes:
+            if change.get('review_scope') != 'word':
+                continue
+            for item in word_items:
+                if item.get('start') == change.get('start') and item.get('end') == change.get('end'):
+                    if item.get('explanation_items'):
+                        change['explanation_items'] = item['explanation_items']
+                    if item.get('reason') and not change.get('reason'):
+                        change['reason'] = item['reason']
+                    break
 
     def _build_display_changes(self, original_text, rewritten_text, target_grade, going_up):
         """

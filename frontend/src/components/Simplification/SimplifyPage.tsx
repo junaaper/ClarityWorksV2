@@ -231,7 +231,7 @@ const buildPreviewState = (
     })
     .sort((a, b) => {
       if (a.start !== b.start) return a.start - b.start;
-      if (a.end !== b.end) return a.end - b.end;
+      if (a.end !== b.end) return b.end - a.end;
       return a.id - b.id;
     });
 
@@ -364,26 +364,9 @@ const SimplifyPage: React.FC = () => {
         normalizeChange(change, mode)
       );
 
-      const isDisplayDiff = newChanges.length > 0 && newChanges.some(
-        (c) => c.rule_id?.startsWith('display.')
-      );
-
-      let previewText: string;
-      let ranges: Record<number, ChangeRange>;
-
-      if (isDisplayDiff) {
-        previewText = response.preview_text || sourceText;
-        ranges = {};
-        for (const c of newChanges) {
-          if ((c.review_scope === 'word' || c.review_scope === 'sentence') && c.preview_start != null && c.preview_end != null && c.preview_end > c.preview_start) {
-            ranges[c.id] = { start: c.preview_start, end: c.preview_end };
-          }
-        }
-      } else {
-        const previewState = buildPreviewState(sourceText, newChanges, mode);
-        previewText = newChanges.length > 0 ? previewState.text : (response.preview_text || sourceText);
-        ranges = previewState.ranges;
-      }
+      const previewState = buildPreviewState(sourceText, newChanges, mode);
+      const previewText = newChanges.length > 0 ? previewState.text : (response.preview_text || sourceText);
+      const ranges = previewState.ranges;
 
       setChanges(newChanges);
       setRenderedRanges(ranges);
