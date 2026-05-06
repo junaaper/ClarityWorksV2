@@ -23,7 +23,9 @@
       "Bash(mkdir -p /tmp/design_bundle)",
       "Read(//tmp/**)",
       "Bash(tar -xzf \"C:\\\\Users\\\\trash\\\\.claude\\\\projects\\\\c--Programming-clarityworkscodex\\\\a5f7201d-7435-40c6-bfe9-adb9dd08d0b4\\\\tool-results\\\\webfetch-1776626720589-25zqhn.bin\")",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(ssh -i \"D:/Quick Access/DownloadsHDD/clarityworks.pem\" ubuntu@13.50.144.187 \"cat /etc/nginx/sites-available/clarityworks\")",
+      "Bash(ssh -i 'D:/Quick Access/DownloadsHDD/clarityworks.pem' ubuntu@13.50.144.187 'cd /home/ubuntu/clarityworks/ml-service && source venv/bin/activate && python -c \" *)"
     ],
     "deny": [],
     "ask": [],
