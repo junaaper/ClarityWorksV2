@@ -264,6 +264,467 @@ def run_near_hit_candidate_selection_case(simplifier):
         simplifier._score_candidate = original_score_candidate
 
 
+def run_single_call_multi_variant_case(simplifier):
+    class FakeMessage:
+        def __init__(self, content):
+            self.content = content
+
+    class FakeChoice:
+        def __init__(self, content):
+            self.message = FakeMessage(content)
+
+    class FakeResponse:
+        def __init__(self, content):
+            self.choices = [FakeChoice(content)]
+
+    original_chat = simplifier._llm_chat
+    original_client = simplifier.llm_client
+    calls = []
+    payload = """
+    {
+      "variants": [
+        {"name": "conservative", "text": "Tom had a small brown dog named Max, and they visited the nearby park each morning."},
+        {"name": "targeted", "text": "Tom owned a small brown dog named Max, and together they routinely visited the nearby park each morning."},
+        {"name": "aggressive", "text": "Tom maintained a daily routine with Max, his small brown dog, by visiting the nearby park each morning."}
+      ]
+    }
+    """
+
+    try:
+        simplifier.llm_client = object()
+        simplifier._llm_call_budget = 1
+        simplifier._llm_calls_made = 0
+
+        def fake_chat(*args, **kwargs):
+            simplifier._llm_calls_made += 1
+            calls.append((args, kwargs))
+            return FakeResponse(payload)
+
+        simplifier._llm_chat = fake_chat
+        policy = {
+            'beam_width': 3,
+            'syllable_weight': 1.0,
+            'wps_weight': 1.0,
+            'paragraph_penalty': 0.0,
+        }
+        candidates = simplifier._generate_llm_candidates(
+            original_text="Tom had a small brown dog named Max. They went to the park each morning.",
+            target_grade=13,
+            source_grade=3.2,
+            going_up=True,
+            mode='auto',
+            policy=policy,
+            rule_selection={'text': "Tom had a small brown dog named Max. They visited the nearby park each morning."},
+        )
+    finally:
+        simplifier._llm_chat = original_chat
+        simplifier.llm_client = original_client
+        simplifier._llm_call_budget = None
+        simplifier._llm_calls_made = 0
+
+    if len(calls) != 1:
+        raise AssertionError(f"Multi-variant case: expected one Fireworks call, got {len(calls)}.")
+    if len(candidates) < 3:
+        raise AssertionError(f"Multi-variant case: expected three parsed candidates, got {len(candidates)}.")
+    if not all('single_call' in ' '.join(candidate.get('rule_history', [])) for candidate in candidates):
+        raise AssertionError("Multi-variant case: candidates should be marked as single-call LLM outputs.")
+
+
+def run_paid_tier_cascade_case(simplifier):
+    class FakeMessage:
+        def __init__(self, content):
+            self.content = content
+
+    class FakeChoice:
+        def __init__(self, content):
+            self.message = FakeMessage(content)
+
+    class FakeResponse:
+        def __init__(self, content):
+            self.choices = [FakeChoice(content)]
+
+    original_chat = simplifier._llm_chat
+    original_client = simplifier.llm_client
+    original_score = simplifier._score_candidate
+    calls = []
+    first_payload = """
+    {"variants":[
+      {"name":"conservative","text":"low college attempt"},
+      {"name":"targeted","text":"medium college attempt"},
+      {"name":"aggressive","text":"aggressive college attempt"}
+    ]}
+    """
+    responses = [
+        first_payload,
+        "corrected college attempt",
+        "repaired college attempt",
+    ]
+    score_map = {
+        'low college attempt': {
+            'candidate_score': 50.0,
+            'raw_score': 9.4,
+            'target_distance': 3.6,
+            'direction_hit': True,
+            'invalid_sentence_count': 0,
+            'invalid_sentence_delta': 0,
+            'semantic_similarity_score': 0.95,
+            'validation_flags': [],
+            'paragraph_rewrite_count': 0,
+        },
+        'medium college attempt': {
+            'candidate_score': 45.0,
+            'raw_score': 10.4,
+            'target_distance': 2.6,
+            'direction_hit': True,
+            'invalid_sentence_count': 0,
+            'invalid_sentence_delta': 0,
+            'semantic_similarity_score': 0.95,
+            'validation_flags': [],
+            'paragraph_rewrite_count': 0,
+        },
+        'aggressive college attempt': {
+            'candidate_score': 40.0,
+            'raw_score': 10.8,
+            'target_distance': 2.2,
+            'direction_hit': True,
+            'invalid_sentence_count': 0,
+            'invalid_sentence_delta': 0,
+            'semantic_similarity_score': 0.93,
+            'validation_flags': [],
+            'paragraph_rewrite_count': 0,
+        },
+        'corrected college attempt': {
+            'candidate_score': 25.0,
+            'raw_score': 12.4,
+            'target_distance': 0.6,
+            'direction_hit': True,
+            'invalid_sentence_count': 0,
+            'invalid_sentence_delta': 0,
+            'semantic_similarity_score': 0.92,
+            'validation_flags': [],
+            'paragraph_rewrite_count': 0,
+        },
+        'repaired college attempt': {
+            'candidate_score': 10.0,
+            'raw_score': 13.1,
+            'target_distance': 0.0,
+            'direction_hit': True,
+            'invalid_sentence_count': 0,
+            'invalid_sentence_delta': 0,
+            'semantic_similarity_score': 0.91,
+            'validation_flags': [],
+            'paragraph_rewrite_count': 0,
+        },
+    }
+
+    try:
+        simplifier.llm_client = object()
+        simplifier._llm_call_budget = 3
+        simplifier._llm_calls_made = 0
+
+        def fake_chat(*args, **kwargs):
+            simplifier._llm_calls_made += 1
+            calls.append((args, kwargs))
+            return FakeResponse(responses[len(calls) - 1])
+
+        simplifier._llm_chat = fake_chat
+        simplifier._score_candidate = (
+            lambda original_text, candidate_text, target_grade, mode, source_grade, policy:
+            score_map[candidate_text]
+        )
+
+        policy = {
+            'beam_width': 3,
+            'syllable_weight': 1.0,
+            'wps_weight': 1.0,
+            'paragraph_penalty': 0.0,
+        }
+        candidates = simplifier._generate_llm_candidates(
+            original_text="Tom had a small brown dog named Max. They went to the park each morning.",
+            target_grade=13,
+            source_grade=3.2,
+            going_up=True,
+            mode='auto',
+            policy=policy,
+            rule_selection={'text': "Tom had a small brown dog named Max. They visited the nearby park each morning."},
+        )
+    finally:
+        simplifier._llm_chat = original_chat
+        simplifier.llm_client = original_client
+        simplifier._score_candidate = original_score
+        simplifier._llm_call_budget = None
+        simplifier._llm_calls_made = 0
+
+    if len(calls) != 3:
+        raise AssertionError(f"Paid-tier cascade case: expected three Fireworks calls for hard College jump, got {len(calls)}.")
+    if not any(candidate['text'] == 'corrected college attempt' for candidate in candidates):
+        raise AssertionError("Paid-tier cascade case: expected target-correction candidate to be added.")
+    if not any(candidate['text'] == 'repaired college attempt' for candidate in candidates):
+        raise AssertionError("Paid-tier cascade case: expected safety-cleanup candidate to be added.")
+
+
+def run_word_artifact_gate_case(simplifier):
+    metrics = simplifier._score_candidate(
+        original_text="Markets use a broader trading system.",
+        candidate_text="Markets use a widerrer trading system.",
+        target_grade=7,
+        mode='interactive',
+        source_grade=10.0,
+        policy={'syllable_weight': 1.0, 'wps_weight': 1.0, 'paragraph_penalty': 0.0},
+    )
+    if not any(flag.startswith('word_artifact:widerrer') for flag in metrics.get('validation_flags', [])):
+        raise AssertionError("Word-artifact case: expected 'widerrer' to be blocked as a malformed word.")
+
+
+def run_awkward_upgrade_phrase_gate_case(simplifier):
+    original = (
+        "He helps us dig rows in the soft dirt. "
+        "Mom makes a fresh salad from the food we grow. "
+        "Growing food takes care but the fresh taste makes it all worth the work."
+    )
+    candidate = (
+        "He facilitates us dig rows in the soft dirt. "
+        "Mom constructs a fresh salad from the food we expand. "
+        "Expanding food takes care but the fresh taste constructs it all worth the work."
+    )
+    metrics = simplifier._score_candidate(
+        original_text=original,
+        candidate_text=candidate,
+        target_grade=13,
+        mode='auto',
+        source_grade=4.0,
+        policy={'syllable_weight': 1.0, 'wps_weight': 1.0, 'paragraph_penalty': 0.0},
+    )
+    flags = metrics.get('validation_flags', [])
+    expected_prefixes = [
+        'awkward_phrase:facilitate_bare_verb',
+        'awkward_phrase:construct_food',
+        'awkward_phrase:construct_worth',
+        'awkward_phrase:expand_food',
+    ]
+    missing = [prefix for prefix in expected_prefixes if prefix not in flags]
+    if missing:
+        raise AssertionError(f"Awkward phrase gate case: missing flags {missing}; got {flags}")
+    if simplifier._candidate_has_hard_safety_failure(metrics):
+        raise AssertionError("Awkward phrase gate case: awkward phrasing should be repairable, not a hard safety block.")
+
+
+def run_high_target_awkward_near_hit_preferred_case(_simplifier):
+    clean_low = {
+        'text': 'clean low candidate',
+        'candidate_score': 18.0,
+        'raw_score': 9.70,
+        'target_distance': 3.30,
+        'direction_hit': True,
+        'invalid_sentence_count': 0,
+        'invalid_sentence_delta': 0,
+        'semantic_similarity_score': 0.96,
+        'paragraph_rewrite_count': 0,
+        'validation_flags': [],
+    }
+    awkward_near_hit = {
+        'text': 'awkward near target candidate',
+        'candidate_score': 35.0,
+        'raw_score': 12.58,
+        'target_distance': 0.42,
+        'direction_hit': True,
+        'invalid_sentence_count': 0,
+        'invalid_sentence_delta': 0,
+        'semantic_similarity_score': 0.88,
+        'paragraph_rewrite_count': 1,
+        'validation_flags': [
+            'awkward_phrase:facilitate_bare_verb',
+            'summary_wrapup:value_of',
+        ],
+    }
+
+    selected = TextSimplifier._select_preferred_candidate(
+        [clean_low, awkward_near_hit],
+        target_grade=13,
+    )
+    if selected is not awkward_near_hit:
+        raise AssertionError(
+            "High-target near-hit case: expected a repairable Raw 12.58 candidate "
+            "to beat a cleaner Raw 9.70 candidate for College."
+        )
+
+
+def run_low_target_near_hit_preferred_case(_simplifier):
+    clean_high = {
+        'text': 'clean high candidate',
+        'candidate_score': 18.0,
+        'raw_score': 12.61,
+        'target_distance': 8.61,
+        'direction_hit': True,
+        'invalid_sentence_count': 0,
+        'invalid_sentence_delta': 0,
+        'semantic_similarity_score': 0.94,
+        'paragraph_rewrite_count': 0,
+        'validation_flags': [],
+    }
+    close_low = {
+        'text': 'close grade three candidate',
+        'candidate_score': 42.0,
+        'raw_score': 3.14,
+        'target_distance': 0.0,
+        'direction_hit': True,
+        'invalid_sentence_count': 2,
+        'invalid_sentence_delta': 2,
+        'semantic_similarity_score': 0.58,
+        'paragraph_rewrite_count': 1,
+        'validation_flags': ['major_length_compression'],
+    }
+
+    selected = TextSimplifier._select_preferred_candidate(
+        [clean_high, close_low],
+        target_grade=3,
+    )
+    if selected is not close_low:
+        raise AssertionError(
+            "Low-target near-hit case: expected a repairable Raw 3.14 candidate "
+            "to beat a clean Raw 12.61 candidate for Grade 3."
+        )
+
+
+def run_low_grade_downgrade_prompt_contract_case(simplifier):
+    instructions = simplifier._low_grade_downgrade_instructions(
+        target_grade=4,
+        source_grade=14.4,
+    )
+    required_fragments = [
+        'Grade 4 text for a child',
+        'Grade 8-12 is still a failure',
+        'Do not use semicolons',
+        'It is acceptable to sound simple',
+    ]
+    missing = [fragment for fragment in required_fragments if fragment not in instructions]
+    if missing:
+        raise AssertionError(f"Low-grade downgrade prompt contract: missing fragments {missing}")
+
+
+def run_family_role_protected_term_case(simplifier):
+    flags = simplifier._protected_term_flags(
+        original_text="Mom makes a fresh salad. Dad helps Max water the garden.",
+        candidate_text="My mother prepares a fresh salad. My father helps Max water the garden.",
+    )
+    if any(flag in {'missing_protected_term:mom', 'missing_protected_term:dad'} for flag in flags):
+        raise AssertionError(f"Family-role protected term case: Mom/Dad should be replaceable family roles, got {flags}")
+    if any(flag.startswith('missing_protected_term:max') for flag in flags):
+        raise AssertionError(f"Family-role protected term case: preserved name Max should not be flagged, got {flags}")
+
+
+def run_context_blind_upgrade_guard_case(simplifier):
+    text = (
+        "He helps us dig rows in the soft dirt. "
+        "Mom makes a fresh salad from the food we grow. "
+        "Growing food makes it all worth the hard work."
+    )
+    upgraded, _changes = simplifier._complexify_text(text, 13)
+    lowered = upgraded.lower()
+    blocked_fragments = [
+        'assists us dig',
+        'aids us dig',
+        'supports us dig',
+        'produces a fresh salad',
+        'generates a fresh salad',
+        'constructs a fresh salad',
+        'expand fresh food',
+        'expanding food',
+        'produces it all worth',
+        'generates it all worth',
+        'constructs it all worth',
+    ]
+    for fragment in blocked_fragments:
+        if fragment in lowered:
+            raise AssertionError(
+                "Context-blind upgrade guard case: local complexification produced awkward wording.\n"
+                f"Fragment: {fragment}\n\nACTUAL:\n{upgraded}"
+            )
+
+
+def run_paragraph_shape_restore_case(simplifier):
+    original = (
+        "My dad keeps a small garden behind our house. We plant tiny seeds. Then we water each row.\n\n"
+        "After two weeks green shoots come up. We pull weeds so plants can grow.\n\n"
+        "By summer we pick food from the garden. We share extra food with neighbors.\n\n"
+        "Growing food takes care, but the fresh taste is worth the work."
+    )
+    collapsed = (
+        "My father oversees a modest garden behind our house, where we plant tiny seeds. "
+        "Then we administer water to each row. After two weeks, green shoots emerge from the soil. "
+        "We remove weeds so the plants can continue developing. By summer, we harvest food from the garden. "
+        "We share surplus food with neighbors. Growing food requires care, but the fresh taste makes the work worthwhile."
+    )
+    restored = simplifier._restore_paragraph_shape(original, collapsed)
+    if len(simplifier._extract_paragraph_chunks(restored)) != 4:
+        raise AssertionError(f"Paragraph restore case: expected 4 paragraphs, got:\n{restored}")
+    if restored == collapsed or '\n\n' not in restored:
+        raise AssertionError("Paragraph restore case: collapsed rewrite should receive blank lines.")
+
+    result_text, changes, _metrics = simplifier._finalize_preview_candidate(
+        original_text=original,
+        candidate_text=collapsed,
+        target_grade=13,
+        going_up=True,
+    )
+    if len(simplifier._extract_paragraph_chunks(result_text)) != 4:
+        raise AssertionError("Paragraph restore case: final preview should preserve original paragraph count.")
+    rebuilt = apply_changes_by_span(original, changes, [change['id'] for change in changes])
+    assert_equal(
+        rebuilt,
+        result_text,
+        "Paragraph restore case: accepted patches should rebuild the paragraph-restored preview.",
+    )
+
+
+def run_auto_interactive_parity_with_greedy_case(simplifier):
+    original_select = simplifier._select_authoring_candidate
+    original_greedy = simplifier._greedy_select_changes_for_target
+    calls = {'count': 0}
+    source = "Tom ran to the park. Max barked at the gate."
+    candidate = "Tom ran to the park while Max barked at the gate."
+
+    try:
+        simplifier._select_authoring_candidate = (
+            lambda text, target_grade, mode, prefer_rule_based=False: {
+                'text': candidate,
+                'score': 1.0,
+                'going_up': True,
+                'selection_summary': {
+                    'policy_bucket': 'test',
+                    'beam_width': 1,
+                    'source_grade': 3.0,
+                    'target_grade': target_grade,
+                    'direction_hit': True,
+                    'top_candidates': [],
+                },
+                'top_candidates': [],
+            }
+        )
+
+        def fake_greedy(original_text, changes, target_grade, going_up):
+            calls['count'] += 1
+            rebuilt = apply_changes_by_span(original_text, changes, [change['id'] for change in changes])
+            metrics = simplifier._measure_preview_metrics(rebuilt)
+            metrics['target_distance'] = 0.0
+            return changes, rebuilt, metrics
+
+        simplifier._greedy_select_changes_for_target = fake_greedy
+        interactive = simplifier.simplify_to_grade(source, 13, mode='interactive')
+        auto = simplifier.simplify_to_grade(source, 13, mode='auto')
+    finally:
+        simplifier._select_authoring_candidate = original_select
+        simplifier._greedy_select_changes_for_target = original_greedy
+
+    if calls['count'] != 2:
+        raise AssertionError("Auto/interactive parity case: target repair should run for both modes.")
+    assert_equal(
+        interactive['simplified_text'],
+        auto['simplified_text'],
+        "Auto/interactive parity case: all-accepted interactive preview must equal auto preview.",
+    )
+
+
 def run_grade_3_to_6_upgrade_case(simplifier):
     text = load_test_text('grade_3.txt')
     original_client = simplifier.llm_validator.client
@@ -362,8 +823,8 @@ def run_final_review_reflection_case(simplifier):
         if not reviewed_changes:
             raise AssertionError("Final review case: expected at least one anchored change to be marked as final-reviewed.")
 
-        if not any('meaning check' in (change.get('reason') or '').lower() for change in reviewed_changes):
-            raise AssertionError("Final review case: expected reviewed changes to get the final meaning-check reason.")
+        if not any('meaning check' in (change.get('final_review_note') or '').lower() for change in reviewed_changes):
+            raise AssertionError("Final review case: expected reviewed changes to carry the final meaning-check note.")
     finally:
         simplifier.llm_validator.client = original_client
         simplifier.llm_validator.validate_changes = original_validate
@@ -443,6 +904,17 @@ def main() -> int:
         run_mixed_granularity_diff_case(simplifier)
         run_grade_12_to_10_case(simplifier)
         run_near_hit_candidate_selection_case(simplifier)
+        run_single_call_multi_variant_case(simplifier)
+        run_paid_tier_cascade_case(simplifier)
+        run_word_artifact_gate_case(simplifier)
+        run_awkward_upgrade_phrase_gate_case(simplifier)
+        run_high_target_awkward_near_hit_preferred_case(simplifier)
+        run_low_target_near_hit_preferred_case(simplifier)
+        run_low_grade_downgrade_prompt_contract_case(simplifier)
+        run_family_role_protected_term_case(simplifier)
+        run_context_blind_upgrade_guard_case(simplifier)
+        run_paragraph_shape_restore_case(simplifier)
+        run_auto_interactive_parity_with_greedy_case(simplifier)
         run_grade_3_to_6_upgrade_case(simplifier)
         run_llm_meta_commentary_strip_case(simplifier)
         run_final_review_reflection_case(simplifier)

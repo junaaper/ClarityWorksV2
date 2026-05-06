@@ -1,0 +1,1496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ClarityWorks — Thesis Defence</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Source+Serif+4:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #001f3d;
+    --navy-light: #003461;
+    --navy-deep: #00152a;
+    --blue: #2563eb;
+    --blue-light: #3b82f6;
+    --teal: #0d9488;
+    --teal-light: #14b8a6;
+    --green: #16a34a;
+    --amber: #d97706;
+    --red: #dc2626;
+    --purple: #7c3aed;
+    --pink: #ec4899;
+    --slate-50: #f8fafc;
+    --slate-100: #f1f5f9;
+    --slate-200: #e2e8f0;
+    --slate-300: #cbd5e1;
+    --slate-400: #94a3b8;
+    --slate-500: #64748b;
+    --slate-600: #475569;
+    --slate-700: #334155;
+    --slate-800: #1e293b;
+    --slate-900: #0f172a;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --radius-xs: 6px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-serif: 'Source Serif 4', Georgia, serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --slide-w: 1280px;
+    --slide-h: 720px;
+  }
+
+  html { font-size: 16px; }
+
+  body {
+    font-family: var(--font);
+    background: var(--slate-900);
+    color: var(--slate-100);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── Slide container ─── */
+  .deck {
+    position: relative;
+    width: var(--slide-w);
+    height: var(--slide-h);
+    overflow: hidden;
+    transform-origin: center center;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none !important;
+    flex-direction: column;
+    background: var(--navy);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 25px 60px rgba(0,0,0,.45);
+  }
+  .slide.active { display: flex !important; }
+
+  /* ─── Common layout helpers ─── */
+  .pad { padding: 56px 64px; }
+  .pad-lg { padding: 64px 72px; }
+  .flex-1 { flex: 1; min-height: 0; }
+  .flex-col { display: flex; flex-direction: column; }
+  .flex-row { display: flex; flex-direction: row; }
+  .gap-4 { gap: 16px; }
+  .gap-5 { gap: 20px; }
+  .gap-6 { gap: 24px; }
+  .gap-8 { gap: 32px; }
+  .items-center { align-items: center; }
+  .justify-center { justify-content: center; }
+  .justify-between { justify-content: space-between; }
+  .text-center { text-align: center; }
+  .w-full { width: 100%; }
+
+  /* ─── Typography ─── */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--teal-light);
+  }
+  .title {
+    font-size: 42px;
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+  .title-sm {
+    font-size: 32px;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    color: #fff;
+  }
+  .subtitle {
+    font-size: 18px;
+    font-weight: 400;
+    color: var(--slate-300);
+    line-height: 1.55;
+  }
+  .body {
+    font-size: 15px;
+    color: var(--slate-300);
+    line-height: 1.65;
+  }
+  .caption {
+    font-size: 12px;
+    color: var(--slate-400);
+  }
+  .mono { font-family: var(--font-mono); }
+  .serif { font-family: var(--font-serif); }
+  .bold { font-weight: 700; }
+  .semi { font-weight: 600; }
+  .white { color: #fff; }
+  .teal { color: var(--teal-light); }
+  .blue { color: var(--blue-light); }
+  .amber { color: var(--amber); }
+  .green { color: var(--green); }
+  .red { color: var(--red); }
+
+  /* ─── Badges ─── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  .badge-teal { background: rgba(20,184,166,.15); color: var(--teal-light); border: 1px solid rgba(20,184,166,.25); }
+  .badge-blue { background: rgba(59,130,246,.15); color: var(--blue-light); border: 1px solid rgba(59,130,246,.25); }
+  .badge-amber { background: rgba(217,119,6,.15); color: var(--amber); border: 1px solid rgba(217,119,6,.25); }
+  .badge-green { background: rgba(22,163,74,.15); color: var(--green); border: 1px solid rgba(22,163,74,.25); }
+  .badge-red { background: rgba(220,38,38,.15); color: var(--red); border: 1px solid rgba(220,38,38,.25); }
+  .badge-purple { background: rgba(124,58,237,.15); color: var(--purple); border: 1px solid rgba(124,58,237,.25); }
+  .badge-white { background: rgba(255,255,255,.08); color: #fff; border: 1px solid rgba(255,255,255,.12); }
+
+  /* ─── Cards ─── */
+  .card {
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: var(--radius-sm);
+    padding: 20px 24px;
+  }
+  .card-glow {
+    background: linear-gradient(135deg, rgba(20,184,166,.08) 0%, rgba(37,99,235,.06) 100%);
+    border: 1px solid rgba(20,184,166,.18);
+    border-radius: var(--radius-sm);
+    padding: 20px 24px;
+  }
+  .card-blue {
+    background: linear-gradient(135deg, rgba(37,99,235,.1) 0%, rgba(59,130,246,.06) 100%);
+    border: 1px solid rgba(59,130,246,.2);
+    border-radius: var(--radius-sm);
+    padding: 20px 24px;
+  }
+  .card-amber {
+    background: linear-gradient(135deg, rgba(217,119,6,.1) 0%, rgba(217,119,6,.04) 100%);
+    border: 1px solid rgba(217,119,6,.2);
+    border-radius: var(--radius-sm);
+    padding: 20px 24px;
+  }
+  .card-sm { padding: 14px 18px; }
+
+  /* ─── Screenshot placeholder ─── */
+  .screenshot {
+    background: var(--navy-deep);
+    border: 2px dashed rgba(255,255,255,.12);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 8px;
+    color: var(--slate-400);
+    font-size: 13px;
+    font-weight: 500;
+    overflow: hidden;
+    position: relative;
+  }
+  .screenshot img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+  }
+  .screenshot .placeholder-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.06);
+    display: grid;
+    place-items: center;
+  }
+  .screenshot .placeholder-icon svg {
+    width: 20px;
+    height: 20px;
+    stroke: var(--slate-500);
+    fill: none;
+    stroke-width: 1.5;
+  }
+
+  /* ─── Bullet list ─── */
+  .bullets { list-style: none; }
+  .bullets li {
+    position: relative;
+    padding-left: 22px;
+    margin-bottom: 10px;
+    font-size: 15px;
+    color: var(--slate-300);
+    line-height: 1.55;
+  }
+  .bullets li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--teal-light);
+  }
+  .bullets-blue li::before { background: var(--blue-light); }
+  .bullets-amber li::before { background: var(--amber); }
+
+  /* ─── Numbered list ─── */
+  .numbered { list-style: none; counter-reset: steps; }
+  .numbered li {
+    counter-increment: steps;
+    position: relative;
+    padding-left: 36px;
+    margin-bottom: 14px;
+    font-size: 14.5px;
+    color: var(--slate-300);
+    line-height: 1.5;
+  }
+  .numbered li::before {
+    content: counter(steps);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(20,184,166,.15);
+    color: var(--teal-light);
+    font-size: 12px;
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+  }
+
+  /* ─── Metric highlight ─── */
+  .metric {
+    text-align: center;
+  }
+  .metric-value {
+    font-size: 38px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .metric-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--slate-400);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-top: 6px;
+  }
+
+  /* ─── Architecture diagram ─── */
+  .arch-box {
+    border-radius: var(--radius-xs);
+    padding: 14px 18px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .arch-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--slate-500);
+    font-size: 18px;
+    padding: 0 8px;
+  }
+
+  /* ─── Pipeline step ─── */
+  .pipeline-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .pipeline-dot {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 800;
+    color: #fff;
+  }
+  .pipeline-line {
+    width: 2px;
+    height: 16px;
+    margin-left: 15px;
+    background: rgba(255,255,255,.1);
+  }
+
+  /* ─── Table ─── */
+  .tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  .tbl th {
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--slate-400);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .tbl td {
+    padding: 10px 14px;
+    color: var(--slate-200);
+    border-bottom: 1px solid rgba(255,255,255,.04);
+  }
+  .tbl tr:last-child td { border-bottom: none; }
+
+  /* ─── Code block ─── */
+  .code {
+    background: rgba(0,0,0,.25);
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: var(--radius-xs);
+    padding: 16px 20px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--slate-300);
+    line-height: 1.6;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .code .kw { color: var(--purple); }
+  .code .fn { color: var(--blue-light); }
+  .code .str { color: var(--green); }
+  .code .cm { color: var(--slate-500); }
+  .code .num { color: var(--amber); }
+
+  /* ─── Gradient backgrounds ─── */
+  .bg-mesh {
+    background:
+      radial-gradient(ellipse 80% 60% at 20% 80%, rgba(20,184,166,.12) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 80% 20%, rgba(37,99,235,.1) 0%, transparent 60%),
+      var(--navy);
+  }
+  .bg-hero {
+    background:
+      radial-gradient(ellipse 90% 70% at 50% 50%, rgba(20,184,166,.08) 0%, transparent 60%),
+      linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%);
+  }
+  .bg-dark { background: var(--navy-deep); }
+  .bg-gradient-teal {
+    background: linear-gradient(135deg, rgba(20,184,166,.12) 0%, rgba(20,184,166,.03) 100%);
+  }
+
+  /* ─── Slide number ─── */
+  .slide-number {
+    position: absolute;
+    bottom: 20px;
+    right: 28px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--slate-500);
+    font-family: var(--font-mono);
+  }
+
+  /* ─── Grid helpers ─── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; }
+  .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; }
+  .grid-5 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }
+  .grid-23 { display: grid; grid-template-columns: 2fr 3fr; }
+  .grid-32 { display: grid; grid-template-columns: 3fr 2fr; }
+  .grid-12 { display: grid; grid-template-columns: 1fr 2fr; }
+  .grid-21 { display: grid; grid-template-columns: 2fr 1fr; }
+
+  /* ─── Progress bar ─── */
+  #progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--teal), var(--blue));
+    transition: width .3s ease;
+    z-index: 100;
+    border-radius: 0 2px 2px 0;
+  }
+
+  /* ─── Divider ─── */
+  .divider {
+    height: 1px;
+    background: rgba(255,255,255,.08);
+    margin: 16px 0;
+  }
+
+  /* ─── Animations ─── */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .slide.active > * {
+    animation: fadeInUp .5s ease both;
+  }
+  .slide.active > *:nth-child(2) { animation-delay: .08s; }
+  .slide.active > *:nth-child(3) { animation-delay: .14s; }
+  .slide.active > *:nth-child(4) { animation-delay: .2s; }
+  .slide.active > *:nth-child(5) { animation-delay: .26s; }
+
+  /* ─── Feature icon circles ─── */
+  .feat-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+  .feat-icon svg {
+    width: 22px;
+    height: 22px;
+    stroke-width: 1.8;
+    fill: none;
+  }
+  .feat-icon-teal { background: rgba(20,184,166,.15); }
+  .feat-icon-teal svg { stroke: var(--teal-light); }
+  .feat-icon-blue { background: rgba(59,130,246,.15); }
+  .feat-icon-blue svg { stroke: var(--blue-light); }
+  .feat-icon-amber { background: rgba(217,119,6,.15); }
+  .feat-icon-amber svg { stroke: var(--amber); }
+  .feat-icon-green { background: rgba(22,163,74,.15); }
+  .feat-icon-green svg { stroke: var(--green); }
+  .feat-icon-purple { background: rgba(124,58,237,.15); }
+  .feat-icon-purple svg { stroke: var(--purple); }
+  .feat-icon-red { background: rgba(220,38,38,.15); }
+  .feat-icon-red svg { stroke: var(--red); }
+
+  /* SVG icons inline */
+  .icon { display: inline-block; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<div class="deck" id="deck">
+
+<!-- ============================================================ -->
+<!-- SLIDE 1: TITLE -->
+<!-- ============================================================ -->
+<div class="slide active bg-hero pad-lg flex-col justify-center text-center" style="position:relative">
+  <div style="position:absolute;inset:0;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22><rect fill=%22none%22 stroke=%22rgba(255,255,255,0.03)%22 stroke-width=%220.5%22 width=%2280%22 height=%2280%22/></svg>');opacity:.5"></div>
+  <div style="position:relative;z-index:1;">
+    <!-- Logo -->
+    <div style="margin:0 auto 28px;width:88px;height:88px;border-radius:22px;background:linear-gradient(135deg,var(--navy-light),var(--teal));display:grid;place-items:center;box-shadow:0 0 60px rgba(20,184,166,.25),inset 0 -6px 16px rgba(0,0,0,.2);">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+    </div>
+    <div class="eyebrow" style="margin-bottom:16px;font-size:12px;">Bachelor of Computer Science &middot; Final Year Project</div>
+    <h1 class="title" style="font-size:52px;margin-bottom:14px;">ClarityWorks</h1>
+    <p class="subtitle" style="font-size:20px;max-width:720px;margin:0 auto 32px;">
+      A Full-Stack Text Readability Analysis Platform using Machine Learning, NLP, and Retrieval-Augmented Generation
+    </p>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+      <span class="badge badge-teal">Machine Learning</span>
+      <span class="badge badge-blue">NLP</span>
+      <span class="badge badge-purple">RAG</span>
+      <span class="badge badge-amber">Full-Stack</span>
+      <span class="badge badge-green">React + Flask + Express</span>
+    </div>
+    <p style="margin-top:40px;font-size:14px;color:var(--slate-400);">
+      Junaid Malik &middot; Wahaj Naveed &middot; 2026
+    </p>
+  </div>
+  <div class="slide-number">1</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 2: PROBLEM STATEMENT -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Motivation</div>
+  <h2 class="title-sm" style="margin-bottom:28px;">The Problem</h2>
+
+  <div class="grid-2 gap-8 flex-1">
+    <div class="flex-col gap-5">
+      <div class="card">
+        <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:8px;">Readability Matters</div>
+        <p class="body">36% of adults read at or below a basic literacy level. Mismatched reading material leads to poor comprehension, disengagement, and inequitable access to information.</p>
+      </div>
+      <div class="card">
+        <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:8px;">Existing Tools Fall Short</div>
+        <p class="body">Traditional formulas like Flesch-Kincaid use surface metrics only. They cannot detect semantic complexity, passive voice density, or academic vocabulary.</p>
+      </div>
+      <div class="card">
+        <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:8px;">No End-to-End Solution</div>
+        <p class="body">Current tools either analyse <em>or</em> simplify &mdash; never both. Teachers, editors, and researchers need a single platform for analysis, rewriting, and reference material search.</p>
+      </div>
+    </div>
+    <div class="flex-col gap-5 justify-center">
+      <div class="card-glow" style="text-align:center;padding:28px;">
+        <div class="eyebrow" style="margin-bottom:12px;">Our Goal</div>
+        <p style="font-size:18px;color:#fff;font-weight:600;line-height:1.5;">
+          Build a unified platform that <span class="teal">analyses</span>, <span class="blue">rewrites</span>, and <span class="amber">augments</span> text readability using ML, NLP, and Generative AI.
+        </p>
+      </div>
+      <div class="grid-3 gap-4">
+        <div class="metric"><div class="metric-value teal">5K+</div><div class="metric-label">CLEAR Corpus Passages</div></div>
+        <div class="metric"><div class="metric-value blue">16</div><div class="metric-label">ML Features</div></div>
+        <div class="metric"><div class="metric-value amber">3</div><div class="metric-label">Ensemble Models</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-number">2</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 3: SYSTEM ARCHITECTURE -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Architecture</div>
+  <h2 class="title-sm" style="margin-bottom:24px;">Three-Tier Microservice Design</h2>
+
+  <div class="flex-row gap-6 flex-1 items-center" style="padding:0 20px;">
+    <!-- Frontend -->
+    <div style="flex:1;">
+      <div class="arch-box" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);color:var(--blue-light);">
+        <div style="font-size:16px;margin-bottom:6px;">Frontend</div>
+        <div style="font-size:11px;color:var(--slate-400);font-weight:400;">React 18 &middot; TypeScript &middot; Vite</div>
+        <div style="font-size:11px;color:var(--slate-500);margin-top:4px;">Port 5173</div>
+      </div>
+      <div class="card-sm" style="margin-top:12px;font-size:12px;">
+        <ul class="bullets" style="font-size:12px;">
+          <li>15+ pages / 30+ components</li>
+          <li>Recharts visualisations</li>
+          <li>ReactFlow concept graphs</li>
+          <li>TailwindCSS + custom design system</li>
+          <li>PDF/DOCX export pipeline</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="arch-arrow" style="flex-direction:column;gap:4px;">
+      <div style="font-size:10px;color:var(--slate-500);">REST API</div>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--slate-500)" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--slate-500)" stroke-width="1.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    </div>
+
+    <!-- Backend -->
+    <div style="flex:1;">
+      <div class="arch-box" style="background:rgba(20,184,166,.12);border:1px solid rgba(20,184,166,.3);color:var(--teal-light);">
+        <div style="font-size:16px;margin-bottom:6px;">Backend</div>
+        <div style="font-size:11px;color:var(--slate-400);font-weight:400;">Node.js &middot; Express &middot; TypeScript</div>
+        <div style="font-size:11px;color:var(--slate-500);margin-top:4px;">Port 5000</div>
+      </div>
+      <div style="margin-top:12px;" class="card-sm">
+        <ul class="bullets" style="font-size:12px;">
+          <li>JWT authentication (bcrypt)</li>
+          <li>PostgreSQL (5 tables)</li>
+          <li>Role-based access control</li>
+          <li>File upload (Multer)</li>
+          <li>Proxy to ML microservice</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="arch-arrow" style="flex-direction:column;gap:4px;">
+      <div style="font-size:10px;color:var(--slate-500);">HTTP</div>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--slate-500)" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--slate-500)" stroke-width="1.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    </div>
+
+    <!-- ML Service -->
+    <div style="flex:1;">
+      <div class="arch-box" style="background:rgba(217,119,6,.12);border:1px solid rgba(217,119,6,.3);color:var(--amber);">
+        <div style="font-size:16px;margin-bottom:6px;">ML Service</div>
+        <div style="font-size:11px;color:var(--slate-400);font-weight:400;">Python &middot; Flask &middot; scikit-learn</div>
+        <div style="font-size:11px;color:var(--slate-500);margin-top:4px;">Port 5001</div>
+      </div>
+      <div style="margin-top:12px;" class="card-sm">
+        <ul class="bullets bullets-amber" style="font-size:12px;">
+          <li>3-model ML ensemble</li>
+          <li>spaCy NLP pipeline</li>
+          <li>Bidirectional rewrite engine</li>
+          <li>ChromaDB + RAG</li>
+          <li>LLM integration (Llama 3.3 70B)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:auto;display:flex;gap:12px;justify-content:center;">
+    <span class="badge badge-teal">PostgreSQL 14</span>
+    <span class="badge badge-blue">ChromaDB Vector Store</span>
+    <span class="badge badge-purple">E5-small-v2 Embeddings</span>
+    <span class="badge badge-amber">FlashRank Re-ranker</span>
+  </div>
+  <div class="slide-number">3</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 4: ML PIPELINE -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Machine Learning</div>
+  <h2 class="title-sm" style="margin-bottom:24px;">ML-Based Grade Level Prediction</h2>
+
+  <div class="grid-32 gap-8 flex-1">
+    <div class="flex-col gap-4">
+      <div class="card">
+        <div class="bold white" style="font-size:14px;margin-bottom:10px;">CLEAR Corpus Dataset</div>
+        <p style="font-size:13px;color:var(--slate-300);line-height:1.5;">~4,724 professionally graded reading passages (Grades 3&ndash;12) from CommonLit &amp; Georgia State University. Target variable: Flesch-Kincaid Grade Level.</p>
+      </div>
+
+      <div class="card">
+        <div class="bold white" style="font-size:14px;margin-bottom:10px;">16 Engineered Features</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">
+          <span class="badge badge-teal" style="font-size:10px;">Word Count</span>
+          <span class="badge badge-teal" style="font-size:10px;">Sentence Count</span>
+          <span class="badge badge-teal" style="font-size:10px;">Avg Sentence Length</span>
+          <span class="badge badge-teal" style="font-size:10px;">Avg Syllables/Word</span>
+          <span class="badge badge-teal" style="font-size:10px;">Difficult Words %</span>
+          <span class="badge badge-teal" style="font-size:10px;">Flesch Reading Ease</span>
+          <span class="badge badge-teal" style="font-size:10px;">FK Grade</span>
+          <span class="badge badge-teal" style="font-size:10px;">ARI</span>
+          <span class="badge badge-teal" style="font-size:10px;">SMOG</span>
+          <span class="badge badge-teal" style="font-size:10px;">Type-Token Ratio</span>
+          <span class="badge badge-blue" style="font-size:10px;">Avg Word Length</span>
+          <span class="badge badge-purple" style="font-size:10px;">Passive Voice %</span>
+          <span class="badge badge-purple" style="font-size:10px;">Subordinate Clause Density</span>
+          <span class="badge badge-purple" style="font-size:10px;">POS Diversity</span>
+          <span class="badge badge-purple" style="font-size:10px;">Lexical Diversity</span>
+          <span class="badge badge-purple" style="font-size:10px;">Sentence Variance</span>
+        </div>
+        <p style="font-size:11px;color:var(--slate-500);margin-top:8px;">Blue = original features &middot; Purple = spaCy NLP features (added for deeper linguistic analysis)</p>
+      </div>
+
+      <div class="card">
+        <div class="bold white" style="font-size:14px;margin-bottom:10px;">3-Model Ensemble</div>
+        <div style="display:flex;gap:12px;">
+          <div style="flex:1;text-align:center;padding:10px;background:rgba(22,163,74,.08);border-radius:8px;border:1px solid rgba(22,163,74,.15);">
+            <div style="font-weight:700;color:var(--green);font-size:13px;">Random Forest</div>
+            <div style="font-size:11px;color:var(--slate-400);margin-top:4px;">300 trees</div>
+          </div>
+          <div style="flex:1;text-align:center;padding:10px;background:rgba(59,130,246,.08);border-radius:8px;border:1px solid rgba(59,130,246,.15);">
+            <div style="font-weight:700;color:var(--blue-light);font-size:13px;">Gradient Boosting</div>
+            <div style="font-size:11px;color:var(--slate-400);margin-top:4px;">100 estimators</div>
+          </div>
+          <div style="flex:1;text-align:center;padding:10px;background:rgba(217,119,6,.08);border-radius:8px;border:1px solid rgba(217,119,6,.15);">
+            <div style="font-weight:700;color:var(--amber);font-size:13px;">XGBoost</div>
+            <div style="font-size:11px;color:var(--slate-400);margin-top:4px;">300 estimators</div>
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--slate-400);margin-top:8px;text-align:center;">Prediction = average of all 3 models &middot; Confidence from inter-model agreement</p>
+      </div>
+    </div>
+
+    <div class="flex-col gap-5 justify-center">
+      <div class="grid-2 gap-4">
+        <div class="card text-center" style="padding:20px;">
+          <div class="metric-value teal">0.712</div>
+          <div class="metric-label">Mean Absolute Error</div>
+          <div style="font-size:11px;color:var(--slate-500);margin-top:4px;">(grade levels)</div>
+        </div>
+        <div class="card text-center" style="padding:20px;">
+          <div class="metric-value blue">0.926</div>
+          <div class="metric-label">R&sup2; Score</div>
+          <div style="font-size:11px;color:var(--slate-500);margin-top:4px;">(variance explained)</div>
+        </div>
+        <div class="card text-center" style="padding:20px;">
+          <div class="metric-value green">80.2%</div>
+          <div class="metric-label">Within &plusmn;1 Grade</div>
+        </div>
+        <div class="card text-center" style="padding:20px;">
+          <div class="metric-value amber">57.6%</div>
+          <div class="metric-label">Within &plusmn;0.5 Grade</div>
+        </div>
+      </div>
+      <div class="card" style="font-size:12px;">
+        <div class="bold white" style="margin-bottom:6px;">GridSearchCV Hyperparameter Tuning</div>
+        <p style="color:var(--slate-400);line-height:1.5;">5-fold cross-validation with <span class="mono">neg_mean_absolute_error</span> scoring. Searches across tree depth, estimator count, learning rates, and subsample ratios independently for each model.</p>
+      </div>
+    </div>
+  </div>
+  <div class="slide-number">4</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 5: FEATURE — TEXT ANALYSIS -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Core Feature</div>
+  <h2 class="title-sm" style="margin-bottom:24px;">Comprehensive Readability Analysis</h2>
+
+  <div class="grid-23 gap-6 flex-1">
+    <div class="flex-col gap-4">
+      <div class="card-glow">
+        <div class="bold white" style="margin-bottom:8px;">5 Input Methods</div>
+        <ul class="bullets" style="font-size:13px;">
+          <li>Direct text paste / type</li>
+          <li>PDF upload with extraction</li>
+          <li>DOC/DOCX file upload</li>
+          <li>Image OCR (Tesseract)</li>
+          <li>Voice transcription (Web Speech API)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="bold white" style="margin-bottom:8px;">Analysis Output</div>
+        <ul class="bullets bullets-blue" style="font-size:13px;">
+          <li>ML grade prediction (Grade 3 &ndash; College)</li>
+          <li>8 readability formula scores</li>
+          <li>Complexity Score (0&ndash;100 composite)</li>
+          <li>Difficulty-adjusted reading time</li>
+          <li>Difficult word &amp; sentence detection</li>
+          <li>Vocabulary level analysis</li>
+          <li>Improvement suggestions with grade impact</li>
+          <li>Concept prerequisite graph</li>
+          <li>6+ interactive chart visualisations</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="screenshot" style="min-height:100%;">
+      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>
+      <div>Screenshot: Analysis Results Page</div>
+      <div style="font-size:11px;color:var(--slate-500);">Place in <span class="mono">screens/analysis-results.png</span></div>
+    </div>
+  </div>
+  <div class="slide-number">5</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 6: FEATURE — CHARTS & VISUALISATIONS -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Visualisations</div>
+  <h2 class="title-sm" style="margin-bottom:24px;">Data-Driven Insights</h2>
+
+  <div class="grid-3 gap-5 flex-1">
+    <div class="flex-col gap-4">
+      <div class="screenshot" style="flex:1;min-height:180px;">
+        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+        <div>Readability Radar Chart</div>
+        <div style="font-size:10px;color:var(--slate-500);">screens/chart-radar.png</div>
+      </div>
+      <div class="card-sm" style="font-size:12px;">
+        <p style="color:var(--slate-300);">5-axis radar showing Flesch, FK Grade, ARI, SMOG, and Coleman-Liau normalized to 0&ndash;100.</p>
+      </div>
+    </div>
+    <div class="flex-col gap-4">
+      <div class="screenshot" style="flex:1;min-height:180px;">
+        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
+        <div>Vocabulary Stacked Bar</div>
+        <div style="font-size:10px;color:var(--slate-500);">screens/chart-vocabulary.png</div>
+      </div>
+      <div class="card-sm" style="font-size:12px;">
+        <p style="color:var(--slate-300);">Words categorised into Simple / Medium / Advanced / Expert with colour-coded distribution.</p>
+      </div>
+    </div>
+    <div class="flex-col gap-4">
+      <div class="screenshot" style="flex:1;min-height:180px;">
+        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+        <div>Complexity Score Card</div>
+        <div style="font-size:10px;color:var(--slate-500);">screens/complexity-score.png</div>
+      </div>
+      <div class="card-sm" style="font-size:12px;">
+        <p style="color:var(--slate-300);">Weighted composite 0&ndash;100: grade level (40%), Flesch (30%), difficult words (20%), sentence length (10%).</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-3 gap-5" style="margin-top:16px;">
+    <div class="card-sm flex-row items-center gap-4">
+      <div class="feat-icon feat-icon-teal"><svg viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+      <div><div class="bold white" style="font-size:13px;">Detailed PDF Report</div><div style="font-size:11px;color:var(--slate-400);">Multi-page jsPDF with cover, scores, suggestions, vocabulary</div></div>
+    </div>
+    <div class="card-sm flex-row items-center gap-4">
+      <div class="feat-icon feat-icon-blue"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+      <div><div class="bold white" style="font-size:13px;">Heatmap Highlighting</div><div style="font-size:11px;color:var(--slate-400);">Difficult words &amp; sentences colour-coded with hover tooltips</div></div>
+    </div>
+    <div class="card-sm flex-row items-center gap-4">
+      <div class="feat-icon feat-icon-amber"><svg viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></div>
+      <div><div class="bold white" style="font-size:13px;">Dashboard Trends</div><div style="font-size:11px;color:var(--slate-400);">Grade &amp; Flesch score trend line over last 20 analyses</div></div>
+    </div>
+  </div>
+  <div class="slide-number">6</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 7: FEATURE — BIDIRECTIONAL REWRITING -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Core Feature</div>
+  <h2 class="title-sm" style="margin-bottom:20px;">Bidirectional Text Rewriting Engine</h2>
+
+  <div class="grid-23 gap-6 flex-1">
+    <div class="flex-col gap-4">
+      <div class="card-glow" style="padding:16px 20px;">
+        <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:6px;">Rewrite in Any Direction</div>
+        <p style="font-size:13px;color:var(--slate-300);line-height:1.5;">Simplify text <em>down</em> to Grade 3 or upgrade <em>up</em> to College level. The engine auto-detects direction based on current vs. target grade.</p>
+      </div>
+
+      <div class="card" style="padding:14px 18px;">
+        <div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:8px;">Multi-Round Beam Search</div>
+        <ul class="bullets" style="font-size:12px;">
+          <li>Beam width of 3 &mdash; tracks top 3 candidates</li>
+          <li>Rounds: lexical &rarr; split/combine &rarr; discourse</li>
+          <li>Grade-specific policy buckets control intensity</li>
+          <li>Scoring: syllables/word + words/sentence distance</li>
+        </ul>
+      </div>
+
+      <div class="card" style="padding:14px 18px;">
+        <div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:8px;">Synonym Cascade (5 Sources)</div>
+        <ol class="numbered" style="font-size:12px;">
+          <li>Curated simplification map (90+ pairs)</li>
+          <li>WordNet + Lesk WSD (context-aware)</li>
+          <li>Datamuse API (frequency-ranked)</li>
+          <li>LLM rescue (Llama 3.3 70B)</li>
+          <li>Complexification map (42 pairs, for upgrades)</li>
+        </ol>
+      </div>
+
+      <div class="card" style="padding:14px 18px;">
+        <div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:8px;">LLM Validation &amp; Repair (3-Pass)</div>
+        <div style="display:flex;gap:8px;">
+          <span class="badge badge-green" style="font-size:10px;">Pass 1: Validate</span>
+          <span class="badge badge-blue" style="font-size:10px;">Pass 2: Critic Review</span>
+          <span class="badge badge-purple" style="font-size:10px;">Pass 3: Polish &amp; Fix</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex-col gap-5">
+      <div class="screenshot" style="flex:1;">
+        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
+        <div>Screenshot: Rewrite Workbench</div>
+        <div style="font-size:11px;color:var(--slate-500);">screens/rewrite-workbench.png</div>
+      </div>
+
+      <div class="grid-2 gap-4">
+        <div class="card text-center" style="padding:14px;">
+          <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:4px;">Auto Mode</div>
+          <div style="font-size:11px;color:var(--slate-400);">Best candidate applied automatically with full change log</div>
+        </div>
+        <div class="card text-center" style="padding:14px;">
+          <div style="font-size:13px;font-weight:700;color:var(--amber);margin-bottom:4px;">Interactive Mode</div>
+          <div style="font-size:11px;color:var(--slate-400);">Accept or deny each change individually with inline highlights</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-number">7</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 8: FEATURE — RAG -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Core Feature</div>
+  <h2 class="title-sm" style="margin-bottom:20px;">RAG: Textbook Search &amp; Answer Generation</h2>
+
+  <div class="grid-2 gap-6 flex-1">
+    <div class="flex-col gap-4">
+      <div class="card-blue" style="padding:18px 22px;">
+        <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:8px;">Three-Stage Retrieval Pipeline</div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div class="pipeline-step">
+            <div class="pipeline-dot" style="background:rgba(59,130,246,.3);">1</div>
+            <div>
+              <div class="bold white" style="font-size:13px;">Embedding Search</div>
+              <div style="font-size:12px;color:var(--slate-400);">E5-small-v2 (384-dim) retrieves top-20 candidates per collection from ChromaDB</div>
+            </div>
+          </div>
+          <div class="pipeline-line"></div>
+          <div class="pipeline-step">
+            <div class="pipeline-dot" style="background:rgba(124,58,237,.3);">2</div>
+            <div>
+              <div class="bold white" style="font-size:13px;">Cross-Encoder Re-ranking</div>
+              <div style="font-size:12px;color:var(--slate-400);">FlashRank (ms-marco-MiniLM, ONNX) re-ranks to precise top-5 results</div>
+            </div>
+          </div>
+          <div class="pipeline-line"></div>
+          <div class="pipeline-step">
+            <div class="pipeline-dot" style="background:rgba(20,184,166,.3);">3</div>
+            <div>
+              <div class="bold white" style="font-size:13px;">Answer Synthesis</div>
+              <div style="font-size:12px;color:var(--slate-400);">Llama 3.3 70B generates multi-paragraph answers with [Source N] citations</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:14px 18px;">
+        <div class="bold white" style="font-size:13px;margin-bottom:8px;">Document Processing</div>
+        <ul class="bullets" style="font-size:12px;">
+          <li>PDF (pdfplumber) &amp; DOCX extraction</li>
+          <li>RecursiveCharacterTextSplitter: 1500-char chunks, 300-char overlap</li>
+          <li>Automatic embedding model migration</li>
+          <li>Textbook-specific text cleaning (headers, footers, TOC removal)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="flex-col gap-5">
+      <div class="screenshot" style="flex:1;">
+        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+        <div>Screenshot: RAG Query with AI Answer</div>
+        <div style="font-size:11px;color:var(--slate-500);">screens/rag-query.png</div>
+      </div>
+      <div class="screenshot" style="height:140px;">
+        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+        <div>Screenshot: RAG Upload &amp; Document List</div>
+        <div style="font-size:11px;color:var(--slate-500);">screens/rag-upload.png</div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-number">8</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 9: FEATURE — CONCEPT GRAPHS -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Core Feature</div>
+  <h2 class="title-sm" style="margin-bottom:20px;">Concept Prerequisite Graphs</h2>
+
+  <div class="grid-23 gap-6 flex-1">
+    <div class="flex-col gap-4">
+      <div class="card-glow" style="padding:18px 22px;">
+        <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:8px;">What knowledge does a reader need?</div>
+        <p style="font-size:13px;color:var(--slate-300);line-height:1.55;">Concept graphs map the prerequisite knowledge structure of any text. They show what a reader must already understand before the main ideas will make sense.</p>
+      </div>
+
+      <div class="card">
+        <div class="bold white" style="font-size:13px;margin-bottom:8px;">Extraction Pipeline</div>
+        <ol class="numbered" style="font-size:12px;">
+          <li><strong>spaCy noun phrase extraction</strong> &mdash; ranks top-30 key phrases by frequency</li>
+          <li><strong>LLM concept mapping</strong> &mdash; Llama 3.3 70B identifies 5&ndash;15 concepts and prerequisite edges</li>
+          <li><strong>Validation &amp; cleanup</strong> &mdash; removes unconnected nodes, validates edge references</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <div class="bold white" style="font-size:13px;margin-bottom:8px;">Three Concept Tiers</div>
+        <div style="display:flex;gap:10px;">
+          <div style="flex:1;padding:10px;border-radius:8px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);text-align:center;">
+            <div style="font-size:12px;font-weight:700;color:var(--blue-light);">Prerequisite</div>
+            <div style="font-size:10px;color:var(--slate-400);margin-top:3px;">Foundational knowledge</div>
+          </div>
+          <div style="flex:1;padding:10px;border-radius:8px;background:rgba(22,163,74,.12);border:1px solid rgba(22,163,74,.25);text-align:center;">
+            <div style="font-size:12px;font-weight:700;color:var(--green);">Intermediate</div>
+            <div style="font-size:10px;color:var(--slate-400);margin-top:3px;">Bridging concepts</div>
+          </div>
+          <div style="flex:1;padding:10px;border-radius:8px;background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.25);text-align:center;">
+            <div style="font-size:12px;font-weight:700;color:#f97316;">Target</div>
+            <div style="font-size:10px;color:var(--slate-400);margin-top:3px;">Main ideas being taught</div>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--slate-400);">Available for both individual analyses and uploaded RAG documents. Interactive drag-and-drop canvas with zoom controls.</p>
+    </div>
+
+    <div class="screenshot" style="min-height:100%;">
+      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+      <div>Screenshot: Interactive Concept Graph</div>
+      <div style="font-size:11px;color:var(--slate-500);">screens/concept-graph.png</div>
+    </div>
+  </div>
+  <div class="slide-number">9</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 10: FEATURE — COMPARE & BATCH -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Additional Features</div>
+  <h2 class="title-sm" style="margin-bottom:24px;">Compare, Batch, History &amp; More</h2>
+
+  <div class="grid-2 gap-6" style="flex:1;">
+    <div class="flex-col gap-4">
+      <div class="screenshot" style="height:200px;">
+        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.828L3 3"/><path d="m15 9 6-6"/></svg></div>
+        <div>Screenshot: Side-by-Side Comparison</div>
+        <div style="font-size:10px;color:var(--slate-500);">screens/compare.png</div>
+      </div>
+      <div class="card-sm">
+        <div class="bold white" style="font-size:13px;margin-bottom:6px;">Comparative Analysis</div>
+        <p style="font-size:12px;color:var(--slate-400);">Analyse two texts side by side. Metrics comparison table with 11 dimensions, colour-coded deltas, and links to full individual analyses.</p>
+      </div>
+    </div>
+    <div class="flex-col gap-4">
+      <div class="screenshot" style="height:200px;">
+        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg></div>
+        <div>Screenshot: Batch Analysis</div>
+        <div style="font-size:10px;color:var(--slate-500);">screens/batch.png</div>
+      </div>
+      <div class="card-sm">
+        <div class="bold white" style="font-size:13px;margin-bottom:6px;">Batch Processing</div>
+        <p style="font-size:12px;color:var(--slate-400);">Paste multiple texts (separated by ---) or upload a CSV. Progress bar, summary statistics table, CSV export, clickable rows linking to individual analyses.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-4 gap-4" style="margin-top:auto;">
+    <div class="card-sm flex-row items-center gap-3">
+      <div class="feat-icon feat-icon-teal" style="width:36px;height:36px;border-radius:9px;"><svg viewBox="0 0 24 24" style="width:18px;height:18px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+      <div><div class="bold white" style="font-size:12px;">History</div><div style="font-size:10px;color:var(--slate-400);">Paginated, searchable, filtered by grade</div></div>
+    </div>
+    <div class="card-sm flex-row items-center gap-3">
+      <div class="feat-icon feat-icon-blue" style="width:36px;height:36px;border-radius:9px;"><svg viewBox="0 0 24 24" style="width:18px;height:18px;"><path d="M12 3v18M3 12h18"/></svg></div>
+      <div><div class="bold white" style="font-size:12px;">12 Sample Texts</div><div style="font-size:10px;color:var(--slate-400);">Grade 3 to College, calibrated</div></div>
+    </div>
+    <div class="card-sm flex-row items-center gap-3">
+      <div class="feat-icon feat-icon-purple" style="width:36px;height:36px;border-radius:9px;"><svg viewBox="0 0 24 24" style="width:18px;height:18px;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></div>
+      <div><div class="bold white" style="font-size:12px;">Dark Mode</div><div style="font-size:10px;color:var(--slate-400);">Full theme toggle, persisted</div></div>
+    </div>
+    <div class="card-sm flex-row items-center gap-3">
+      <div class="feat-icon feat-icon-red" style="width:36px;height:36px;border-radius:9px;"><svg viewBox="0 0 24 24" style="width:18px;height:18px;"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg></div>
+      <div><div class="bold white" style="font-size:12px;">Admin Panel</div><div style="font-size:10px;color:var(--slate-400);">User management, stats, RBAC</div></div>
+    </div>
+  </div>
+  <div class="slide-number">10</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 11: UI / UX SHOWCASE -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">User Interface</div>
+  <h2 class="title-sm" style="margin-bottom:24px;">Design System &amp; User Experience</h2>
+
+  <div class="grid-2 gap-6 flex-1">
+    <div class="screenshot" style="min-height:100%;">
+      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg></div>
+      <div>Screenshot: Dashboard (Light Mode)</div>
+      <div style="font-size:11px;color:var(--slate-500);">screens/dashboard.png</div>
+    </div>
+    <div class="flex-col gap-4">
+      <div class="screenshot" style="flex:1;">
+        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></div>
+        <div>Screenshot: Login Page</div>
+        <div style="font-size:10px;color:var(--slate-500);">screens/login.png</div>
+      </div>
+      <div class="flex-col gap-3">
+        <div class="card-sm">
+          <div class="bold white" style="font-size:13px;margin-bottom:6px;">Custom CSS Design System</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;">
+            <span class="badge badge-teal" style="font-size:10px;">CSS Custom Properties</span>
+            <span class="badge badge-blue" style="font-size:10px;">TailwindCSS Utility</span>
+            <span class="badge badge-purple" style="font-size:10px;">Dark/Light Themes</span>
+            <span class="badge badge-green" style="font-size:10px;">Responsive Layout</span>
+            <span class="badge badge-amber" style="font-size:10px;">4 Font Families</span>
+            <span class="badge badge-red" style="font-size:10px;">Lucide Icons</span>
+          </div>
+        </div>
+        <div class="card-sm">
+          <div class="bold white" style="font-size:13px;margin-bottom:6px;">Export Capabilities</div>
+          <p style="font-size:12px;color:var(--slate-400);">Multi-page PDF reports (jsPDF), DOCX documents, CSV batch exports, clipboard copy. All exports respect the analysis data and include visualisation descriptions.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-number">11</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 12: TECH STACK -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Technology</div>
+  <h2 class="title-sm" style="margin-bottom:20px;">Technology Stack</h2>
+
+  <div class="grid-3 gap-5 flex-1">
+    <!-- Frontend -->
+    <div class="card" style="border-color:rgba(59,130,246,.2);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <div class="feat-icon feat-icon-blue" style="width:36px;height:36px;border-radius:9px;"><svg viewBox="0 0 24 24" style="width:18px;height:18px;"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/></svg></div>
+        <div class="bold white" style="font-size:15px;">Frontend</div>
+      </div>
+      <table class="tbl">
+        <tr><td class="mono" style="font-size:12px;color:var(--blue-light);">React 18</td><td style="font-size:12px;">UI framework</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--blue-light);">TypeScript</td><td style="font-size:12px;">Type safety</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--blue-light);">Vite 5</td><td style="font-size:12px;">Build tool</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--blue-light);">TailwindCSS</td><td style="font-size:12px;">Utility-first CSS</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--blue-light);">Recharts</td><td style="font-size:12px;">Data visualisation</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--blue-light);">ReactFlow</td><td style="font-size:12px;">Concept graphs</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--blue-light);">jsPDF</td><td style="font-size:12px;">PDF generation</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--blue-light);">Axios</td><td style="font-size:12px;">HTTP client</td></tr>
+      </table>
+    </div>
+
+    <!-- Backend -->
+    <div class="card" style="border-color:rgba(20,184,166,.2);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <div class="feat-icon feat-icon-teal" style="width:36px;height:36px;border-radius:9px;"><svg viewBox="0 0 24 24" style="width:18px;height:18px;"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+        <div class="bold white" style="font-size:15px;">Backend</div>
+      </div>
+      <table class="tbl">
+        <tr><td class="mono" style="font-size:12px;color:var(--teal-light);">Node.js</td><td style="font-size:12px;">Runtime</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--teal-light);">Express.js</td><td style="font-size:12px;">REST framework</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--teal-light);">PostgreSQL</td><td style="font-size:12px;">Relational DB (5 tables)</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--teal-light);">JWT + bcrypt</td><td style="font-size:12px;">Auth & security</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--teal-light);">Multer</td><td style="font-size:12px;">File uploads</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--teal-light);">TypeScript</td><td style="font-size:12px;">Type safety</td></tr>
+      </table>
+    </div>
+
+    <!-- ML -->
+    <div class="card" style="border-color:rgba(217,119,6,.2);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <div class="feat-icon feat-icon-amber" style="width:36px;height:36px;border-radius:9px;"><svg viewBox="0 0 24 24" style="width:18px;height:18px;"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
+        <div class="bold white" style="font-size:15px;">ML Service</div>
+      </div>
+      <table class="tbl">
+        <tr><td class="mono" style="font-size:12px;color:var(--amber);">Flask</td><td style="font-size:12px;">API framework</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--amber);">scikit-learn</td><td style="font-size:12px;">RF, GB models</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--amber);">XGBoost</td><td style="font-size:12px;">Ensemble model</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--amber);">spaCy</td><td style="font-size:12px;">NLP pipeline</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--amber);">ChromaDB</td><td style="font-size:12px;">Vector DB (RAG)</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--amber);">E5-small-v2</td><td style="font-size:12px;">Embeddings</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--amber);">FlashRank</td><td style="font-size:12px;">Cross-encoder reranker</td></tr>
+        <tr><td class="mono" style="font-size:12px;color:var(--amber);">Llama 3.3 70B</td><td style="font-size:12px;">LLM (via Fireworks AI)</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="slide-number">12</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 13: DATABASE -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Data Layer</div>
+  <h2 class="title-sm" style="margin-bottom:24px;">Database Schema &amp; Storage</h2>
+
+  <div class="grid-32 gap-6 flex-1">
+    <div class="flex-col gap-4">
+      <div class="card" style="padding:16px 20px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div style="width:28px;height:28px;border-radius:7px;background:rgba(59,130,246,.15);display:grid;place-items:center;"><span style="font-size:14px;">1</span></div>
+          <div class="bold white" style="font-size:14px;">users</div>
+        </div>
+        <div style="font-size:12px;color:var(--slate-400);line-height:1.5;">id, email, password_hash, full_name, role, is_active, profile_picture, created_at</div>
+      </div>
+      <div class="card" style="padding:16px 20px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div style="width:28px;height:28px;border-radius:7px;background:rgba(20,184,166,.15);display:grid;place-items:center;"><span style="font-size:14px;">2</span></div>
+          <div class="bold white" style="font-size:14px;">analyses</div>
+        </div>
+        <div style="font-size:12px;color:var(--slate-400);line-height:1.5;">id, user_id (FK), original_text, title, 12+ metric columns, difficult_words (JSONB), difficult_sentences (JSONB), concept_graph (JSONB), created_at</div>
+      </div>
+      <div class="card" style="padding:16px 20px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div style="width:28px;height:28px;border-radius:7px;background:rgba(22,163,74,.15);display:grid;place-items:center;"><span style="font-size:14px;">3</span></div>
+          <div class="bold white" style="font-size:14px;">simplification_history</div>
+        </div>
+        <div style="font-size:12px;color:var(--slate-400);line-height:1.5;">id, analysis_id (FK), user_id (FK), original_text, simplified_text, target_grade, changes_applied (JSONB), mode, metrics_original (JSONB), metrics_simplified (JSONB)</div>
+      </div>
+      <div class="grid-2 gap-4">
+        <div class="card" style="padding:14px 18px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <div style="width:24px;height:24px;border-radius:6px;background:rgba(217,119,6,.15);display:grid;place-items:center;"><span style="font-size:12px;">4</span></div>
+            <div class="bold white" style="font-size:13px;">rag_documents</div>
+          </div>
+          <div style="font-size:11px;color:var(--slate-400);">filename, pages, chunks, chromadb_collection_id, concept_graph</div>
+        </div>
+        <div class="card" style="padding:14px 18px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <div style="width:24px;height:24px;border-radius:6px;background:rgba(124,58,237,.15);display:grid;place-items:center;"><span style="font-size:12px;">5</span></div>
+            <div class="bold white" style="font-size:13px;">rag_queries</div>
+          </div>
+          <div style="font-size:11px;color:var(--slate-400);">query_text, document_ids[], result_count</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex-col gap-4 justify-center">
+      <div class="card-glow" style="text-align:center;padding:24px;">
+        <div class="eyebrow" style="margin-bottom:10px;">Key Design Decisions</div>
+        <ul class="bullets" style="font-size:13px;text-align:left;">
+          <li><strong>JSONB columns</strong> for flexible nested data (words, sentences, changes, metrics, concept graphs)</li>
+          <li><strong>Cascade deletes</strong> from users through all child tables</li>
+          <li><strong>Performance indexes</strong> on user_id and created_at DESC</li>
+          <li><strong>ChromaDB</strong> as separate vector store for embedding persistence</li>
+          <li><strong>Auto-initialisation</strong> on server startup (no manual migration step)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="slide-number">13</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 14: TESTING & EVALUATION -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Evaluation</div>
+  <h2 class="title-sm" style="margin-bottom:24px;">Testing &amp; Results</h2>
+
+  <div class="grid-2 gap-6 flex-1">
+    <div class="flex-col gap-4">
+      <div class="card-glow" style="padding:20px 24px;">
+        <div class="bold white" style="font-size:15px;margin-bottom:12px;">ML Model Performance</div>
+        <table class="tbl">
+          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>Mean Absolute Error</td><td class="bold teal">0.712 grades</td></tr>
+            <tr><td>R&sup2; Score</td><td class="bold blue">0.926</td></tr>
+            <tr><td>Within &plusmn;1 Grade</td><td class="bold green">80.2%</td></tr>
+            <tr><td>Within &plusmn;0.5 Grade</td><td class="bold amber">57.6%</td></tr>
+            <tr><td>Training Samples</td><td>~4,724</td></tr>
+            <tr><td>Test Samples</td><td>~945 (20%)</td></tr>
+            <tr><td>Cross-Validation</td><td>5-fold GridSearchCV</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="bold white" style="font-size:14px;margin-bottom:8px;">Calibrated Test Files</div>
+        <p style="font-size:13px;color:var(--slate-300);line-height:1.5;">
+          11 hand-crafted test files (Grade 3 &ndash; College) validated against ML predictions with graduated tolerance: &plusmn;1.0 for grades 3&ndash;8, &plusmn;1.5 for 9&ndash;12, &plusmn;2.0 for College.
+        </p>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
+          <span class="badge badge-green" style="font-size:12px;">11/11 PASS</span>
+          <span style="font-size:12px;color:var(--slate-400);">All test files within tolerance</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex-col gap-4">
+      <div class="card">
+        <div class="bold white" style="font-size:14px;margin-bottom:10px;">Feature Importance (Top 5)</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:var(--slate-300);">Flesch-Kincaid Grade</span><span class="bold teal">80.8%</span></div>
+            <div style="height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;"><div style="height:100%;width:80.8%;background:var(--teal);border-radius:4px;"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:var(--slate-300);">Automated Readability Index</span><span class="bold blue">13.3%</span></div>
+            <div style="height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;"><div style="height:100%;width:13.3%;background:var(--blue);border-radius:4px;"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:var(--slate-300);">Subordinate Clause Density</span><span class="bold purple" style="color:var(--purple);">0.9%</span></div>
+            <div style="height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;"><div style="height:100%;width:4%;background:var(--purple);border-radius:4px;"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:var(--slate-300);">Sentence Complexity Variance</span><span class="bold" style="color:var(--pink);">0.8%</span></div>
+            <div style="height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;"><div style="height:100%;width:3.5%;background:var(--pink);border-radius:4px;"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:var(--slate-300);">Avg Sentence Length</span><span class="bold amber">0.6%</span></div>
+            <div style="height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;"><div style="height:100%;width:3%;background:var(--amber);border-radius:4px;"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="bold white" style="font-size:14px;margin-bottom:10px;">Rewrite Engine Validation</div>
+        <table class="tbl">
+          <thead><tr><th>Test Case</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td>Grade 3 &rarr; Grade 6</td><td class="green bold">Predicts Grade 5 &check;</td></tr>
+            <tr><td>Grade 3 &rarr; Grade 8</td><td class="green bold">Predicts Grade 9 &check;</td></tr>
+            <tr><td>Grade 3 &rarr; Grade 10</td><td class="green bold">Predicts Grade 10 &check;</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:11px;color:var(--slate-400);margin-top:8px;">Bidirectional rewriting tested across downgrade and upgrade paths with semantic similarity &gt; 0.82 threshold.</p>
+      </div>
+    </div>
+  </div>
+  <div class="slide-number">14</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 15: DEMO SCREENSHOTS -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Live Application</div>
+  <h2 class="title-sm" style="margin-bottom:24px;">Application Screenshots</h2>
+
+  <div class="grid-2 gap-5 flex-1">
+    <div class="screenshot" style="min-height:0;flex:1;">
+      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>
+      <div>Screenshot: Full Analysis Results</div>
+      <div style="font-size:11px;color:var(--slate-500);">screens/full-analysis.png</div>
+    </div>
+    <div class="screenshot" style="min-height:0;flex:1;">
+      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>
+      <div>Screenshot: Text Rewrite with Changes</div>
+      <div style="font-size:11px;color:var(--slate-500);">screens/rewrite-changes.png</div>
+    </div>
+    <div class="screenshot" style="min-height:0;flex:1;">
+      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>
+      <div>Screenshot: Grade Explanation</div>
+      <div style="font-size:11px;color:var(--slate-500);">screens/grade-explanation.png</div>
+    </div>
+    <div class="screenshot" style="min-height:0;flex:1;">
+      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>
+      <div>Screenshot: Dark Mode View</div>
+      <div style="font-size:11px;color:var(--slate-500);">screens/dark-mode.png</div>
+    </div>
+  </div>
+  <div class="slide-number">15</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 16: FUTURE WORK -->
+<!-- ============================================================ -->
+<div class="slide bg-mesh pad">
+  <div class="eyebrow" style="margin-bottom:12px;">Looking Ahead</div>
+  <h2 class="title-sm" style="margin-bottom:28px;">Future Work &amp; Extensions</h2>
+
+  <div class="grid-3 gap-5 flex-1">
+    <div class="card-glow" style="padding:24px;">
+      <div class="feat-icon feat-icon-teal" style="margin-bottom:12px;"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
+      <div class="bold white" style="font-size:15px;margin-bottom:8px;">Multi-Language Support</div>
+      <p style="font-size:13px;color:var(--slate-400);line-height:1.55;">Extend readability analysis beyond English to Spanish, French, Arabic, and other languages. Train language-specific models on equivalent corpora.</p>
+    </div>
+    <div class="card-glow" style="padding:24px;">
+      <div class="feat-icon feat-icon-blue" style="margin-bottom:12px;"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg></div>
+      <div class="bold white" style="font-size:15px;margin-bottom:8px;">Collaborative Editing</div>
+      <p style="font-size:13px;color:var(--slate-400);line-height:1.55;">Real-time collaborative rewriting for teams of educators. WebSocket-based live cursors, shared analysis sessions, and group annotation support.</p>
+    </div>
+    <div class="card-glow" style="padding:24px;">
+      <div class="feat-icon feat-icon-amber" style="margin-bottom:12px;"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></div>
+      <div class="bold white" style="font-size:15px;margin-bottom:8px;">Adaptive Learning Paths</div>
+      <p style="font-size:13px;color:var(--slate-400);line-height:1.55;">Use concept prerequisite graphs to generate personalised reading sequences. Recommend progression from simpler to more complex texts based on student level.</p>
+    </div>
+    <div class="card" style="padding:20px;">
+      <div class="bold white" style="font-size:14px;margin-bottom:6px;">Fine-Tuned LLM</div>
+      <p style="font-size:12px;color:var(--slate-400);">Fine-tune a domain-specific model on the CLEAR Corpus for even more accurate grade predictions and higher-quality rewriting.</p>
+    </div>
+    <div class="card" style="padding:20px;">
+      <div class="bold white" style="font-size:14px;margin-bottom:6px;">Browser Extension</div>
+      <p style="font-size:12px;color:var(--slate-400);">One-click readability analysis for any web page. Highlight difficult words in real-time as users browse articles and educational content.</p>
+    </div>
+    <div class="card" style="padding:20px;">
+      <div class="bold white" style="font-size:14px;margin-bottom:6px;">Assessment Integration</div>
+      <p style="font-size:12px;color:var(--slate-400);">Integration with LMS platforms (Moodle, Canvas) for automated reading-level checks on course materials and assignment submissions.</p>
+    </div>
+  </div>
+  <div class="slide-number">16</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 17: CONCLUSION / THANK YOU -->
+<!-- ============================================================ -->
+<div class="slide bg-hero pad-lg flex-col justify-center text-center" style="position:relative;">
+  <div style="position:absolute;inset:0;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22><rect fill=%22none%22 stroke=%22rgba(255,255,255,0.03)%22 stroke-width=%220.5%22 width=%2280%22 height=%2280%22/></svg>');opacity:.5;"></div>
+  <div style="position:relative;z-index:1;">
+    <div class="eyebrow" style="margin-bottom:20px;font-size:13px;">Summary</div>
+    <h2 class="title" style="font-size:44px;margin-bottom:20px;">ClarityWorks</h2>
+    <p class="subtitle" style="max-width:680px;margin:0 auto 36px;">
+      A comprehensive platform combining traditional readability formulas, a 3-model ML ensemble, NLP-powered text rewriting, and RAG-based textbook search &mdash; all within a polished, modern web interface.
+    </p>
+
+    <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:40px;">
+      <div class="card text-center" style="padding:18px 28px;min-width:140px;">
+        <div class="metric-value teal" style="font-size:32px;">30+</div>
+        <div class="metric-label">React Components</div>
+      </div>
+      <div class="card text-center" style="padding:18px 28px;min-width:140px;">
+        <div class="metric-value blue" style="font-size:32px;">25+</div>
+        <div class="metric-label">API Endpoints</div>
+      </div>
+      <div class="card text-center" style="padding:18px 28px;min-width:140px;">
+        <div class="metric-value amber" style="font-size:32px;">7,500+</div>
+        <div class="metric-label">Lines (Simplifier)</div>
+      </div>
+      <div class="card text-center" style="padding:18px 28px;min-width:140px;">
+        <div class="metric-value green" style="font-size:32px;">0.926</div>
+        <div class="metric-label">R&sup2; Accuracy</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:32px;">
+      <div style="display:inline-flex;gap:8px;padding:12px 28px;border-radius:var(--radius-sm);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);">
+        <span style="font-size:15px;color:var(--slate-300);">Thank you</span>
+        <span style="font-size:15px;color:var(--slate-500);">&middot;</span>
+        <span style="font-size:15px;color:var(--teal-light);">Questions?</span>
+      </div>
+    </div>
+
+    <p style="font-size:13px;color:var(--slate-500);">
+      Junaid Malik &middot; Wahaj Naveed &middot; 2026
+    </p>
+  </div>
+  <div class="slide-number">17</div>
+</div>
+
+</div><!-- /deck -->
+
+<!-- ============================================================ -->
+<!-- NAVIGATION & KEYBOARD CONTROLS -->
+<!-- ============================================================ -->
+<script>
+(function() {
+  const slides = document.querySelectorAll('.slide');
+  let current = 0;
+  const total = slides.length;
+  const progress = document.getElementById('progress');
+
+  function go(n) {
+    if (n < 0 || n >= total) return;
+    slides[current].classList.remove('active');
+    current = n;
+    slides[current].classList.add('active');
+    progress.style.width = ((current + 1) / total * 100) + '%';
+  }
+
+  function next() { go(current + 1); }
+  function prev() { go(current - 1); }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    if (e.key === 'ArrowLeft' || e.key === 'Backspace' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    if (e.key === 'Home') { e.preventDefault(); go(0); }
+    if (e.key === 'End') { e.preventDefault(); go(total - 1); }
+  });
+
+  // Click sides to navigate
+  document.querySelector('.deck').addEventListener('click', function(e) {
+    const rect = this.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    if (x < rect.width * 0.3) prev();
+    else if (x > rect.width * 0.7) next();
+  });
+
+  // Touch support
+  let touchStartX = 0;
+  document.addEventListener('touchstart', function(e) { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', function(e) {
+    const diff = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(diff) > 50) { diff < 0 ? next() : prev(); }
+  });
+
+  // Init progress
+  progress.style.width = (1 / total * 100) + '%';
+
+  // Scale deck to fit viewport
+  const deck = document.getElementById('deck');
+  function scaleDeck() {
+    const sw = window.innerWidth / 1280;
+    const sh = window.innerHeight / 720;
+    const s = Math.min(sw * 0.96, sh * 0.96);
+    deck.style.transform = 'scale(' + s + ')';
+  }
+  scaleDeck();
+  window.addEventListener('resize', scaleDeck);
+})();
+</script>
+
+</body>
+</html>

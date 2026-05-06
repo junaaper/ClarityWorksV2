@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, Save, Wand2, Check, X, Download, FileText, TrendingDown, TrendingUp } from 'lucide-react';
 import { analysisApi, simplifyApi } from '../../services/api';
@@ -281,14 +281,39 @@ const buildServerPreviewRanges = (
       continue;
     }
 
-    const start = Math.max(0, Math.min(previewText.length, change.preview_start));
-    const end = Math.max(start, Math.min(previewText.length, change.preview_end));
+    const rawStart = Math.max(0, Math.min(previewText.length, change.preview_start));
+    const rawEnd = Math.max(rawStart, Math.min(previewText.length, change.preview_end));
+    const { start, end } = expandPreviewRange(previewText, rawStart, rawEnd, change.review_scope);
     if (end > start) {
       ranges[change.id] = { start, end };
     }
   }
 
   return ranges;
+};
+
+const isWordChar = (char: string) => /[A-Za-z0-9]/.test(char);
+
+const expandPreviewRange = (
+  text: string,
+  rawStart: number,
+  rawEnd: number,
+  scope?: Change['review_scope']
+): ChangeRange => {
+  if (scope !== 'sentence' && scope !== 'paragraph') {
+    return { start: rawStart, end: rawEnd };
+  }
+
+  let start = rawStart;
+  let end = rawEnd;
+  while (start > 0 && isWordChar(text[start - 1]) && isWordChar(text[start] || '')) {
+    start -= 1;
+  }
+  while (end < text.length && isWordChar(text[end - 1] || '') && isWordChar(text[end])) {
+    end += 1;
+  }
+
+  return { start, end };
 };
 
 const SimplifyPage: React.FC = () => {
@@ -305,6 +330,7 @@ const SimplifyPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [hoveredChange, setHoveredChange] = useState<number | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const hoverDismissTimerRef = useRef<number | null>(null);
   const [originalGrade, setOriginalGrade] = useState<string | null>(null);
   const [simplifiedGrade, setSimplifiedGrade] = useState<string | null>(null);
   const [gradeLoading, setGradeLoading] = useState(false);
@@ -327,6 +353,14 @@ const SimplifyPage: React.FC = () => {
     };
     fetchAnalysis();
   }, [analysisId]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverDismissTimerRef.current !== null) {
+        window.clearTimeout(hoverDismissTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!simplifiedText || simplifiedText.length < 50) {
@@ -429,6 +463,21 @@ const SimplifyPage: React.FC = () => {
       .map((change) => change.id);
   };
 
+  const clearHoverDismissTimer = () => {
+    if (hoverDismissTimerRef.current !== null) {
+      window.clearTimeout(hoverDismissTimerRef.current);
+      hoverDismissTimerRef.current = null;
+    }
+  };
+
+  const scheduleHoverDismiss = () => {
+    clearHoverDismissTimer();
+    hoverDismissTimerRef.current = window.setTimeout(() => {
+      setHoveredChange(null);
+      hoverDismissTimerRef.current = null;
+    }, 180);
+  };
+
   const handleAccept = (changeId: number) => {
     const linkedIds = new Set(getLinkedChangeIds(changeId));
     const newChanges = changes.map((c) =>
@@ -497,8 +546,14 @@ const SimplifyPage: React.FC = () => {
   };
 
   const handleChangeHover = (changeId: number | null, event?: React.MouseEvent) => {
+    if (changeId === null) {
+      scheduleHoverDismiss();
+      return;
+    }
+
+    clearHoverDismissTimer();
     setHoveredChange(changeId);
-    if (event && changeId !== null) {
+    if (event) {
       setTooltipPos({ x: event.clientX, y: event.clientY });
     }
   };
@@ -763,6 +818,8 @@ const SimplifyPage: React.FC = () => {
       {hoveredChangeData && (
         <div
           className="fixed z-50 p-4 max-w-sm cw-card"
+          onMouseEnter={clearHoverDismissTimer}
+          onMouseLeave={scheduleHoverDismiss}
           style={{
             left: Math.min(tooltipPos.x + 10, window.innerWidth - 400),
             top: Math.min(tooltipPos.y + 10, window.innerHeight - 200),
@@ -985,11 +1042,12 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
   let pos = 0;
 
   for (const seg of segments) {
-    if (seg.start < pos) continue;
-    if (seg.start > pos) {
+    if (seg.end <= pos) continue;
+    const renderStart = Math.max(seg.start, pos);
+    if (renderStart > pos) {
       parts.push(
         <span key={key++} className="text-gray-800">
-          {text.slice(pos, seg.start)}
+          {text.slice(pos, renderStart)}
         </span>
       );
     }
@@ -1015,7 +1073,7 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
         onMouseEnter={(e) => onHover(seg.change.id, e)}
         onMouseLeave={() => onHover(null)}
       >
-        {text.slice(seg.start, seg.end)}
+        {text.slice(renderStart, seg.end)}
         {mode === 'interactive' && isPending && isWord && (
           <span className="inline-flex ml-1 gap-0.5 align-middle">
             <button
