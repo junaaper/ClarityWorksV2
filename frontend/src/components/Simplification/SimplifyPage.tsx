@@ -19,6 +19,12 @@ type ChangeRange = {
   end: number;
 };
 
+type HoverOptions = {
+  embedded?: boolean;
+  evidenceItem?: ExplanationItem | null;
+  paragraphReview?: ParagraphReview | null;
+};
+
 const computeTargetDistance = (rawScore: number | undefined, targetGrade: number) => {
   if (typeof rawScore !== 'number') return undefined;
   if (targetGrade >= 13) {
@@ -125,6 +131,30 @@ const getChangeSummaryText = (change: Change) => {
 
 type ExplanationItem = NonNullable<Change['explanation_items']>[number];
 
+type ParagraphChunk = {
+  text: string;
+  start: number;
+  end: number;
+};
+
+type WordToken = {
+  text: string;
+  norm: string;
+  start: number;
+  end: number;
+};
+
+type ParagraphReview = {
+  index: number;
+  original: ParagraphChunk;
+  rewritten: ParagraphChunk;
+  reason: string;
+  evidence: ExplanationItem[];
+  changeCount: number;
+  sentenceCountBefore: number;
+  sentenceCountAfter: number;
+};
+
 const getEvidenceLabel = (item: ExplanationItem) => {
   switch (item.kind) {
     case 'word_upgrade':
@@ -140,6 +170,362 @@ const getEvidenceLabel = (item: ExplanationItem) => {
 
 const getEvidenceAccent = (item: ExplanationItem) =>
   item.kind === 'word_replacement' ? 'var(--err-500)' : 'var(--s-500)';
+
+const FRONTEND_EVIDENCE_STOP_WORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'so', 'for', 'nor', 'yet',
+  'if', 'then', 'because', 'since', 'unless', 'though', 'although',
+  'not', 'no', 'yes', 'cannot', 'cant',
+  'to', 'of', 'in', 'on', 'at', 'by', 'with', 'from', 'into', 'over',
+  'under', 'within', 'without', 'out', 'up', 'down', 'back', 'around',
+  'about', 'through', 'as', 'than', 'that', 'which', 'who', 'whom', 'whose',
+  'is', 'are', 'was', 'were', 'be', 'been', 'being', 'am', 'do',
+  'does', 'did', 'has', 'have', 'had', 'will', 'would', 'can',
+  'could', 'may', 'might', 'must', 'shall', 'should', 'it', 'its',
+  'he', 'she', 'they', 'them', 'we', 'us', 'you', 'i', 'me', 'my',
+  'his', 'her', 'their', 'our', 'your', 'this', 'these', 'those',
+  'there', 'theres', 'here', 'when', 'where', 'why', 'how',
+  'more', 'less', 'fewer', 'many', 'much',
+]);
+
+const FRONTEND_EVIDENCE_GENERIC_WORDS = new Set([
+  'thing', 'things', 'people', 'make', 'made', 'makes', 'get', 'got',
+  'use', 'uses', 'used', 'work', 'works', 'worked', 'try', 'tries',
+  'go', 'goes', 'going', 'went',
+]);
+
+const FRONTEND_EVIDENCE_HINTS = [
+  { before: ['nations', 'nation'], after: ['countries', 'country'] },
+  { before: ['firms', 'firm'], after: ['businesses', 'business'] },
+  { before: ['shoppers'], after: ['people', 'buyers'] },
+  { before: ['taxation'], after: ['taxes', 'tax'] },
+  { before: ['monetary'], after: ['money'] },
+  { before: ['barriers'], after: ['limits'] },
+  { before: ['movement'], after: ['move', 'moving'] },
+];
+
+const splitParagraphChunks = (text: string): ParagraphChunk[] => {
+  const chunks: ParagraphChunk[] = [];
+  const pattern = /\S[\s\S]*?(?=\r?\n\s*\r?\n|$)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    const raw = match[0];
+    const leading = raw.length - raw.trimStart().length;
+    const trailing = raw.length - raw.trimEnd().length;
+    const start = (match.index ?? 0) + leading;
+    const end = (match.index ?? 0) + raw.length - trailing;
+    const paragraphText = text.slice(start, end);
+    if (paragraphText.trim()) {
+      chunks.push({ text: paragraphText, start, end });
+    }
+  }
+
+  return chunks.length ? chunks : (text.trim() ? [{ text: text.trim(), start: 0, end: text.length }] : []);
+};
+
+const countWords = (text: string) =>
+  (text.match(/[A-Za-z]+(?:['-][A-Za-z]+)*/g) ?? []).length;
+
+const countSentences = (text: string) => {
+  const matches = text.match(/[.!?]+/g);
+  return Math.max(1, matches?.length ?? 1);
+};
+
+const countClauseUnits = (text: string) => {
+  const sentenceCount = countSentences(text);
+  const clauseMarkers = text.match(
+    /\b(?:and|but|because|when|while|which|that|who|although|since|if|where|after|before)\b|[;:]/gi
+  );
+  return Math.max(sentenceCount, sentenceCount + (clauseMarkers?.length ?? 0));
+};
+
+const normalizeEvidenceWord = (word: string) => {
+  let normalized = word.toLowerCase().replace(/[^a-z]+/g, '');
+  if (normalized.endsWith('ies') && normalized.length > 4) {
+    normalized = `${normalized.slice(0, -3)}y`;
+  } else if (normalized.endsWith('es') && normalized.length > 4) {
+    normalized = normalized.slice(0, -2);
+  } else if (normalized.endsWith('s') && normalized.length > 3) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
+};
+
+const isUsefulEvidenceWord = (word: string) => {
+  const normalized = normalizeEvidenceWord(word);
+  return (
+    normalized.length > 2 &&
+    !FRONTEND_EVIDENCE_STOP_WORDS.has(normalized) &&
+    !FRONTEND_EVIDENCE_GENERIC_WORDS.has(normalized)
+  );
+};
+
+const isUsefulEvidencePair = (before?: string, after?: string) => {
+  if (!before || !after) return false;
+  const beforeNorm = normalizeEvidenceWord(before);
+  const afterNorm = normalizeEvidenceWord(after);
+  if (!beforeNorm || !afterNorm || beforeNorm === afterNorm) return false;
+  return isUsefulEvidenceWord(before) && isUsefulEvidenceWord(after);
+};
+
+const makeFrontendEvidenceItem = (before: string, after: string): ExplanationItem | null => {
+  if (!isUsefulEvidencePair(before, after)) return null;
+  return {
+    kind: 'word_replacement',
+    before,
+    after,
+    text: `Changed '${before}' to '${after}' to use clearer wording in this paragraph.`,
+  };
+};
+
+const tokenizeWords = (text: string): WordToken[] =>
+  Array.from(text.matchAll(/[A-Za-z]+(?:['-][A-Za-z]+)*/g)).map((match) => ({
+    text: match[0],
+    norm: normalizeEvidenceWord(match[0]),
+    start: match.index ?? 0,
+    end: (match.index ?? 0) + match[0].length,
+  }));
+
+const paragraphHasWord = (text: string, word?: string) => {
+  if (!word) return false;
+  const normalized = normalizeEvidenceWord(word);
+  if (!normalized) return false;
+  return tokenizeWords(text).some((token) => token.norm === normalized);
+};
+
+const evidenceBelongsToParagraph = (
+  item: ExplanationItem,
+  originalParagraph: string,
+  rewrittenParagraph: string
+) => {
+  const hasBefore = paragraphHasWord(originalParagraph, item.before);
+  const hasAfter = paragraphHasWord(rewrittenParagraph, item.after);
+  if (item.before && item.after) {
+    return hasBefore || hasAfter;
+  }
+  if (item.after) {
+    return hasAfter;
+  }
+  if (item.before) {
+    return hasBefore;
+  }
+  return true;
+};
+
+const buildReplacementBlocks = (beforeTokens: WordToken[], afterTokens: WordToken[]) => {
+  const rows = beforeTokens.length + 1;
+  const cols = afterTokens.length + 1;
+  const dp = Array.from({ length: rows }, () => Array(cols).fill(0));
+
+  for (let i = beforeTokens.length - 1; i >= 0; i -= 1) {
+    for (let j = afterTokens.length - 1; j >= 0; j -= 1) {
+      dp[i][j] = beforeTokens[i].norm === afterTokens[j].norm
+        ? dp[i + 1][j + 1] + 1
+        : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  const blocks: Array<{ before: WordToken[]; after: WordToken[] }> = [];
+  let removed: WordToken[] = [];
+  let added: WordToken[] = [];
+  const flush = () => {
+    if (removed.length || added.length) {
+      blocks.push({ before: removed, after: added });
+      removed = [];
+      added = [];
+    }
+  };
+
+  let i = 0;
+  let j = 0;
+  while (i < beforeTokens.length || j < afterTokens.length) {
+    if (i < beforeTokens.length && j < afterTokens.length && beforeTokens[i].norm === afterTokens[j].norm) {
+      flush();
+      i += 1;
+      j += 1;
+    } else if (j < afterTokens.length && (i >= beforeTokens.length || dp[i][j + 1] >= dp[i + 1][j])) {
+      added.push(afterTokens[j]);
+      j += 1;
+    } else if (i < beforeTokens.length) {
+      removed.push(beforeTokens[i]);
+      i += 1;
+    }
+  }
+  flush();
+
+  return blocks;
+};
+
+const extractHintEvidence = (original: string, rewritten: string): ExplanationItem[] => {
+  const originalTokens = tokenizeWords(original);
+  const rewrittenTokens = tokenizeWords(rewritten);
+  const items: ExplanationItem[] = [];
+
+  for (const hint of FRONTEND_EVIDENCE_HINTS) {
+    const beforeToken = originalTokens.find((token) => hint.before.includes(token.norm));
+    const afterToken = rewrittenTokens.find((token) => hint.after.includes(token.norm));
+    if (!beforeToken || !afterToken) continue;
+    const item = makeFrontendEvidenceItem(beforeToken.text, afterToken.text);
+    if (item) items.push(item);
+  }
+
+  return items;
+};
+
+const extractDiffEvidence = (original: string, rewritten: string): ExplanationItem[] => {
+  const blocks = buildReplacementBlocks(tokenizeWords(original), tokenizeWords(rewritten));
+  const items: ExplanationItem[] = [];
+
+  for (const block of blocks) {
+    if (!block.before.length || !block.after.length) continue;
+    if (block.before.length > 8 || block.after.length > 8) continue;
+
+    const beforeWords = block.before.filter((token) => isUsefulEvidenceWord(token.text));
+    const afterWords = block.after.filter((token) => isUsefulEvidenceWord(token.text));
+    const pairCount = Math.min(beforeWords.length, afterWords.length, 2);
+    for (let index = 0; index < pairCount; index += 1) {
+      const item = makeFrontendEvidenceItem(beforeWords[index].text, afterWords[index].text);
+      if (item) items.push(item);
+    }
+  }
+
+  return items;
+};
+
+const dedupeEvidenceItems = (items: ExplanationItem[], limit = 6): ExplanationItem[] => {
+  const seen = new Set<string>();
+  const deduped: ExplanationItem[] = [];
+  for (const item of items) {
+    if (item.before && item.after && !isUsefulEvidencePair(item.before, item.after)) {
+      continue;
+    }
+    const key = `${item.kind}|${(item.before ?? '').toLowerCase()}|${(item.after ?? '').toLowerCase()}|${item.text}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(item);
+    if (deduped.length >= limit) break;
+  }
+  return deduped;
+};
+
+const buildParagraphReason = (
+  targetGrade: number,
+  sentenceCountBefore: number,
+  sentenceCountAfter: number,
+  wordCountBefore: number,
+  wordCountAfter: number,
+  clauseCountBefore: number,
+  clauseCountAfter: number,
+  evidence: ExplanationItem[]
+) => {
+  const targetLabel = targetGrade === 13 ? 'College' : `Grade ${targetGrade}`;
+  const avgWordsBefore = sentenceCountBefore ? Math.round(wordCountBefore / sentenceCountBefore) : wordCountBefore;
+  const avgWordsAfter = sentenceCountAfter ? Math.round(wordCountAfter / sentenceCountAfter) : wordCountAfter;
+  const sentencePhrase = sentenceCountAfter > sentenceCountBefore
+    ? `split dense syntax into ${sentenceCountAfter} clearer sentences`
+    : sentenceCountAfter < sentenceCountBefore
+      ? `combined related ideas into ${sentenceCountAfter} smoother, more controlled sentences`
+      : `kept ${sentenceCountAfter} sentence${sentenceCountAfter === 1 ? '' : 's'} but changed the internal structure`;
+  const clausePhrase = clauseCountAfter < clauseCountBefore
+    ? `reduced complex clause load from ${clauseCountBefore} to ${clauseCountAfter} estimated clause units`
+    : clauseCountAfter > clauseCountBefore
+      ? `added controlled clause structure from ${clauseCountBefore} to ${clauseCountAfter} estimated clause units`
+      : `kept clause load steady at ${clauseCountAfter} estimated clause units`;
+  const sentenceLengthPhrase = `shifted average sentence length from ${avgWordsBefore} to ${avgWordsAfter} words`;
+  const lengthPhrase = wordCountAfter < wordCountBefore
+    ? `trimmed wording from ${wordCountBefore} to ${wordCountAfter} words`
+    : wordCountAfter > wordCountBefore
+      ? `expanded wording from ${wordCountBefore} to ${wordCountAfter} words for clearer explanation`
+      : `kept the paragraph length steady at ${wordCountAfter} words`;
+  const examples = evidence
+    .filter((item) => item.before && item.after)
+    .slice(0, 3)
+    .map((item) => `${item.before} -> ${item.after}`);
+  const examplePhrase = examples.length
+    ? ` Vocabulary evidence includes ${examples.join(', ')}.`
+    : '';
+  return `Reworked this paragraph for ${targetLabel}: ${sentencePhrase}, ${clausePhrase}, ${sentenceLengthPhrase}, and ${lengthPhrase}.${examplePhrase}`;
+};
+
+const buildParagraphReviews = (
+  originalText: string,
+  rewrittenText: string,
+  changes: Change[],
+  ranges: Record<number, ChangeRange>,
+  targetGrade: number
+): ParagraphReview[] => {
+  const originalParagraphs = splitParagraphChunks(originalText);
+  const rewrittenParagraphs = splitParagraphChunks(rewrittenText);
+  const reviewCount = Math.max(originalParagraphs.length, rewrittenParagraphs.length);
+  const reviews: ParagraphReview[] = [];
+
+  for (let index = 0; index < reviewCount; index += 1) {
+    const original = originalParagraphs[index] ?? { text: '', start: originalText.length, end: originalText.length };
+    const rewritten = rewrittenParagraphs[index] ?? { text: '', start: rewrittenText.length, end: rewrittenText.length };
+    if (!original.text.trim() && !rewritten.text.trim()) continue;
+
+    const paragraphChanges = changes.filter((change) => {
+      const originalRange = { start: change.start, end: change.end };
+      const previewRange = getRenderedRange(change, ranges, rewrittenText.length, true);
+      return (
+        rangesOverlap(originalRange, original) ||
+        (previewRange ? rangesOverlap(previewRange, rewritten) : false)
+      );
+    });
+
+    const backendEvidence = paragraphChanges.flatMap((change) => {
+      const items = [...(change.explanation_items ?? [])];
+      if (
+        (change.review_scope === 'word' || !change.review_scope) &&
+        change.original &&
+        change.simplified
+      ) {
+        items.push({
+          kind: change.type === 'word_upgrade' ? 'word_upgrade' : 'word_replacement',
+          before: change.original,
+          after: change.simplified,
+          text: change.reason || `Changed '${change.original}' to '${change.simplified}'.`,
+        });
+      }
+      return items.filter((item) =>
+        evidenceBelongsToParagraph(item, original.text, rewritten.text)
+      );
+    });
+    const frontendEvidence = [
+      ...extractHintEvidence(original.text, rewritten.text),
+      ...extractDiffEvidence(original.text, rewritten.text),
+    ];
+    const evidence = dedupeEvidenceItems([...backendEvidence, ...frontendEvidence], 6);
+    const sentenceCountBefore = countSentences(original.text);
+    const sentenceCountAfter = countSentences(rewritten.text);
+    const wordCountBefore = countWords(original.text);
+    const wordCountAfter = countWords(rewritten.text);
+    const clauseCountBefore = countClauseUnits(original.text);
+    const clauseCountAfter = countClauseUnits(rewritten.text);
+
+    reviews.push({
+      index,
+      original,
+      rewritten,
+      reason: buildParagraphReason(
+        targetGrade,
+        sentenceCountBefore,
+        sentenceCountAfter,
+        wordCountBefore,
+        wordCountAfter,
+        clauseCountBefore,
+        clauseCountAfter,
+        evidence,
+      ),
+      evidence,
+      changeCount: paragraphChanges.length,
+      sentenceCountBefore,
+      sentenceCountAfter,
+    });
+  }
+
+  return reviews;
+};
 
 const EvidenceItems: React.FC<{
   items?: Change['explanation_items'];
@@ -193,6 +579,47 @@ const EvidenceItems: React.FC<{
           </div>
         );
       })}
+    </div>
+  );
+};
+
+const ParagraphReviewCards: React.FC<{
+  reviews: ParagraphReview[];
+}> = ({ reviews }) => {
+  if (!reviews.length) return null;
+
+  return (
+    <div className="cw-card cw-card-pad-lg mt-5">
+      <h3 className="cw-section-title mb-4">Paragraph Reviews</h3>
+      <div className="space-y-3">
+        {reviews.map((review) => (
+          <div
+            key={`paragraph-review-${review.index}`}
+            className="p-3.5 rounded-md"
+            style={{
+              background: 'color-mix(in srgb, var(--ok-50) 58%, var(--surface-raised))',
+              borderLeft: '3px solid var(--s-500)',
+            }}
+          >
+            <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+              <span className="cw-badge cw-badge-neutral">Paragraph {review.index + 1}</span>
+              <span className="cw-badge cw-badge-neutral">Paragraph Review</span>
+              <span className="cw-badge cw-badge-info">
+                {review.sentenceCountBefore} &rarr; {review.sentenceCountAfter} sentences
+              </span>
+              {review.changeCount > 0 && (
+                <span className="cw-badge cw-badge-ok">
+                  {review.changeCount} linked change{review.changeCount === 1 ? '' : 's'}
+                </span>
+              )}
+            </div>
+            <p style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+              {review.reason}
+            </p>
+            <EvidenceItems items={review.evidence} limit={6} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -292,6 +719,71 @@ const buildServerPreviewRanges = (
   return ranges;
 };
 
+const clampRangeToText = (range: ChangeRange, textLength: number): ChangeRange | null => {
+  const start = Math.max(0, Math.min(textLength, range.start));
+  const end = Math.max(start, Math.min(textLength, range.end));
+  return end > start ? { start, end } : null;
+};
+
+const getRenderedRange = (
+  change: Change,
+  ranges: Record<number, ChangeRange>,
+  textLength: number,
+  allowPreviewFallback = false
+): ChangeRange | null => {
+  const renderedRange = ranges[change.id];
+  if (renderedRange) {
+    return clampRangeToText(renderedRange, textLength);
+  }
+
+  if (
+    allowPreviewFallback &&
+    typeof change.preview_start === 'number' &&
+    typeof change.preview_end === 'number'
+  ) {
+    return clampRangeToText(
+      { start: change.preview_start, end: change.preview_end },
+      textLength
+    );
+  }
+
+  return null;
+};
+
+const rangesOverlap = (a: ChangeRange, b: ChangeRange) => a.start < b.end && a.end > b.start;
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const findEvidenceRange = (
+  text: string,
+  container: ChangeRange,
+  item: ExplanationItem,
+  usedRanges: ChangeRange[]
+): ChangeRange | null => {
+  const needle = (item.after || '').trim();
+  if (!needle || needle.length > 80) return null;
+
+  const segment = text.slice(container.start, container.end);
+  const escaped = escapeRegExp(needle);
+  const wordish = /^[A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*$/.test(needle);
+  const pattern = wordish
+    ? new RegExp(`(^|[^A-Za-z0-9])(${escaped})(?=$|[^A-Za-z0-9])`, 'ig')
+    : new RegExp(escaped, 'ig');
+
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(segment)) !== null) {
+    const leadingOffset = wordish ? match[1].length : 0;
+    const start = container.start + match.index + leadingOffset;
+    const end = start + needle.length;
+    const range = { start, end };
+    if (!usedRanges.some((used) => rangesOverlap(used, range))) {
+      return range;
+    }
+  }
+
+  return null;
+};
+
 const isWordChar = (char: string) => /[A-Za-z0-9]/.test(char);
 
 const expandPreviewRange = (
@@ -329,6 +821,9 @@ const SimplifyPage: React.FC = () => {
   const [loadingText, setLoadingText] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hoveredChange, setHoveredChange] = useState<number | null>(null);
+  const [hoveredEmbeddedWord, setHoveredEmbeddedWord] = useState(false);
+  const [hoveredEvidenceItem, setHoveredEvidenceItem] = useState<ExplanationItem | null>(null);
+  const [hoveredParagraphReview, setHoveredParagraphReview] = useState<ParagraphReview | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const hoverDismissTimerRef = useRef<number | null>(null);
   const [originalGrade, setOriginalGrade] = useState<string | null>(null);
@@ -474,6 +969,9 @@ const SimplifyPage: React.FC = () => {
     clearHoverDismissTimer();
     hoverDismissTimerRef.current = window.setTimeout(() => {
       setHoveredChange(null);
+      setHoveredEmbeddedWord(false);
+      setHoveredEvidenceItem(null);
+      setHoveredParagraphReview(null);
       hoverDismissTimerRef.current = null;
     }, 180);
   };
@@ -545,7 +1043,11 @@ const SimplifyPage: React.FC = () => {
     setSaving(false);
   };
 
-  const handleChangeHover = (changeId: number | null, event?: React.MouseEvent) => {
+  const handleChangeHover = (
+    changeId: number | null,
+    event?: React.MouseEvent,
+    options?: HoverOptions
+  ) => {
     if (changeId === null) {
       scheduleHoverDismiss();
       return;
@@ -553,12 +1055,19 @@ const SimplifyPage: React.FC = () => {
 
     clearHoverDismissTimer();
     setHoveredChange(changeId);
+    setHoveredEmbeddedWord(Boolean(options?.embedded));
+    setHoveredEvidenceItem(options?.evidenceItem ?? null);
+    setHoveredParagraphReview(options?.paragraphReview ?? null);
     if (event) {
       setTooltipPos({ x: event.clientX, y: event.clientY });
     }
   };
 
   const hoveredChangeData = changes.find((c) => c.id === hoveredChange);
+  const tooltipEvidenceItems = hoveredEvidenceItem
+    ? [hoveredEvidenceItem]
+    : hoveredParagraphReview?.evidence ?? hoveredChangeData?.explanation_items;
+  const tooltipReason = hoveredEvidenceItem?.text || hoveredParagraphReview?.reason || hoveredChangeData?.reason;
 
   const acceptedCount = changes.filter((c) => c.accepted === true).length;
   const deniedCount = changes.filter((c) => c.accepted === false).length;
@@ -569,6 +1078,9 @@ const SimplifyPage: React.FC = () => {
       .map((change) => change.dependency_group_id)
       .filter((groupId): groupId is string => Boolean(groupId))
   ).size;
+  const autoParagraphReviews = mode === 'auto' && simplifiedText
+    ? buildParagraphReviews(originalText, simplifiedText, changes, renderedRanges, targetGrade)
+    : [];
   if (loadingText) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -801,6 +1313,8 @@ const SimplifyPage: React.FC = () => {
                 ranges={renderedRanges}
                 mode={mode}
                 hoveredChange={hoveredChange}
+                hoveredEvidenceItem={hoveredEvidenceItem}
+                paragraphReviews={autoParagraphReviews}
                 onHover={handleChangeHover}
                 onAccept={handleAccept}
                 onDeny={handleDeny}
@@ -827,8 +1341,20 @@ const SimplifyPage: React.FC = () => {
           }}
         >
           <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-            <span className="cw-badge cw-badge-primary">{getChangeLabel(hoveredChangeData)}</span>
-            {getScopeLabel(hoveredChangeData.review_scope) && (
+            <span className="cw-badge cw-badge-primary">
+              {hoveredEvidenceItem
+                ? getEvidenceLabel(hoveredEvidenceItem)
+                : hoveredParagraphReview
+                  ? `Paragraph ${hoveredParagraphReview.index + 1}`
+                  : getChangeLabel(hoveredChangeData)}
+            </span>
+            {hoveredEmbeddedWord && (
+              <span className="cw-badge cw-badge-info">Evidence</span>
+            )}
+            {hoveredParagraphReview && (
+              <span className="cw-badge cw-badge-neutral">Paragraph Review</span>
+            )}
+            {!hoveredParagraphReview && getScopeLabel(hoveredChangeData.review_scope) && (
               <span className="cw-badge cw-badge-neutral">{getScopeLabel(hoveredChangeData.review_scope)}</span>
             )}
             {hoveredChangeData.final_reviewed && (
@@ -836,16 +1362,16 @@ const SimplifyPage: React.FC = () => {
             )}
           </div>
           <p style={{ color: 'var(--text-2)', fontSize: 12.5, marginBottom: 10, lineHeight: 1.5 }}>
-            {hoveredChangeData.reason}
+            {tooltipReason}
           </p>
-          <EvidenceItems items={hoveredChangeData.explanation_items} limit={4} compact />
+          <EvidenceItems items={tooltipEvidenceItems} limit={4} compact />
           {hoveredChangeData.final_reviewed && hoveredChangeData.final_review_note && (
             <p style={{ color: 'var(--text-3)', fontSize: 11.5, marginBottom: 10, lineHeight: 1.5 }}>
               {hoveredChangeData.final_review_note}
             </p>
           )}
 
-          {mode === 'interactive' && hoveredChangeData.accepted === null && (
+          {mode === 'interactive' && hoveredChangeData.accepted === null && !hoveredEmbeddedWord && !hoveredParagraphReview && (
             <div className="flex gap-2">
               <button
                 onClick={() => handleAccept(hoveredChangeData.id)}
@@ -870,8 +1396,11 @@ const SimplifyPage: React.FC = () => {
         </div>
       )}
 
-      {/* Changes List */}
+      {/* Auto explanations / Interactive changes */}
       {changes.length > 0 && (
+        mode === 'auto' && autoParagraphReviews.length > 0 ? (
+          <ParagraphReviewCards reviews={autoParagraphReviews} />
+        ) : (
         <div className="cw-card cw-card-pad-lg mt-5">
           <h3 className="cw-section-title mb-4">All Changes</h3>
           <div className="space-y-2.5">
@@ -965,6 +1494,7 @@ const SimplifyPage: React.FC = () => {
             })}
           </div>
         </div>
+        )
       )}
     </div>
   );
@@ -977,7 +1507,9 @@ interface HighlightedTextProps {
   ranges: Record<number, ChangeRange>;
   mode: 'auto' | 'interactive';
   hoveredChange: number | null;
-  onHover: (id: number | null, event?: React.MouseEvent) => void;
+  hoveredEvidenceItem: ExplanationItem | null;
+  paragraphReviews?: ParagraphReview[];
+  onHover: (id: number | null, event?: React.MouseEvent, options?: HoverOptions) => void;
   onAccept: (id: number) => void;
   onDeny: (id: number) => void;
 }
@@ -988,6 +1520,8 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
   ranges,
   mode,
   hoveredChange,
+  hoveredEvidenceItem,
+  paragraphReviews = [],
   onHover,
   onAccept,
   onDeny,
@@ -998,40 +1532,131 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
     return true;
   });
 
-  const rawWordHighlights = accepted
-    .filter((c) => c.review_scope === 'word' || !c.review_scope)
-    .map((c) => { const r = ranges[c.id]; return r ? { start: Math.max(0, Math.min(text.length, r.start)), end: Math.max(0, Math.min(text.length, r.end)), change: c, scope: 'word' as const } : null; })
-    .filter((h): h is NonNullable<typeof h> => Boolean(h && h.end > h.start))
-    .sort((a, b) => a.start - b.start);
+  type Segment = {
+    start: number;
+    end: number;
+    change: Change;
+    scope: 'word' | 'sentence';
+    embedded?: boolean;
+    evidenceItem?: ExplanationItem | null;
+    paragraphReview?: ParagraphReview | null;
+  };
 
-  const sentenceHighlights = accepted
+  const baseSentenceHighlights: Segment[] = accepted
     .filter((c) => c.review_scope === 'sentence' || c.review_scope === 'paragraph')
-    .map((c) => { const r = ranges[c.id]; return r ? { start: Math.max(0, Math.min(text.length, r.start)), end: Math.max(0, Math.min(text.length, r.end)), change: c, scope: 'sentence' as const } : null; })
-    .filter((h): h is NonNullable<typeof h> => Boolean(h && h.end > h.start))
+    .map((c): Segment | null => {
+      const r = getRenderedRange(c, ranges, text.length);
+      return r ? { ...r, change: c, scope: 'sentence' as const } : null;
+    })
+    .filter((h): h is Segment => Boolean(h && h.end > h.start))
     .sort((a, b) => a.start - b.start);
 
-  const wordHighlights = rawWordHighlights.filter(
-    (word) => !sentenceHighlights.some((sentence) => word.start < sentence.end && word.end > sentence.start)
-  );
-
-  type Segment = { start: number; end: number; change: Change; scope: 'word' | 'sentence' };
-  const segments: Segment[] = [...wordHighlights];
-
-  for (const sh of sentenceHighlights) {
-    let cursor = sh.start;
-    const overlapping = wordHighlights.filter((w) => w.start < sh.end && w.end > sh.start);
-    for (const w of overlapping) {
-      if (w.start > cursor) {
-        segments.push({ start: cursor, end: w.start, change: sh.change, scope: 'sentence' });
-      }
-      cursor = Math.max(cursor, w.end);
+  const sentenceHighlights: Segment[] = baseSentenceHighlights.flatMap((highlight) => {
+    if (mode !== 'auto' || highlight.change.review_scope !== 'paragraph' || !paragraphReviews.length) {
+      return [highlight];
     }
-    if (cursor < sh.end) {
-      segments.push({ start: cursor, end: sh.end, change: sh.change, scope: 'sentence' });
+
+    const paragraphSegments = paragraphReviews
+      .map((review): Segment | null => {
+        const start = Math.max(highlight.start, review.rewritten.start);
+        const end = Math.min(highlight.end, review.rewritten.end);
+        if (end <= start) return null;
+        return {
+          ...highlight,
+          start,
+          end,
+          paragraphReview: review,
+        };
+      })
+      .filter((segment): segment is Segment => Boolean(segment));
+
+    return paragraphSegments.length ? paragraphSegments : [highlight];
+  });
+
+  const topLevelWordHighlights: Segment[] = accepted
+    .filter((c) => c.review_scope === 'word' || !c.review_scope)
+    .map((c): Segment | null => {
+      const renderedRange = getRenderedRange(c, ranges, text.length);
+      const fallbackRange = renderedRange ?? getRenderedRange(c, ranges, text.length, true);
+      if (!fallbackRange) return null;
+      const embedded = sentenceHighlights.some((sentence) => rangesOverlap(fallbackRange, sentence));
+      if (!renderedRange && !embedded) return null;
+      return {
+        ...fallbackRange,
+        change: c,
+        scope: 'word' as const,
+        embedded,
+      };
+    })
+    .filter((h): h is Segment => Boolean(h && h.end > h.start))
+    .sort((a, b) => a.start - b.start);
+
+  const evidenceHighlights: Segment[] = [];
+  for (const sentence of sentenceHighlights) {
+    const usedRanges = topLevelWordHighlights
+      .filter((word) => rangesOverlap(word, sentence))
+      .map((word) => ({ start: word.start, end: word.end }));
+
+    const sourceItems = sentence.paragraphReview?.evidence ?? sentence.change.explanation_items ?? [];
+    for (const item of sourceItems) {
+      const range = findEvidenceRange(text, sentence, item, usedRanges);
+      if (!range) continue;
+      usedRanges.push(range);
+      evidenceHighlights.push({
+        ...range,
+        change: sentence.change,
+        scope: 'word',
+        embedded: true,
+        evidenceItem: item,
+        paragraphReview: sentence.paragraphReview ?? null,
+      });
     }
   }
 
-  segments.sort((a, b) => a.start !== b.start ? a.start - b.start : a.change.id - b.change.id);
+  const wordHighlights = [...topLevelWordHighlights, ...evidenceHighlights]
+    .sort((a, b) => a.start - b.start || a.end - b.end || a.change.id - b.change.id);
+
+  const segments: Segment[] = wordHighlights.filter((word) => !word.embedded);
+
+  for (const sh of sentenceHighlights) {
+    let cursor = sh.start;
+    const overlapping = wordHighlights
+      .filter((w) => w.embedded && rangesOverlap(w, sh))
+      .sort((a, b) => a.start - b.start || a.end - b.end);
+    for (const w of overlapping) {
+      const wordStart = Math.max(w.start, sh.start, cursor);
+      const wordEnd = Math.min(w.end, sh.end);
+      if (wordEnd <= cursor) {
+        continue;
+      }
+      if (wordStart > cursor) {
+        segments.push({
+          start: cursor,
+          end: wordStart,
+          change: sh.change,
+          scope: 'sentence',
+          paragraphReview: sh.paragraphReview ?? null,
+        });
+      }
+      segments.push({ ...w, start: wordStart, end: wordEnd, embedded: true });
+      cursor = Math.max(cursor, wordEnd);
+    }
+    if (cursor < sh.end) {
+      segments.push({
+        start: cursor,
+        end: sh.end,
+        change: sh.change,
+        scope: 'sentence',
+        paragraphReview: sh.paragraphReview ?? null,
+      });
+    }
+  }
+
+  segments.sort((a, b) => {
+    if (a.start !== b.start) return a.start - b.start;
+    if (a.scope !== b.scope) return a.scope === 'word' ? -1 : 1;
+    return a.change.id - b.change.id;
+  });
 
   if (segments.length === 0) {
     return <span className="text-gray-800 whitespace-pre-wrap">{text}</span>;
@@ -1054,9 +1679,19 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
 
     const isPending = seg.change.accepted === null;
     const isWord = seg.scope === 'word';
+    const isEmbeddedWord = isWord && Boolean(seg.embedded);
 
     let highlightClass = 'rounded-sm cursor-help transition-colors ';
-    if (hoveredChange === seg.change.id) {
+    if (isEmbeddedWord) {
+      const embeddedHover =
+        hoveredChange === seg.change.id &&
+        (seg.evidenceItem ? hoveredEvidenceItem === seg.evidenceItem : !hoveredEvidenceItem);
+      if (embeddedHover) {
+        highlightClass += 'bg-teal-100 text-teal-950 border-b-2 border-teal-700';
+      } else {
+        highlightClass += `${isPending ? 'bg-amber-100' : 'bg-blue-100'} text-teal-900 border-b-2 border-teal-500`;
+      }
+    } else if (hoveredChange === seg.change.id) {
       highlightClass += isPending
         ? 'bg-amber-400 text-amber-900'
         : isWord ? 'bg-green-400 text-green-900' : 'bg-blue-300 text-blue-900';
@@ -1070,11 +1705,15 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
       <span
         key={key++}
         className={highlightClass}
-        onMouseEnter={(e) => onHover(seg.change.id, e)}
+        onMouseEnter={(e) => onHover(seg.change.id, e, {
+          embedded: isEmbeddedWord,
+          evidenceItem: seg.evidenceItem ?? null,
+          paragraphReview: seg.paragraphReview ?? null,
+        })}
         onMouseLeave={() => onHover(null)}
       >
         {text.slice(renderStart, seg.end)}
-        {mode === 'interactive' && isPending && isWord && (
+        {mode === 'interactive' && isPending && isWord && !isEmbeddedWord && (
           <span className="inline-flex ml-1 gap-0.5 align-middle">
             <button
               onClick={(e) => { e.stopPropagation(); onAccept(seg.change.id); }}

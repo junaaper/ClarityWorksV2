@@ -5,6 +5,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from flashrank import Ranker, RerankRequest
 import os
 import json
+import re
+from collections import Counter
 
 
 class RAGEngine:
@@ -16,6 +18,13 @@ class RAGEngine:
     """
 
     EMBEDDING_MODEL_NAME = 'intfloat/e5-small-v2'
+    KEYWORD_STOPWORDS = {
+        'about', 'after', 'also', 'and', 'are', 'because', 'been', 'but', 'can',
+        'could', 'does', 'for', 'from', 'has', 'have', 'how', 'into', 'its',
+        'more', 'not', 'of', 'on', 'or', 'over', 'that', 'the', 'their',
+        'them', 'there', 'these', 'this', 'those', 'through', 'to', 'was',
+        'were', 'what', 'when', 'where', 'which', 'while', 'with', 'would',
+    }
 
     def __init__(self):
         self.data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
@@ -115,7 +124,120 @@ class RAGEngine:
             with open(marker_path, 'w') as f:
                 f.write(current_model)
 
-    def upload_document(self, document_id, text, metadata):
+    def _metadata_value(self, value):
+        """Chroma metadata values must be simple scalar types."""
+        if value is None:
+            return ''
+        return str(value)
+
+    def _tokenize_keywords(self, text):
+        tokens = re.findall(r"[a-z0-9]+(?:['-][a-z0-9]+)*", (text or '').lower())
+        return [
+            token for token in tokens
+            if len(token) > 2 and token not in self.KEYWORD_STOPWORDS
+        ]
+
+    def _keyword_score(self, query_text, document_text):
+        query_terms = self._tokenize_keywords(query_text)
+        if not query_terms:
+            return 0.0
+
+        document_terms = Counter(self._tokenize_keywords(document_text))
+        if not document_terms:
+            return 0.0
+
+        unique_terms = set(query_terms)
+        matched_terms = sum(1 for term in unique_terms if document_terms.get(term, 0) > 0)
+        coverage = matched_terms / max(len(unique_terms), 1)
+
+        query_lower = (query_text or '').lower().strip()
+        document_lower = (document_text or '').lower()
+        phrase_bonus = 0.2 if len(query_lower) >= 8 and query_lower in document_lower else 0.0
+        acronym_bonus = 0.0
+        query_acronyms = {
+            term.lower()
+            for term in re.findall(r'\b[A-Z0-9]{3,}\b', query_text or '')
+        }
+        for term in query_acronyms:
+            if term in document_lower:
+                acronym_bonus += 0.05
+
+        term_frequency = sum(min(document_terms.get(term, 0), 3) for term in unique_terms)
+        density_bonus = min(0.2, term_frequency / max(len(document_terms), 1) * 4)
+        return round(min(1.0, coverage * 0.75 + phrase_bonus + acronym_bonus + density_bonus), 4)
+
+    def _hybrid_score(self, semantic_score, keyword_score):
+        return round(min(1.0, semantic_score * 0.7 + keyword_score * 0.3), 4)
+
+    def _candidate_key(self, candidate):
+        metadata = candidate.get('metadata', {})
+        return (
+            candidate.get('collection', ''),
+            str(metadata.get('document_id', '')),
+            str(metadata.get('chunk_id', '')),
+            candidate.get('text', '')[:80],
+        )
+
+    def _merge_candidates(self, candidates):
+        merged = {}
+        for candidate in candidates:
+            key = self._candidate_key(candidate)
+            existing = merged.get(key)
+            if not existing:
+                merged[key] = candidate
+                continue
+
+            existing['semantic_score'] = max(existing.get('semantic_score', 0.0), candidate.get('semantic_score', 0.0))
+            existing['similarity_score'] = existing['semantic_score']
+            existing['keyword_score'] = max(existing.get('keyword_score', 0.0), candidate.get('keyword_score', 0.0))
+            existing['hybrid_score'] = self._hybrid_score(existing['semantic_score'], existing['keyword_score'])
+            methods = set(filter(None, str(existing.get('retrieval_method', '')).split('+')))
+            methods.update(filter(None, str(candidate.get('retrieval_method', '')).split('+')))
+            existing['retrieval_method'] = '+'.join(sorted(methods))
+        return list(merged.values())
+
+    def _relevance_label(self, score):
+        if score >= 0.65:
+            return 'Strong'
+        if score >= 0.35:
+            return 'Moderate'
+        return 'Weak'
+
+    def _keyword_candidates(self, collection, collection_metadata, coll_name, query_text, limit):
+        try:
+            result = collection.get(include=['documents', 'metadatas'])
+        except Exception as exc:
+            print(f"Keyword retrieval failed for {coll_name}: {exc}")
+            return []
+
+        docs = result.get('documents') or []
+        metadatas = result.get('metadatas') or []
+        candidates = []
+        for doc, raw_metadata in zip(docs, metadatas):
+            keyword_score = self._keyword_score(query_text, doc)
+            if keyword_score <= 0:
+                continue
+
+            raw_metadata = raw_metadata or {}
+            merged_metadata = {
+                **raw_metadata,
+                'filename': raw_metadata.get('filename') or str(collection_metadata.get('filename', ''))
+            }
+            candidates.append({
+                'text': doc,
+                'metadata': merged_metadata,
+                'similarity_score': 0.0,
+                'semantic_score': 0.0,
+                'keyword_score': keyword_score,
+                'hybrid_score': self._hybrid_score(0.0, keyword_score),
+                'retrieval_method': 'keyword',
+                'collection': coll_name
+            })
+
+        candidates.sort(key=lambda c: c['keyword_score'], reverse=True)
+        return candidates[:limit]
+
+    def upload_document(self, document_id, text, metadata, pages=None):
         """
         Chunk document, generate embeddings, store in ChromaDB
 
@@ -123,22 +245,70 @@ class RAGEngine:
             document_id: Unique ID (UUID)
             text: Full extracted text
             metadata: {'filename', 'user_id'}
+            pages: Optional list of {'text', 'metadata'} records for page-aware PDFs
 
         Returns:
             {'chunks_created', 'collection_id'}
         """
         print(f"Processing document {document_id}...")
 
-        # Smart chunking with RecursiveCharacterTextSplitter
-        chunk_texts = self.text_splitter.split_text(text)
+        metadata = metadata or {}
+        chunk_records = []
+
+        if pages:
+            for page in pages:
+                page_text = page.get('text', '')
+                page_metadata = page.get('metadata', {})
+                for page_chunk_id, chunk in enumerate(self.text_splitter.split_text(page_text)):
+                    chunk_records.append({
+                        'text': chunk,
+                        'metadata': {
+                            'document_id': document_id,
+                            'filename': self._metadata_value(metadata.get("filename", "")),
+                            'source_type': self._metadata_value(metadata.get("source_type", "pdf")),
+                            'page_number': self._metadata_value(page_metadata.get('page_number', '')),
+                            'page_chunk_id': str(page_chunk_id),
+                            'extractor': self._metadata_value(page_metadata.get('extractor', '')),
+                            'extraction_quality': self._metadata_value(page_metadata.get('extraction_quality', '')),
+                            'extraction_warnings': self._metadata_value(page_metadata.get('extraction_warnings', '')),
+                        }
+                    })
+        else:
+            for chunk in self.text_splitter.split_text(text):
+                chunk_records.append({
+                    'text': chunk,
+                    'metadata': {
+                        'document_id': document_id,
+                        'filename': self._metadata_value(metadata.get("filename", "")),
+                        'source_type': self._metadata_value(metadata.get("source_type", "docx")),
+                        'page_number': '',
+                        'page_chunk_id': '',
+                        'extractor': '',
+                        'extraction_quality': self._metadata_value(metadata.get('extraction_quality', '')),
+                        'extraction_warnings': self._metadata_value(metadata.get('extraction_warnings', '')),
+                    }
+                })
+
+        chunk_texts = [record['text'] for record in chunk_records]
         print(f"Created {len(chunk_texts)} chunks")
 
         # Create collection for this document
         collection_name = f"doc_{document_id}"
         collection = self.client.get_or_create_collection(
             name=collection_name,
-            metadata={"filename": str(metadata.get("filename", "")), "user_id": str(metadata.get("user_id", ""))}
+            metadata={
+                "filename": self._metadata_value(metadata.get("filename", "")),
+                "user_id": self._metadata_value(metadata.get("user_id", "")),
+                "source_type": self._metadata_value(metadata.get("source_type", "")),
+                "extraction_quality": self._metadata_value(metadata.get("extraction_quality", "")),
+            }
         )
+
+        if not chunk_texts:
+            return {
+                'chunks_created': 0,
+                'collection_id': collection_name
+            }
 
         # Generate embeddings with e5 prefix (required for e5 models)
         print("Generating embeddings...")
@@ -154,8 +324,7 @@ class RAGEngine:
                 'chunk_id': str(i),
                 'char_count': str(len(chunk)),
                 'word_count': str(len(chunk.split())),
-                'document_id': document_id,
-                'filename': str(metadata.get("filename", ""))
+                **chunk_records[i]['metadata'],
             } for i, chunk in enumerate(chunk_texts)],
             ids=[f"chunk_{i}" for i in range(len(chunk_texts))]
         )
@@ -220,22 +389,40 @@ class RAGEngine:
                 for i, doc in enumerate(results['documents'][0]):
                     distance = results['distances'][0][i]
                     similarity = max(0.0, min(1.0, 1 - (distance / 2)))
+                    keyword_score = self._keyword_score(query_text, doc)
                     raw_metadata = results['metadatas'][0][i] or {}
                     merged_metadata = {
                         **raw_metadata,
                         'filename': raw_metadata.get('filename') or str(collection_metadata.get('filename', ''))
                     }
 
+                    semantic_score = round(similarity, 4)
                     all_candidates.append({
                         'text': doc,
                         'metadata': merged_metadata,
-                        'similarity_score': round(similarity, 4),
+                        'similarity_score': semantic_score,
+                        'semantic_score': semantic_score,
+                        'keyword_score': keyword_score,
+                        'hybrid_score': self._hybrid_score(semantic_score, keyword_score),
+                        'retrieval_method': 'semantic',
                         'collection': coll_name
                     })
+
+                all_candidates.extend(
+                    self._keyword_candidates(
+                        collection,
+                        collection_metadata,
+                        coll_name,
+                        query_text,
+                        candidates_per_collection
+                    )
+                )
 
             except Exception as e:
                 print(f"Error querying collection {coll_name}: {e}")
                 continue
+
+        all_candidates = self._merge_candidates(all_candidates)
 
         if not all_candidates:
             print("No candidates found")
@@ -250,6 +437,10 @@ class RAGEngine:
         passages = [{"id": i, "text": c['text'], "meta": {
             "metadata": c['metadata'],
             "similarity_score": c['similarity_score'],
+            "semantic_score": c.get('semantic_score', c['similarity_score']),
+            "keyword_score": c.get('keyword_score', 0.0),
+            "hybrid_score": c.get('hybrid_score', c['similarity_score']),
+            "retrieval_method": c.get('retrieval_method', 'semantic'),
             "collection": c['collection']
         }} for i, c in enumerate(all_candidates)]
 
@@ -269,21 +460,36 @@ class RAGEngine:
         if use_reranked:
             for item in reranked[:top_k]:
                 meta = item.get("meta", {})
+                rerank_score = round(float(item['score']), 4)
+                relevance_score = max(0.0, min(1.0, rerank_score))
                 final_results.append({
                     'text': item['text'],
                     'metadata': meta.get('metadata', {}),
                     'similarity_score': float(meta.get('similarity_score', 0)),
-                    'rerank_score': round(float(item['score']), 4),
+                    'semantic_score': float(meta.get('semantic_score', meta.get('similarity_score', 0))),
+                    'keyword_score': float(meta.get('keyword_score', 0)),
+                    'hybrid_score': float(meta.get('hybrid_score', meta.get('similarity_score', 0))),
+                    'rerank_score': rerank_score,
+                    'relevance_score': relevance_score,
+                    'relevance_label': self._relevance_label(relevance_score),
+                    'retrieval_method': meta.get('retrieval_method', ''),
                     'collection': meta.get('collection', '')
                 })
         else:
-            all_candidates.sort(key=lambda c: c['similarity_score'], reverse=True)
+            all_candidates.sort(key=lambda c: c.get('hybrid_score', c['similarity_score']), reverse=True)
             for c in all_candidates[:top_k]:
+                relevance_score = float(c.get('hybrid_score', c['similarity_score']))
                 final_results.append({
                     'text': c['text'],
                     'metadata': c['metadata'],
                     'similarity_score': float(c['similarity_score']),
-                    'rerank_score': float(c['similarity_score']),
+                    'semantic_score': float(c.get('semantic_score', c['similarity_score'])),
+                    'keyword_score': float(c.get('keyword_score', 0)),
+                    'hybrid_score': relevance_score,
+                    'rerank_score': relevance_score,
+                    'relevance_score': relevance_score,
+                    'relevance_label': self._relevance_label(relevance_score),
+                    'retrieval_method': c.get('retrieval_method', ''),
                     'collection': c['collection']
                 })
 
@@ -328,16 +534,14 @@ RELEVANT TEXTBOOK SECTIONS:
 {context}
 
 INSTRUCTIONS:
-1. Write a thorough, detailed answer — aim for at least 3-4 substantial paragraphs when the sources contain enough material.
-2. Open with a clear thesis or direct answer to the question in 1-2 sentences.
-3. Then develop each major point in its own paragraph, explaining concepts fully rather than listing bullet points. Use examples, definitions, and elaborations from the source material.
-4. Cite sources inline using [Source N] notation after each claim or paraphrase.
-5. When the sources contain definitions, examples, or data, include them — they make the answer concrete.
-6. If the question asks for a list or comparison, structure it clearly but still explain each item in depth.
-7. End with a brief synthesis or conclusion that ties the key ideas together.
-8. If the sources don't contain enough information, say so honestly, but still share whatever partial information IS available.
-9. Do NOT fabricate information — only use what's in the sources.
-10. Write in clear, flowing prose. Avoid choppy bullet-point lists when a paragraph would be more informative.
+1. Answer ONLY from the provided textbook excerpts. Do not use outside knowledge to fill gaps.
+2. Cite a source only when that exact source explicitly supports the sentence's claim. If no excerpt supports a detail, say the provided sources do not state it.
+3. Prefer concrete wording from the excerpts over broad textbook generalizations.
+4. Open with a direct answer in 1-2 sentences, then explain the major points in clear paragraphs.
+5. If the excerpts are partial, keep the answer appropriately limited instead of forcing a complete overview.
+6. Use inline [Source N] citations after supported claims or paraphrases.
+7. Do not cite a source just because it is topically related; the cited excerpt must actually contain the supporting fact.
+8. Write in clear, flowing prose. Avoid choppy bullet-point lists when a paragraph would be more informative.
 
 ANSWER:"""
 

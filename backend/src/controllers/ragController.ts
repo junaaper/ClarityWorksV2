@@ -54,7 +54,11 @@ export const uploadDocument = async (req: AuthRequest, res: Response): Promise<v
     // Clean up uploaded file
     fs.unlinkSync(req.file.path);
 
-    res.json(result.rows[0]);
+    res.json({
+      ...result.rows[0],
+      extraction_quality: response.data.extraction_quality,
+      warnings: response.data.warnings || [],
+    });
   } catch (error: any) {
     console.error('RAG upload error:', error.message);
     // Clean up file on error

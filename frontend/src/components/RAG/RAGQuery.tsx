@@ -22,6 +22,12 @@ interface QueryResult {
   };
   similarity_score: number;
   rerank_score?: number;
+  semantic_score?: number;
+  keyword_score?: number;
+  hybrid_score?: number;
+  relevance_score?: number;
+  relevance_label?: 'Strong' | 'Moderate' | 'Weak' | string;
+  retrieval_method?: string;
   collection: string;
 }
 
@@ -105,7 +111,7 @@ const RAGQuery: React.FC = () => {
     const text = results
       .map(
         (r, i) =>
-          `[Result ${i + 1}] (Similarity: ${(r.similarity_score * 100).toFixed(1)}%)\n${r.text}\n`
+          `[Result ${i + 1}] (${getRelevanceText(r)}; semantic ${(getSemanticScore(r) * 100).toFixed(1)}%)\n${r.text}\n`
       )
       .join('\n---\n\n');
 
@@ -125,9 +131,27 @@ const RAGQuery: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const getSimilarityBadge = (score: number) => {
-    if (score >= 0.7) return 'cw-badge cw-badge-ok';
-    if (score >= 0.5) return 'cw-badge cw-badge-warn';
+  const getSemanticScore = (result: QueryResult) =>
+    result.semantic_score ?? result.similarity_score ?? 0;
+
+  const getRelevanceScore = (result: QueryResult) =>
+    result.relevance_score ?? result.rerank_score ?? result.hybrid_score ?? result.similarity_score ?? 0;
+
+  const getRelevanceLabel = (result: QueryResult) => {
+    if (result.relevance_label) return result.relevance_label;
+    const score = getRelevanceScore(result);
+    if (score >= 0.65) return 'Strong';
+    if (score >= 0.35) return 'Moderate';
+    return 'Weak';
+  };
+
+  const getRelevanceText = (result: QueryResult) =>
+    `${getRelevanceLabel(result)} relevance (${(getRelevanceScore(result) * 100).toFixed(0)}%)`;
+
+  const getRelevanceBadge = (result: QueryResult) => {
+    const label = getRelevanceLabel(result);
+    if (label === 'Strong') return 'cw-badge cw-badge-ok';
+    if (label === 'Moderate') return 'cw-badge cw-badge-warn';
     return 'cw-badge cw-badge-neutral';
   };
 
@@ -383,8 +407,11 @@ const RAGQuery: React.FC = () => {
                             <span style={{ fontWeight: 700, color: 'var(--p-900)', fontSize: 12 }}>
                               Source {i + 1}
                             </span>
-                            <span className={getSimilarityBadge(result.similarity_score)}>
-                              {(result.similarity_score * 100).toFixed(1)}% match
+                            <span className={getRelevanceBadge(result)}>
+                              {getRelevanceText(result)}
+                            </span>
+                            <span style={{ fontSize: 11, color: 'var(--text-4)' }}>
+                              Semantic {(getSemanticScore(result) * 100).toFixed(1)}%
                             </span>
                             <span style={{ fontSize: 11, color: 'var(--text-4)' }}>
                               {result.metadata.word_count} words
@@ -423,7 +450,10 @@ const RAGQuery: React.FC = () => {
                                 letterSpacing: '0.02em',
                               }}
                             >
-                              {getDocumentLabel(result)} · Chunk {result.metadata.chunk_id} · {result.metadata.word_count} words
+                              {getDocumentLabel(result)} · Chunk {result.metadata.chunk_id}
+                              {result.metadata.page_number ? ` · Page ${result.metadata.page_number}` : ''}
+                              {result.retrieval_method ? ` · ${result.retrieval_method}` : ''}
+                              {result.keyword_score != null ? ` · Keyword ${(result.keyword_score * 100).toFixed(0)}%` : ''}
                             </div>
                           </div>
                         )}

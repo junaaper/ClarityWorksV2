@@ -74,6 +74,8 @@ export const extractPdf = async (req: Request, res: Response): Promise<void> => 
       success: true,
       text: response.data.text,
       pageCount: response.data.page_count,
+      quality: response.data.quality,
+      warnings: response.data.warnings || [],
     });
   } catch (error) {
     console.error('PDF extraction error:', error);

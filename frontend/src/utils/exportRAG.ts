@@ -10,6 +10,11 @@ interface RAGResult {
     word_count: number;
   };
   similarity_score: number;
+  semantic_score?: number;
+  keyword_score?: number;
+  relevance_score?: number;
+  relevance_label?: string;
+  rerank_score?: number;
   collection: string;
 }
 
@@ -19,6 +24,19 @@ interface RAGExportData {
   results: RAGResult[];
   documentNames: string[];
 }
+
+const semanticScore = (result: RAGResult) => result.semantic_score ?? result.similarity_score ?? 0;
+const relevanceScore = (result: RAGResult) =>
+  result.relevance_score ?? result.rerank_score ?? result.similarity_score ?? 0;
+const relevanceLabel = (result: RAGResult) => {
+  if (result.relevance_label) return result.relevance_label;
+  const score = relevanceScore(result);
+  if (score >= 0.65) return 'Strong';
+  if (score >= 0.35) return 'Moderate';
+  return 'Weak';
+};
+const sourceMeta = (result: RAGResult) =>
+  `${relevanceLabel(result)} relevance (${(relevanceScore(result) * 100).toFixed(0)}%)  |  Semantic ${(semanticScore(result) * 100).toFixed(1)}%  |  ${result.metadata.word_count} words${result.metadata.page_number ? `  |  Page ${result.metadata.page_number}` : ''}`;
 
 export async function exportRAGResultsPDF(data: RAGExportData) {
   const doc = new jsPDF();
@@ -127,7 +145,7 @@ export async function exportRAGResultsPDF(data: RAGExportData) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    const meta = `${(result.similarity_score * 100).toFixed(1)}% match  |  ${result.metadata.word_count} words${result.metadata.page_number ? `  |  Page ${result.metadata.page_number}` : ''}`;
+    const meta = sourceMeta(result);
     doc.text(meta, margin + contentWidth - 4, yPos + 3, { align: 'right' });
     yPos += 12;
 
@@ -198,7 +216,7 @@ export async function exportRAGResultsDOCX(data: RAGExportData) {
       new Paragraph({
         children: [
           new TextRun({
-            text: `${(result.similarity_score * 100).toFixed(1)}% match  |  ${result.metadata.word_count} words${result.metadata.page_number ? `  |  Page ${result.metadata.page_number}` : ''}`,
+            text: sourceMeta(result),
             color: '64748b',
             size: 18,
           }),

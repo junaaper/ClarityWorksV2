@@ -1,5 +1,4 @@
 import os
-import re
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -64,40 +63,117 @@ def _pdf_text_quality_score(text):
     """Prefer PDF extraction candidates that preserve real words/glyphs."""
     if not text or not text.strip():
         return -1_000_000
+    return TextCleaner.pdf_extraction_quality_metrics(text)['quality_score']
 
-    normalized = TextCleaner.normalize_unicode_text(text)
-    words = re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", normalized)
-    letter_count = sum(1 for ch in normalized if ch.isalpha())
-    private_use_count = sum(1 for ch in normalized if '\ue000' <= ch <= '\uf8ff')
-    replacement_count = normalized.count('\ufffd')
-    control_count = len(re.findall(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]', normalized))
-    excessive_space_runs = len(re.findall(r' {3,}', normalized))
-    suspicious_vowelless_words = sum(
-        1 for word in words
-        if len(word) >= 5 and not re.search(r'[aeiouyAEIOUY]', word)
-    )
 
-    return (
-        letter_count
-        + len(words) * 4
-        - private_use_count * 80
-        - replacement_count * 80
-        - control_count * 50
-        - suspicious_vowelless_words * 8
-        - excessive_space_runs * 2
-    )
+def _public_pdf_quality(metrics):
+    return {
+        key: value
+        for key, value in metrics.items()
+        if key not in {'text', 'quality_score'}
+    }
+
+
+def _pdf_page_record(page_number, text, extractor):
+    metrics = TextCleaner.pdf_extraction_quality_metrics(text)
+    cleaned_text = TextCleaner.clean_extracted_text(metrics['text'])
+    return {
+        'page_number': page_number,
+        'text': cleaned_text,
+        'extractor': extractor,
+        'quality': _public_pdf_quality(metrics),
+        'warnings': TextCleaner.pdf_extraction_warnings(metrics),
+        '_score': metrics['quality_score'],
+    }
+
+
+def _best_pdf_page_record(records):
+    usable = [record for record in records if record['text'] and record['text'].strip()]
+    if not usable:
+        return None
+    return max(usable, key=lambda record: record['_score'])
+
+
+def _summarize_pdf_quality(pages, page_count):
+    aggregate = {
+        'page_count': page_count,
+        'pages_with_text': len(pages),
+        'degraded_page_count': 0,
+        'limited_page_count': 0,
+        'replacement_char_count': 0,
+        'suspicious_glyph_count': 0,
+        'repaired_replacement_count': 0,
+        'repaired_suspicious_glyph_count': 0,
+        'private_use_char_count': 0,
+        'broken_word_count': 0,
+    }
+
+    for page in pages:
+        quality = page.get('quality', {})
+        label = quality.get('quality_label')
+        if label == 'degraded':
+            aggregate['degraded_page_count'] += 1
+        elif label == 'limited':
+            aggregate['limited_page_count'] += 1
+        for key in (
+            'replacement_char_count',
+            'suspicious_glyph_count',
+            'repaired_replacement_count',
+            'repaired_suspicious_glyph_count',
+            'private_use_char_count',
+            'broken_word_count',
+        ):
+            aggregate[key] += int(quality.get(key, 0) or 0)
+
+    if aggregate['degraded_page_count'] > 0:
+        aggregate['quality_label'] = 'degraded'
+    elif aggregate['limited_page_count'] > 0 or aggregate['pages_with_text'] < page_count:
+        aggregate['quality_label'] = 'limited'
+    else:
+        aggregate['quality_label'] = 'clean'
+
+    warnings = []
+    repaired_count = max(aggregate['repaired_replacement_count'], aggregate['repaired_suspicious_glyph_count'])
+    remaining_glyph_count = max(aggregate['replacement_char_count'], aggregate['suspicious_glyph_count'])
+    if repaired_count > 0:
+        warnings.append(
+            f"Repaired {repaired_count} likely PDF font glyph issue"
+            f"{'' if repaired_count == 1 else 's'}."
+        )
+    if remaining_glyph_count > 0:
+        warnings.append(
+            f"{remaining_glyph_count} unreadable or suspicious PDF glyph"
+            f"{'' if remaining_glyph_count == 1 else 's'} remain; review extracted text before using it."
+        )
+    if aggregate['private_use_char_count'] > 0:
+        warnings.append("The PDF uses custom font glyphs that may not map cleanly to text.")
+    if aggregate['pages_with_text'] < page_count:
+        missing = page_count - aggregate['pages_with_text']
+        warnings.append(
+            f"{missing} page{'' if missing == 1 else 's'} produced no extractable text."
+        )
+    if aggregate['limited_page_count'] > 0:
+        warnings.append(
+            f"{aggregate['limited_page_count']} page{'' if aggregate['limited_page_count'] == 1 else 's'} produced limited text."
+        )
+
+    aggregate['warnings'] = warnings
+    return aggregate
+
 
 def _best_pdf_text_candidate(candidates):
     usable = [candidate for candidate in candidates if candidate and candidate.strip()]
     if not usable:
         return ''
-    return max(usable, key=_pdf_text_quality_score)
+    best = max(usable, key=_pdf_text_quality_score)
+    return TextCleaner.pdf_extraction_quality_metrics(best)['text']
 
-def _extract_pdfplumber_text(pdf_path):
-    """Extract PDF text with several pdfplumber strategies and keep the best page text."""
+
+def _extract_pdfplumber_pages(pdf_path):
+    """Extract PDF pages with several pdfplumber strategies and keep each best page text."""
     pages = []
     with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
+        for page_number, page in enumerate(pdf.pages, 1):
             page_candidates = []
             extraction_options = [
                 {'expand_ligatures': True},
@@ -113,24 +189,35 @@ def _extract_pdfplumber_text(pdf_path):
 
             for options in extraction_options:
                 try:
-                    page_candidates.append(page.extract_text(**options) or '')
+                    text = page.extract_text(**options) or ''
                 except TypeError:
-                    page_candidates.append(page.extract_text() or '')
+                    text = page.extract_text() or ''
+                page_candidates.append(_pdf_page_record(page_number, text, 'pdfplumber'))
 
             try:
                 deduped_page = page.dedupe_chars(tolerance=1)
-                page_candidates.append(deduped_page.extract_text(expand_ligatures=True) or '')
+                text = deduped_page.extract_text(expand_ligatures=True) or ''
+                page_candidates.append(_pdf_page_record(page_number, text, 'pdfplumber'))
             except Exception:
                 pass
 
-            pages.append(_best_pdf_text_candidate(page_candidates))
+            best = _best_pdf_page_record(page_candidates)
+            if best:
+                pages.append(best)
 
-        return '\n\n'.join(page for page in pages if page.strip()), len(pdf.pages)
+        return pages, len(pdf.pages)
 
-def _extract_pymupdf_text(pdf_path):
-    """Extract PDF text with PyMuPDF when available, expanding ligatures if possible."""
+
+def _extract_pdfplumber_text(pdf_path):
+    """Backward-compatible text-only pdfplumber extraction."""
+    pages, page_count = _extract_pdfplumber_pages(pdf_path)
+    return '\n\n'.join(page['text'] for page in pages if page['text'].strip()), page_count
+
+
+def _extract_pymupdf_pages(pdf_path):
+    """Extract PDF pages with PyMuPDF when available, expanding ligatures if possible."""
     if fitz is None:
-        return '', 0
+        return [], 0
 
     pages = []
     with fitz.open(pdf_path) as doc:
@@ -138,39 +225,75 @@ def _extract_pymupdf_text(pdf_path):
         preserve_ligatures = getattr(fitz, 'TEXT_PRESERVE_LIGATURES', 0)
         expanded_ligature_flags = text_flags & ~preserve_ligatures
 
-        for page in doc:
+        for page_number, page in enumerate(doc, 1):
             page_candidates = []
             for flags in (expanded_ligature_flags, text_flags):
                 try:
-                    page_candidates.append(page.get_text('text', sort=True, flags=flags) or '')
+                    text = page.get_text('text', sort=True, flags=flags) or ''
                 except TypeError:
-                    page_candidates.append(page.get_text('text', sort=True) or '')
+                    text = page.get_text('text', sort=True) or ''
+                page_candidates.append(_pdf_page_record(page_number, text, 'pymupdf'))
 
-            pages.append(_best_pdf_text_candidate(page_candidates))
+            best = _best_pdf_page_record(page_candidates)
+            if best:
+                pages.append(best)
 
-        return '\n\n'.join(page for page in pages if page.strip()), doc.page_count
+        return pages, doc.page_count
 
-def _extract_pdf_text_from_path(pdf_path):
-    """Choose the highest-quality text from available PDF extractors."""
+
+def _extract_pymupdf_text(pdf_path):
+    """Backward-compatible text-only PyMuPDF extraction."""
+    pages, page_count = _extract_pymupdf_pages(pdf_path)
+    return '\n\n'.join(page['text'] for page in pages if page['text'].strip()), page_count
+
+
+def _extract_pdf_document_from_path(pdf_path):
+    """Choose the highest-quality text from available PDF extractors, page by page."""
     extractor_results = []
+    page_count = 0
 
     try:
-        extractor_results.append(_extract_pdfplumber_text(pdf_path))
+        pages, count = _extract_pdfplumber_pages(pdf_path)
+        extractor_results.append(pages)
+        page_count = max(page_count, count)
     except Exception as exc:
         print(f"pdfplumber extraction warning: {exc}")
 
     try:
-        extractor_results.append(_extract_pymupdf_text(pdf_path))
+        pages, count = _extract_pymupdf_pages(pdf_path)
+        extractor_results.append(pages)
+        page_count = max(page_count, count)
     except Exception as exc:
         print(f"PyMuPDF extraction warning: {exc}")
 
-    candidates = [(text, page_count) for text, page_count in extractor_results if text and text.strip()]
-    if not candidates:
-        return '', max((page_count for _, page_count in extractor_results), default=0)
+    candidates_by_page = {}
+    for pages in extractor_results:
+        for page in pages:
+            candidates_by_page.setdefault(page['page_number'], []).append(page)
 
-    best_text, best_page_count = max(candidates, key=lambda item: _pdf_text_quality_score(item[0]))
-    page_count = max((page_count for _, page_count in extractor_results), default=best_page_count)
-    return best_text, page_count
+    best_pages = []
+    for page_number in sorted(candidates_by_page):
+        best = _best_pdf_page_record(candidates_by_page[page_number])
+        if best:
+            page = dict(best)
+            page.pop('_score', None)
+            best_pages.append(page)
+
+    full_text = '\n\n'.join(page['text'] for page in best_pages if page['text'].strip())
+    quality = _summarize_pdf_quality(best_pages, page_count)
+    return {
+        'text': full_text,
+        'page_count': page_count,
+        'pages': best_pages,
+        'quality': quality,
+        'warnings': quality['warnings'],
+    }
+
+
+def _extract_pdf_text_from_path(pdf_path):
+    """Backward-compatible text-only PDF extraction."""
+    pdf_document = _extract_pdf_document_from_path(pdf_path)
+    return pdf_document['text'], pdf_document['page_count']
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
@@ -204,11 +327,12 @@ def extract_pdf():
             tmp_path = tmp.name
 
         try:
-            full_text, page_count = _extract_pdf_text_from_path(tmp_path)
+            pdf_document = _extract_pdf_document_from_path(tmp_path)
         finally:
             os.unlink(tmp_path)
 
         # Clean the extracted text
+        full_text = pdf_document['text']
         full_text = TextCleaner.remove_images_markers(full_text)
         full_text = TextCleaner.clean_extracted_text(full_text)
         full_text = TextCleaner.ensure_editable(full_text)
@@ -216,7 +340,9 @@ def extract_pdf():
         return jsonify({
             'success': True,
             'text': full_text,
-            'page_count': page_count
+            'page_count': pdf_document['page_count'],
+            'quality': pdf_document['quality'],
+            'warnings': pdf_document['warnings']
         })
     except Exception as e:
         print(f"PDF extraction error: {e}")
@@ -332,15 +458,14 @@ def train_model():
         print(f"Training error: {e}")
         return jsonify({'error': str(e)}), 500
 
-def extract_text_from_pdf(file):
-    """Extract text from a PDF file using the highest-quality available extractor."""
+def extract_pdf_document(file):
+    """Extract page-aware text and quality metadata from a PDF file."""
     import gc, time
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
         file.save(tmp.name)
         tmp_path = tmp.name
     try:
-        text, _ = _extract_pdf_text_from_path(tmp_path)
-        return text
+        return _extract_pdf_document_from_path(tmp_path)
     finally:
         gc.collect()
         for _ in range(5):
@@ -349,6 +474,11 @@ def extract_text_from_pdf(file):
                 break
             except OSError:
                 time.sleep(0.2)
+
+
+def extract_text_from_pdf(file):
+    """Extract text from a PDF file using the highest-quality available extractor."""
+    return extract_pdf_document(file)['text']
 
 
 def extract_text_from_docx(file):
@@ -377,8 +507,32 @@ def upload_rag_document():
 
         # Extract text based on file type
         filename = file.filename.lower()
+        page_records = None
+        extraction_quality = None
+        extraction_warnings = []
         if filename.endswith('.pdf'):
-            text = extract_text_from_pdf(file)
+            pdf_document = extract_pdf_document(file)
+            extraction_quality = pdf_document['quality']
+            extraction_warnings = pdf_document['warnings']
+            page_records = []
+
+            for page in pdf_document['pages']:
+                page_text = TextCleaner.remove_images_markers(page['text'])
+                page_text = TextCleaner.clean_textbook_text(page_text)
+                page_text = TextCleaner.clean_extracted_text(page_text)
+                if page_text.strip():
+                    page_records.append({
+                        'text': page_text,
+                        'metadata': {
+                            'page_number': str(page['page_number']),
+                            'source_type': 'pdf',
+                            'extractor': page.get('extractor', ''),
+                            'extraction_quality': page.get('quality', {}).get('quality_label', ''),
+                            'extraction_warnings': '; '.join(page.get('warnings', [])),
+                        }
+                    })
+
+            text = '\n\n'.join(page['text'] for page in page_records)
         elif filename.endswith(('.docx', '.doc')):
             text = extract_text_from_docx(file)
         else:
@@ -401,14 +555,20 @@ def upload_rag_document():
             text=text,
             metadata={
                 'filename': file.filename,
-                'user_id': user_id
-            }
+                'user_id': user_id,
+                'source_type': 'pdf' if filename.endswith('.pdf') else 'docx',
+                'extraction_quality': (extraction_quality or {}).get('quality_label', ''),
+                'extraction_warnings': '; '.join(extraction_warnings),
+            },
+            pages=page_records
         )
 
         return jsonify({
             'document_id': doc_id,
             'chunks_created': result['chunks_created'],
-            'collection_id': result['collection_id']
+            'collection_id': result['collection_id'],
+            'extraction_quality': extraction_quality,
+            'warnings': extraction_warnings
         })
 
     except Exception as e:

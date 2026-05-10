@@ -138,7 +138,7 @@ export const analysisApi = {
 
 // Text extraction API
 export const textApi = {
-  extractPdf: async (file: File): Promise<{ text: string; pageCount: number }> => {
+  extractPdf: async (file: File): Promise<{ text: string; pageCount: number; quality?: any; warnings?: string[] }> => {
     const formData = new FormData();
     formData.append('file', file);
     const response = await api.post('/api/text/extract-pdf', formData, {

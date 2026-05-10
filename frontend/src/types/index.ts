@@ -202,12 +202,31 @@ export interface SimplificationSelectionCandidate {
   index: number;
   score: number;
   raw_score: number;
+  display_grade?: number;
+  target_status?: 'exact' | 'near' | 'miss';
+  display_grade_delta?: number;
   target_distance: number;
   direction_hit: boolean;
   invalid_sentence_count: number;
+  invalid_sentence_delta?: number;
   semantic_similarity_score: number;
   selection_path: string[];
   validation_flags: string[];
+  blocking_flags?: string[];
+  text?: string;
+}
+
+export interface SimplificationCandidateSummary {
+  raw_score: number;
+  display_grade?: number;
+  target_status?: 'exact' | 'near' | 'miss';
+  display_grade_delta?: number;
+  target_distance: number;
+  score: number;
+  semantic_similarity_score: number;
+  blocking_flags: string[];
+  validation_flags: string[];
+  selection_path: string[];
 }
 
 export interface SimplificationSelectionSummary {
@@ -216,12 +235,30 @@ export interface SimplificationSelectionSummary {
   source_grade: number;
   target_grade: number;
   selected_score: number;
+  selected_raw_score?: number;
+  selected_display_grade?: number;
+  display_grade_delta?: number;
+  delivered_display_grade?: number;
+  delivered_display_grade_delta?: number;
+  target_status?: 'exact' | 'near' | 'miss';
+  delivered_target_status?: 'exact' | 'near' | 'miss';
   selected_path: string[];
+  selected_validation_flags?: string[];
+  selected_blocking_flags?: string[];
   direction_hit: boolean;
   target_distance: number;
   invalid_sentence_count: number;
+  invalid_sentence_delta?: number;
   semantic_similarity_score: number;
+  closest_safe_candidate?: SimplificationCandidateSummary | null;
+  closest_blocked_candidate?: SimplificationCandidateSummary | null;
+  closest_rejected_target_band_candidate?: SimplificationCandidateSummary | null;
   confidence_label?: string;
+  reason_coverage_rate?: number;
+  generic_reason_count?: number;
+  change_reason_count?: number;
+  llm_calls_used?: number;
+  forced_exact_delivery?: boolean;
   final_review_applied?: boolean;
   review_adjusted_change_count?: number;
   top_candidates: SimplificationSelectionCandidate[];

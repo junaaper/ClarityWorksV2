@@ -122,6 +122,7 @@ const TextInput: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [extractionWarnings, setExtractionWarnings] = useState<string[]>([]);
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -141,13 +142,18 @@ const TextInput: React.FC = () => {
 
     setError(null);
     setSuccess(null);
+    setExtractionWarnings([]);
     setIsLoading(true);
 
     try {
       let result;
       if (activeTab === 'pdf') {
         result = await textApi.extractPdf(file);
-        setSuccess(`Extracted text from ${result.pageCount} pages`);
+        const warnings = result.warnings || [];
+        setExtractionWarnings(warnings);
+        setSuccess(
+          `Extracted text from ${result.pageCount} pages${warnings.length ? ' with quality warnings' : ''}`
+        );
       } else if (activeTab === 'doc') {
         result = await textApi.extractDoc(file);
         setSuccess('Text extracted successfully');
@@ -400,6 +406,26 @@ const TextInput: React.FC = () => {
             >
               <CheckCircle className="w-4 h-4 flex-shrink-0" />
               <span>{success}</span>
+            </div>
+          )}
+          {extractionWarnings.length > 0 && (
+            <div
+              className="mb-3 px-3.5 py-2.5 rounded-md"
+              style={{
+                background: 'var(--warn-50)',
+                color: 'var(--warn-700)',
+                fontSize: 12.5,
+                border: '1px solid color-mix(in srgb, var(--warn-500) 28%, transparent)',
+              }}
+            >
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  {extractionWarnings.map((warning, index) => (
+                    <div key={`${warning}-${index}`}>{warning}</div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
