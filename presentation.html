@@ -389,7 +389,7 @@
   .bg-hero {
     background:
       radial-gradient(ellipse 90% 70% at 50% 50%, rgba(20,184,166,.08) 0%, transparent 60%),
-      linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%);
+      var(--navy);
   }
   .bg-dark { background: var(--navy-deep); }
   .bg-gradient-teal {
@@ -490,7 +490,7 @@
 <!-- ============================================================ -->
 <!-- SLIDE 1: TITLE -->
 <!-- ============================================================ -->
-<div class="slide active bg-hero pad-lg flex-col justify-center text-center" style="position:relative">
+<div class="slide active bg-hero pad flex-col justify-center text-center" style="position:relative">
   <div style="position:absolute;inset:0;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22><rect fill=%22none%22 stroke=%22rgba(255,255,255,0.03)%22 stroke-width=%220.5%22 width=%2280%22 height=%2280%22/></svg>');opacity:.5"></div>
   <div style="position:relative;z-index:1;">
     <!-- Logo -->
@@ -754,9 +754,7 @@
     </div>
 
     <div class="screenshot" style="min-height:100%;">
-      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>
-      <div>Screenshot: Analysis Results Page</div>
-      <div style="font-size:11px;color:var(--slate-500);">Place in <span class="mono">screens/analysis-results.png</span></div>
+      <img src="screens/analysis-results.png" alt="Analysis Results Page">
     </div>
   </div>
   <div class="slide-number">5</div>
@@ -772,9 +770,7 @@
   <div class="grid-3 gap-5 flex-1">
     <div class="flex-col gap-4">
       <div class="screenshot" style="flex:1;min-height:180px;">
-        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
-        <div>Readability Radar Chart</div>
-        <div style="font-size:10px;color:var(--slate-500);">screens/chart-radar.png</div>
+        <img src="screens/chart-radar.png" alt="Readability Radar Chart" style="object-fit:contain;">
       </div>
       <div class="card-sm" style="font-size:12px;">
         <p style="color:var(--slate-300);">5-axis radar showing Flesch, FK Grade, ARI, SMOG, and Coleman-Liau normalized to 0&ndash;100.</p>
@@ -782,9 +778,7 @@
     </div>
     <div class="flex-col gap-4">
       <div class="screenshot" style="flex:1;min-height:180px;">
-        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
-        <div>Vocabulary Stacked Bar</div>
-        <div style="font-size:10px;color:var(--slate-500);">screens/chart-vocabulary.png</div>
+        <img src="screens/chart-vocabulary.png" alt="Vocabulary Stacked Bar" style="object-fit:contain;">
       </div>
       <div class="card-sm" style="font-size:12px;">
         <p style="color:var(--slate-300);">Words categorised into Simple / Medium / Advanced / Expert with colour-coded distribution.</p>
@@ -792,9 +786,7 @@
     </div>
     <div class="flex-col gap-4">
       <div class="screenshot" style="flex:1;min-height:180px;">
-        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
-        <div>Complexity Score Card</div>
-        <div style="font-size:10px;color:var(--slate-500);">screens/complexity-score.png</div>
+        <img src="screens/complexity-score.png" alt="Complexity Score Card" style="object-fit:contain;">
       </div>
       <div class="card-sm" style="font-size:12px;">
         <p style="color:var(--slate-300);">Weighted composite 0&ndash;100: grade level (40%), Flesch (30%), difficult words (20%), sentence length (10%).</p>
@@ -866,9 +858,7 @@
 
     <div class="flex-col gap-5">
       <div class="screenshot" style="flex:1;">
-        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
-        <div>Screenshot: Rewrite Workbench</div>
-        <div style="font-size:11px;color:var(--slate-500);">screens/rewrite-workbench.png</div>
+        <img src="screens/rewrite-workbench.png" alt="Rewrite Workbench" style="object-fit:contain;">
       </div>
 
       <div class="grid-2 gap-4">
@@ -936,14 +926,10 @@
 
     <div class="flex-col gap-5">
       <div class="screenshot" style="flex:1;">
-        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
-        <div>Screenshot: RAG Query with AI Answer</div>
-        <div style="font-size:11px;color:var(--slate-500);">screens/rag-query.png</div>
+        <img src="screens/rag-query.png" alt="RAG Query with AI Answer">
       </div>
       <div class="screenshot" style="height:140px;">
-        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
-        <div>Screenshot: RAG Upload &amp; Document List</div>
-        <div style="font-size:11px;color:var(--slate-500);">screens/rag-upload.png</div>
+        <img src="screens/rag-upload.png" alt="RAG Upload & Document List">
       </div>
     </div>
   </div>
@@ -994,9 +980,7 @@
     </div>
 
     <div class="screenshot" style="min-height:100%;">
-      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
-      <div>Screenshot: Interactive Concept Graph</div>
-      <div style="font-size:11px;color:var(--slate-500);">screens/concept-graph.png</div>
+      <img src="screens/concept-graph.png" alt="Interactive Concept Graph">
     </div>
   </div>
   <div class="slide-number">9</div>
@@ -1012,9 +996,7 @@
   <div class="grid-2 gap-6" style="flex:1;">
     <div class="flex-col gap-4">
       <div class="screenshot" style="height:200px;">
-        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.828L3 3"/><path d="m15 9 6-6"/></svg></div>
-        <div>Screenshot: Side-by-Side Comparison</div>
-        <div style="font-size:10px;color:var(--slate-500);">screens/compare.png</div>
+        <img src="screens/compare.png" alt="Side-by-Side Comparison">
       </div>
       <div class="card-sm">
         <div class="bold white" style="font-size:13px;margin-bottom:6px;">Comparative Analysis</div>
@@ -1023,9 +1005,7 @@
     </div>
     <div class="flex-col gap-4">
       <div class="screenshot" style="height:200px;">
-        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg></div>
-        <div>Screenshot: Batch Analysis</div>
-        <div style="font-size:10px;color:var(--slate-500);">screens/batch.png</div>
+        <img src="screens/batch.png" alt="Batch Analysis">
       </div>
       <div class="card-sm">
         <div class="bold white" style="font-size:13px;margin-bottom:6px;">Batch Processing</div>
@@ -1056,37 +1036,7 @@
 </div>
 
 <!-- ============================================================ -->
-<!-- SLIDE 11: UI / UX SHOWCASE -->
-<!-- ============================================================ -->
-<div class="slide bg-mesh pad">
-  <div class="eyebrow" style="margin-bottom:12px;">User Interface</div>
-  <h2 class="title-sm" style="margin-bottom:24px;">Design System &amp; User Experience</h2>
-
-  <div class="grid-2 gap-6 flex-1">
-    <div class="screenshot" style="min-height:100%;">
-      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg></div>
-      <div>Screenshot: Dashboard (Light Mode)</div>
-      <div style="font-size:11px;color:var(--slate-500);">screens/dashboard.png</div>
-    </div>
-    <div class="flex-col gap-4">
-      <div class="screenshot" style="flex:1;">
-        <div class="placeholder-icon"><svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></div>
-        <div>Screenshot: Login Page</div>
-        <div style="font-size:10px;color:var(--slate-500);">screens/login.png</div>
-      </div>
-      <div class="flex-col gap-3">
-        <div class="card-sm">
-          <div class="bold white" style="font-size:13px;margin-bottom:6px;">Export Capabilities</div>
-          <p style="font-size:12px;color:var(--slate-400);">Multi-page PDF reports (jsPDF), DOCX documents, CSV batch exports, clipboard copy. All exports respect the analysis data and include visualisation descriptions.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="slide-number">11</div>
-</div>
-
-<!-- ============================================================ -->
-<!-- SLIDE 12: TECH STACK -->
+<!-- SLIDE 11: TECH STACK -->
 <!-- ============================================================ -->
 <div class="slide bg-mesh pad">
   <div class="eyebrow" style="margin-bottom:12px;">Technology</div>
@@ -1145,11 +1095,11 @@
       </table>
     </div>
   </div>
-  <div class="slide-number">12</div>
+  <div class="slide-number">11</div>
 </div>
 
 <!-- ============================================================ -->
-<!-- SLIDE 13: TESTING & RESULTS -->
+<!-- SLIDE 12: TESTING & RESULTS -->
 <!-- ============================================================ -->
 <div class="slide bg-mesh pad">
   <div class="eyebrow" style="margin-bottom:12px;">Evaluation</div>
@@ -1212,45 +1162,13 @@
       </div>
     </div>
   </div>
-  <div class="slide-number">13</div>
+  <div class="slide-number">12</div>
 </div>
 
 <!-- ============================================================ -->
-<!-- SLIDE 14: DEMO SCREENSHOTS -->
+<!-- SLIDE 13: CONCLUSION / THANK YOU -->
 <!-- ============================================================ -->
-<div class="slide bg-mesh pad">
-  <div class="eyebrow" style="margin-bottom:12px;">Live Application</div>
-  <h2 class="title-sm" style="margin-bottom:24px;">Application Screenshots</h2>
-
-  <div class="grid-2 gap-5 flex-1">
-    <div class="screenshot" style="min-height:0;flex:1;">
-      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>
-      <div>Screenshot: Full Analysis Results</div>
-      <div style="font-size:11px;color:var(--slate-500);">screens/full-analysis.png</div>
-    </div>
-    <div class="screenshot" style="min-height:0;flex:1;">
-      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>
-      <div>Screenshot: Text Rewrite with Changes</div>
-      <div style="font-size:11px;color:var(--slate-500);">screens/rewrite-changes.png</div>
-    </div>
-    <div class="screenshot" style="min-height:0;flex:1;">
-      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>
-      <div>Screenshot: Grade Explanation</div>
-      <div style="font-size:11px;color:var(--slate-500);">screens/grade-explanation.png</div>
-    </div>
-    <div class="screenshot" style="min-height:0;flex:1;">
-      <div class="placeholder-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>
-      <div>Screenshot: Dark Mode View</div>
-      <div style="font-size:11px;color:var(--slate-500);">screens/dark-mode.png</div>
-    </div>
-  </div>
-  <div class="slide-number">14</div>
-</div>
-
-<!-- ============================================================ -->
-<!-- SLIDE 15: CONCLUSION / THANK YOU -->
-<!-- ============================================================ -->
-<div class="slide bg-hero pad-lg flex-col justify-center text-center" style="position:relative;">
+<div class="slide bg-hero pad flex-col justify-center text-center" style="position:relative;">
   <div style="position:absolute;inset:0;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22><rect fill=%22none%22 stroke=%22rgba(255,255,255,0.03)%22 stroke-width=%220.5%22 width=%2280%22 height=%2280%22/></svg>');opacity:.5;"></div>
   <div style="position:relative;z-index:1;">
     <div class="eyebrow" style="margin-bottom:20px;font-size:13px;">Summary</div>
@@ -1290,7 +1208,7 @@
       Junaid Malik &middot; Wahaj Naveed &middot; 2026
     </p>
   </div>
-  <div class="slide-number">15</div>
+  <div class="slide-number">13</div>
 </div>
 
 </div><!-- /deck -->
