@@ -1,9 +1,39 @@
 # AGENTS.md - ClarityWorks Project Context
 
-> **Last Updated:** 2026-05-10
+> **Last Updated:** 2026-05-13
 > This file must be updated after every code change.
 
 ---
+
+### Recent Updates (2026-05-13)
+- Paragraph simplification now handles Fireworks 429s as a graceful partial-delivery case: hidden OpenAI SDK retries are disabled for Fireworks calls, rate-limited paragraph rewrites switch remaining paragraphs to deterministic local fallback, and the pipeline keeps already completed paragraph rewrites instead of abandoning them for a full rule fallback restart.
+- Signup/profile display names now must start with a letter on both the frontend forms and backend auth endpoints, preventing number-only names such as `12345` from being accepted.
+- Readability analysis now exposes the trained ensemble breakdown: Random Forest, Gradient Boosting, and XGBoost raw grade estimates are returned with equal weights, persisted with analyses, and shown behind an Advanced Model Details toggle with the final average calculation.
+
+### Recent Updates (2026-05-12)
+- Interactive rewritten-preview controls now stay available after a decision: accepted changes remain highlighted with active inline controls, denied changes render as red review spans over the restored original text, and the hover tooltip keeps Accept/Deny actions just like the All Changes list.
+- Simplify mode flow is now Auto-first: Interactive stays disabled until an Auto rewrite exists, switching to Interactive reuses the generated Auto change list with pending accept/deny states instead of calling the backend, Rewrite/target controls lock while reviewing, and switching back to Auto restores the accepted Auto snapshot.
+- Added a browser-local demo cache toggle for exact simplification hits: cached results are keyed by normalized source text plus target grade, replay the full preview/change payload with tooltips, load instantly when enabled, and can be cleared per current text/target without backend or database changes.
+- Adjacent displayed-grade moves now route by displayed grade gap before raw-score gap, so Grade 3 -> 4 stays on the fast small-shift path even when the trained model's raw score sits far below the Grade 4 band.
+- Near-target route polish now has deterministic follow-through after an empty or rejected LLM polish: it can apply another safe local sentence combine or a tiny curated vocabulary nudge, then re-score and deliver only if the trained model moves closer or enters the requested display band.
+- Context-blind upgrade blocks were tightened again: local upgrade selection now avoids `utilize`, `moreover/furthermore`, `place -> position`, and `system -> network` for Grade 10 and below, with sanity flags for `places closer -> positions closer` and `pressure systems -> pressure networks`.
+- Near-target small/medium upgrades now try a deterministic sentence-structure nudge before spending the LLM polish call: clean near misses just below the band can combine up to two short sentence pairs locally, adopt the result only if target distance improves safely, and then skip or continue to the LLM depending on whether the target band was reached.
+- Route-polish logging now records local push outcomes and LLM polish accept/reject reasons with before/after raw scores and target distances, making it easier to diagnose cases where a near-target Grade 8 -> 10 rewrite stalls around raw 9.6.
+- Small/medium route polishing now doubles as a near-target metric push when local sanity is clean but the output is just outside the requested band: the one allowed LLM call sees the current raw score, target band, syllables/WPS targets, and is instructed to prefer sentence-structure moves such as combining or splitting at most two sentence pairs over isolated word swaps.
+- Paragraph-first generation now retries an unusable paragraph immediately once with the failed paragraph's grade, syllables/word, words/sentence, and rejection reason in the prompt, then stops repeatedly hammering the same paragraph in later repair rounds if it keeps producing overshoots.
+- Paragraph LLM prompts now include an explicit **local readability contract** for each paragraph: current raw grade, syllables/word, words/sentence, sentence count, target raw band, target metric values, required metric movement, sentence budget, and the approximate grade formula so the model understands that an 8 -> 10 move is small and must not inflate vocabulary into Grade 20+ prose.
+- Paragraph rewrite direction is now paragraph-local instead of document-global: a paragraph already inside the target band is told to stay close with tiny edits, a paragraph below the band is upgraded, and a paragraph above the band is simplified, even when the overall document is moving in a different direction.
+- Paragraph repair prompts now repeat the source paragraph metrics, previous result metrics, target raw band, target syllables/WPS, and sentence-length range before asking for a correction, with lower-temperature paragraph calls for controlled metric targeting.
+- Rewrite route classification now lets grade gap override paragraph count: small moves such as raw Grade 8.8 -> 9/10 stay on `small_shift_fast`, raw Grade 8 -> 10 stays `medium_shift_controlled`, and paragraph count alone no longer forces `large_shift_llm`.
+- Paragraph LLM rewrites now reject unusable per-paragraph outputs before assembly: empty rewrites, local-sanity failures, and severe target overshoots such as raw Grade 20+ for a Grade 9/10 target are discarded in favor of the original paragraph instead of poisoning the whole document result.
+- Grade 9/10 upgrade prompts were tightened to ask for plain high-school vocabulary, a hard target ceiling, direct sentences, and no college/rare technical diction, reducing the severe overshoot behavior seen in paragraph-first upgrades.
+- Large-route full-document grammar polish is disabled after paragraph-first delivery so a far-off paragraph result does not spend an extra long whole-document LLM call after already missing the target.
+- Simplification routing now classifies rewrites as `small_shift_fast`, `medium_shift_controlled`, or `large_shift_llm`; fast routes use local sanity checks by default, skip the old multi-round critic/validation stack, and allow only a narrow grammar/context LLM polish when policy permits.
+- Paragraph-first rewriting now preserves paragraph identity exactly: `_split_into_rewrite_groups()` returns one rewrite unit per source paragraph with paragraph metadata, never merging short paragraphs into neighbors, and long-document paragraph misses return the best safe paragraph result instead of falling back to whole-document LLM rewriting.
+- Local sanity diagnostics now check empty output, length drift, protected names/numbers/dates/proper nouns, new sentence fragments, repeated/garbled text, direction movement, and whether the candidate is worse than the original relative to the target; these diagnostics are included in selection summaries.
+- Low/mid upgrade vocabulary was tightened to avoid context-blind formal swaps such as `use -> utilize`, `also -> furthermore`, `house -> residence`, and unsupported `forms -> shapes`; awkward phrase flags now catch `utilized` applied to living beings and unsupported form/shape substitutions.
+- Simplify progress polling now carries route, phase, paragraph count, current paragraph, and LLM call metadata, and the frontend loading modal shows those details with elapsed time so long paragraph rewrites look active rather than stuck.
+- Simplify hover rendering now uses segment-specific hover keys and paragraph metadata so hovering one paragraph/evidence span does not light up every segment sharing the same backend change id; embedded evidence highlights are suppressed when the target word occurrence is ambiguous.
 
 ### Recent Updates (2026-05-10)
 - Auto-mode paragraph review reasons now sound more analysis-rich for demos: each paragraph summary mentions sentence restructuring, estimated clause-unit change, average sentence length movement, word-count movement, and up to three vocabulary evidence pairs when available.

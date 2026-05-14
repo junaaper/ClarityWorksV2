@@ -7,10 +7,34 @@ import { validatePassword } from '../utils/passwordValidator';
 
 const SALT_ROUNDS = 10;
 const JWT_EXPIRY = '24h';
+const NAME_STARTS_WITH_LETTER = /^\p{L}/u;
+
+const validateDisplayName = (fullName: unknown): { name: string | null; error?: string } => {
+  if (typeof fullName !== 'string') {
+    return { name: null, error: 'Full name is required' };
+  }
+
+  const trimmedName = fullName.trim();
+  if (trimmedName.length < 2) {
+    return { name: null, error: 'Full name must be at least 2 characters' };
+  }
+
+  if (!NAME_STARTS_WITH_LETTER.test(trimmedName)) {
+    return { name: null, error: 'Full name must start with a letter' };
+  }
+
+  return { name: trimmedName };
+};
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password, fullName } = req.body;
+
+    const nameValidation = validateDisplayName(fullName);
+    if (!nameValidation.name) {
+      res.status(400).json({ error: nameValidation.error });
+      return;
+    }
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -47,7 +71,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     // Insert user
     const result = await pool.query(
       'INSERT INTO users (email, password_hash, full_name, role, is_active) VALUES ($1, $2, $3, $4, $5) RETURNING id, email, full_name, role, is_active, created_at',
-      [email, passwordHash, fullName, 'user', true]
+      [email, passwordHash, nameValidation.name, 'user', true]
     );
 
     const user = result.rows[0];
@@ -174,9 +198,9 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
     const userId = req.userId;
     const { fullName, email } = req.body;
 
-    // Validate inputs
-    if (!fullName || fullName.trim().length < 2) {
-      res.status(400).json({ error: 'Full name must be at least 2 characters' });
+    const nameValidation = validateDisplayName(fullName);
+    if (!nameValidation.name) {
+      res.status(400).json({ error: nameValidation.error });
       return;
     }
 
@@ -206,7 +230,7 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
     const result = await pool.query(
       `UPDATE users SET full_name = $1, email = $2 WHERE id = $3
        RETURNING id, email, full_name, role, is_active, profile_picture, created_at`,
-      [fullName.trim(), email, userId]
+      [nameValidation.name, email, userId]
     );
 
     const user = result.rows[0];

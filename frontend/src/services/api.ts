@@ -192,6 +192,34 @@ export const simplifyApi = {
     const response = await api.post('/api/simplify/save', data);
     return response.data;
   },
+
+  analyzeAsync: async (data: { analysisId?: number; targetGrade: number; text?: string; mode?: 'auto' | 'interactive' }): Promise<{ task_id: string }> => {
+    const response = await api.post('/api/simplify/analyze-async', data);
+    return response.data;
+  },
+
+  progress: async (taskId: string): Promise<{
+    status: 'processing' | 'complete' | 'error';
+    progress?: number;
+    message?: string;
+    eta_seconds?: number | null;
+    rewrite_route?: string | null;
+    phase?: string | null;
+    current_paragraph?: number | null;
+    total_paragraphs?: number | null;
+    llm_calls_used?: number | null;
+    llm_call_budget?: number | null;
+    error?: string;
+    original_text?: string;
+    suggested_changes?: SimplificationChange[];
+    preview_text?: string;
+    preview_metrics?: any;
+    target_distance?: number;
+    selection_summary?: any;
+  }> => {
+    const response = await api.get(`/api/simplify/progress/${taskId}`);
+    return response.data;
+  },
 };
 
 // RAG API
@@ -203,6 +231,28 @@ export const ragApi = {
       headers: { 'Content-Type': undefined },
       timeout: 300000,
     });
+    return response.data;
+  },
+
+  uploadDocumentAsync: async (file: File): Promise<{ task_id: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/api/rag/upload-async', formData, {
+      headers: { 'Content-Type': undefined },
+      timeout: 300000,
+    });
+    return response.data;
+  },
+
+  uploadProgress: async (taskId: string): Promise<{
+    status: 'processing' | 'complete' | 'error';
+    progress: number;
+    message: string;
+    total_chunks?: number | null;
+    result?: any;
+    error?: string;
+  }> => {
+    const response = await api.get(`/api/rag/upload-progress/${taskId}`);
     return response.data;
   },
 

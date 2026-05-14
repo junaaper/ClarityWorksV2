@@ -189,16 +189,28 @@ class ReadabilityModel:
             rf_pred = self.rf_model.predict(ml_features)[0]
             gb_pred = self.gb_model.predict(ml_features)[0]
 
-            model_predictions = {
-                'random_forest': round(float(rf_pred), 2),
-                'gradient_boosting': round(float(gb_pred), 2)
-            }
+            model_details = [
+                {
+                    'id': 'random_forest',
+                    'label': 'Random Forest',
+                    'raw_score': round(float(rf_pred), 2),
+                },
+                {
+                    'id': 'gradient_boosting',
+                    'label': 'Gradient Boosting',
+                    'raw_score': round(float(gb_pred), 2),
+                },
+            ]
 
             if self.xgb_model:
                 # 3-model ensemble
                 xgb_pred = self.xgb_model.predict(ml_features)[0]
                 ensemble_pred = (rf_pred + gb_pred + xgb_pred) / 3
-                model_predictions['xgboost'] = round(float(xgb_pred), 2)
+                model_details.append({
+                    'id': 'xgboost',
+                    'label': 'XGBoost',
+                    'raw_score': round(float(xgb_pred), 2),
+                })
 
                 # Confidence based on agreement between 3 models
                 predictions = [rf_pred, gb_pred, xgb_pred]
@@ -209,12 +221,33 @@ class ReadabilityModel:
                 ensemble_pred = (rf_pred + gb_pred) / 2
                 confidence = 1 - abs(rf_pred - gb_pred) / max(abs(rf_pred), abs(gb_pred), 0.01)
                 confidence = max(0.5, min(0.99, confidence))
+
+            model_count = len(model_details)
+            equal_weight = round(1 / model_count, 4)
+            for model_detail in model_details:
+                model_detail['weight'] = equal_weight
+            model_predictions = {
+                model_detail['id']: model_detail['raw_score']
+                for model_detail in model_details
+            }
+            calculation_terms = " + ".join(
+                f"{item['label']} {item['raw_score']:.2f}"
+                for item in model_details
+            )
+            model_breakdown = {
+                'ensemble_method': 'equal_average',
+                'active_model_count': model_count,
+                'models': model_details,
+                'calculation': f"({calculation_terms}) / {model_count} = {float(ensemble_pred):.2f}",
+                'final_raw_score': round(float(ensemble_pred), 2),
+            }
         else:
             # Fallback to heuristic prediction based on Flesch-Kincaid
             fk_grade = full_features["readability_scores"]["flesch_kincaid_grade"]
             ensemble_pred = fk_grade
             confidence = 0.7
             model_predictions = {}
+            model_breakdown = None
 
         # Convert prediction to grade level
         grade_level = self._prediction_to_grade(ensemble_pred)
@@ -241,6 +274,8 @@ class ReadabilityModel:
 
         if model_predictions:
             result["predictions"]["model_predictions"] = model_predictions
+        if model_breakdown:
+            result["predictions"]["model_breakdown"] = model_breakdown
 
         return result
 

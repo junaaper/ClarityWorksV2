@@ -104,6 +104,61 @@ export const saveSimplification = async (req: AuthRequest, res: Response): Promi
   }
 };
 
+export const analyzeAsync = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { analysisId, targetGrade, text, mode } = req.body;
+
+    let originalText = text;
+
+    if (analysisId && !originalText) {
+      const analysis = await pool.query(
+        'SELECT original_text FROM analyses WHERE id = $1 AND user_id = $2',
+        [analysisId, req.userId]
+      );
+      if (analysis.rows.length === 0) {
+        res.status(404).json({ error: 'Analysis not found' });
+        return;
+      }
+      originalText = analysis.rows[0].original_text;
+    }
+
+    if (!originalText) {
+      res.status(400).json({ error: 'No text provided' });
+      return;
+    }
+
+    const response = await axios.post(`${PYTHON_SERVICE_URL}/simplify/analyze-async`, {
+      text: originalText,
+      target_grade: targetGrade,
+      mode: mode || 'auto'
+    });
+
+    res.status(202).json(response.data);
+  } catch (error: any) {
+    console.error('Async simplification error:', error.message);
+    res.status(500).json({ error: 'Failed to start simplification' });
+  }
+};
+
+export const getSimplifyProgress = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { taskId } = req.params;
+    const response = await axios.get(`${PYTHON_SERVICE_URL}/simplify/progress/${taskId}`);
+    res.json(response.data);
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      res.status(404).json({ error: 'Unknown task' });
+      return;
+    }
+    if (error.response?.status === 500) {
+      res.json(error.response.data);
+      return;
+    }
+    console.error('Progress polling error:', error.message);
+    res.status(500).json({ error: 'Failed to get progress' });
+  }
+};
+
 export const getSimplificationHistory = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const result = await pool.query(

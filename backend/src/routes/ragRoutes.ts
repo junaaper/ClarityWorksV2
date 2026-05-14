@@ -3,6 +3,8 @@ import { authMiddleware } from '../middleware/auth';
 import { documentUpload } from '../config/documentUpload';
 import {
   uploadDocument,
+  uploadDocumentAsync,
+  getRagUploadProgress,
   queryDocuments,
   getDocuments,
   deleteDocument,
@@ -15,6 +17,8 @@ const router = Router();
 router.use(authMiddleware);
 
 router.post('/upload', documentUpload.single('file'), uploadDocument);
+router.post('/upload-async', documentUpload.single('file'), uploadDocumentAsync);
+router.get('/upload-progress/:taskId', getRagUploadProgress);
 router.post('/query', queryDocuments);
 router.get('/documents', getDocuments);
 router.post('/documents/:id/concepts', generateDocumentConceptGraph);

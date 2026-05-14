@@ -2,7 +2,7 @@ from openai import OpenAI
 import os
 import json
 
-FIREWORKS_MODEL = "accounts/fireworks/models/llama-v3p3-70b-instruct"
+FIREWORKS_MODEL = "accounts/fireworks/models/qwen3p6-plus"
 
 
 class LLMValidator:
@@ -75,7 +75,8 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
                 model=FIREWORKS_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
-                max_tokens=500
+                max_tokens=500,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
 
             content = response.choices[0].message.content.strip()
@@ -176,7 +177,8 @@ Rules:
                 model=FIREWORKS_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
-                max_tokens=900
+                max_tokens=900,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
             content = response.choices[0].message.content
             return self._parse_json_response(content, {'preferred_index': 0, 'reviews': []})
@@ -225,7 +227,8 @@ Rules:
                 model=FIREWORKS_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
-                max_tokens=2200
+                max_tokens=2200,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
             repaired = response.choices[0].message.content.strip()
             return repaired or candidate_text
@@ -277,7 +280,8 @@ RULES:
                 model=FIREWORKS_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
-                max_tokens=2500
+                max_tokens=2500,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
 
             polished = response.choices[0].message.content.strip()
@@ -326,7 +330,8 @@ Respond with ONLY the improved text (no explanations):"""
                 model=FIREWORKS_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
-                max_tokens=2000
+                max_tokens=2000,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
 
             return response.choices[0].message.content.strip()

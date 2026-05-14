@@ -4,7 +4,7 @@ import json
 import spacy
 from collections import Counter
 
-FIREWORKS_MODEL = "accounts/fireworks/models/llama-v3p3-70b-instruct"
+FIREWORKS_MODEL = "accounts/fireworks/models/qwen3p6-plus"
 
 nlp = spacy.load('en_core_web_sm')
 
@@ -169,7 +169,8 @@ RULES:
             model=FIREWORKS_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
-            max_tokens=1500
+            max_tokens=1500,
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
 
         content = response.choices[0].message.content.strip()

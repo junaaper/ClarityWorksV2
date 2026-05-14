@@ -341,7 +341,12 @@ const Profile: React.FC = () => {
                     type="text"
                     {...registerProfile('fullName', {
                       required: 'Full name is required',
-                      minLength: { value: 2, message: 'Name must be at least 2 characters' },
+                      validate: {
+                        minTrimmedLength: (value) =>
+                          value.trim().length >= 2 || 'Name must be at least 2 characters',
+                        startsWithLetter: (value) =>
+                          /^\p{L}/u.test(value.trim()) || 'Name must start with a letter',
+                      },
                     })}
                     className="cw-input"
                     style={{ paddingLeft: 36 }}

@@ -53,9 +53,10 @@ export const analyzeText = async (req: AuthRequest, res: Response): Promise<void
         avg_sentence_length, avg_syllables_per_word, flesch_reading_ease,
         flesch_kincaid_grade, automated_readability_index, smog_readability,
         coleman_liau_index, predicted_grade_level, predicted_complexity,
-        confidence, difficult_words_count, difficult_words_percentage,
+        confidence, raw_score, model_predictions, model_breakdown,
+        difficult_words_count, difficult_words_percentage,
         difficult_words, difficult_sentences
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
       RETURNING id, created_at`,
       [
         userId,
@@ -73,6 +74,9 @@ export const analyzeText = async (req: AuthRequest, res: Response): Promise<void
         analysis.predictions.predicted_grade_level,
         analysis.predictions.predicted_complexity,
         analysis.predictions.confidence,
+        analysis.predictions.raw_score ?? null,
+        JSON.stringify(analysis.predictions.model_predictions || null),
+        JSON.stringify(analysis.predictions.model_breakdown || null),
         analysis.statistics.difficult_words_count,
         analysis.statistics.difficult_words_percentage,
         JSON.stringify(analysis.difficult_elements.difficult_words),
@@ -236,6 +240,9 @@ export const getAnalysisById = async (req: AuthRequest, res: Response): Promise<
           predicted_grade_level: row.predicted_grade_level,
           predicted_complexity: row.predicted_complexity,
           confidence: parseFloat(row.confidence),
+          raw_score: row.raw_score == null ? undefined : parseFloat(row.raw_score),
+          model_predictions: row.model_predictions || undefined,
+          model_breakdown: row.model_breakdown || undefined,
         },
         statistics: {
           difficult_words_count: row.difficult_words_count,

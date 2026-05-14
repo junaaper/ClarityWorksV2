@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, Save, Wand2, Check, X, Download, FileText, TrendingDown, TrendingUp } from 'lucide-react';
 import { analysisApi, simplifyApi } from '../../services/api';
-import LoadingSpinner from '../common/LoadingSpinner';
 import { exportSimplificationPDF, exportSimplificationDOCX } from '../../utils/exportSimplification';
 import type {
+  SimplifyAnalyzeResponse,
   SimplificationChange,
   SimplificationPreviewMetrics,
   SimplificationSelectionSummary,
@@ -23,6 +23,71 @@ type HoverOptions = {
   embedded?: boolean;
   evidenceItem?: ExplanationItem | null;
   paragraphReview?: ParagraphReview | null;
+  segmentKey?: string | null;
+};
+
+type ProgressMeta = {
+  rewriteRoute?: string | null;
+  phase?: string | null;
+  currentParagraph?: number | null;
+  totalParagraphs?: number | null;
+  llmCallsUsed?: number | null;
+  llmCallBudget?: number | null;
+};
+
+type AutoResultSnapshot = {
+  originalText: string;
+  changes: Change[];
+  simplifiedText: string;
+  renderedRanges: Record<number, ChangeRange>;
+  previewMetrics: SimplificationPreviewMetrics | null;
+  selectionSummary: SimplificationSelectionSummary | null;
+  targetDistance?: number;
+};
+
+type CachedSimplifyResult = {
+  original_text: string;
+  suggested_changes: SimplificationChange[];
+  preview_text: string;
+  preview_metrics?: SimplificationPreviewMetrics;
+  target_distance?: number;
+  selection_summary?: SimplificationSelectionSummary;
+  targetGrade: number;
+  createdAt: string;
+};
+
+const DEMO_CACHE_ENABLED_KEY = 'clarityworks:simplify-demo-cache:enabled';
+const DEMO_CACHE_PREFIX = 'clarityworks:simplify-demo-cache:v1';
+
+const normalizeCacheSource = (text: string) => text.replace(/\s+/g, ' ').trim();
+
+const hashCacheSource = (text: string) => {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+const getDemoCacheKey = (text: string, targetGrade: number) => {
+  const normalized = normalizeCacheSource(text);
+  if (!normalized) return null;
+  return `${DEMO_CACHE_PREFIX}:${targetGrade}:${hashCacheSource(normalized)}`;
+};
+
+const cloneChangesForMode = (changes: Change[], nextMode: 'auto' | 'interactive') =>
+  changes.map((change) => ({
+    ...change,
+    accepted: nextMode === 'auto' ? true : null,
+  }));
+
+const isExactTargetHit = (
+  previewMetrics?: SimplificationPreviewMetrics | null,
+  targetDistance?: number
+) => {
+  const distance = previewMetrics?.target_distance ?? targetDistance;
+  return typeof distance === 'number' && Math.abs(distance) < 0.005;
 };
 
 const computeTargetDistance = (rawScore: number | undefined, targetGrade: number) => {
@@ -464,7 +529,8 @@ const buildParagraphReviews = (
     const rewritten = rewrittenParagraphs[index] ?? { text: '', start: rewrittenText.length, end: rewrittenText.length };
     if (!original.text.trim() && !rewritten.text.trim()) continue;
 
-    const paragraphChanges = changes.filter((change) => {
+    const explicitlyLinkedChanges = changes.filter((change) => change.paragraph_index === index);
+    const paragraphChanges = explicitlyLinkedChanges.length > 0 ? explicitlyLinkedChanges : changes.filter((change) => {
       const originalRange = { start: change.start, end: change.end };
       const previewRange = getRenderedRange(change, ranges, rewrittenText.length, true);
       return (
@@ -654,7 +720,7 @@ const buildPreviewState = (
       if (mode === 'auto') {
         return change.accepted === true;
       }
-      return change.accepted !== false;
+      return true;
     })
     .sort((a, b) => {
       if (a.start !== b.start) return a.start - b.start;
@@ -680,7 +746,9 @@ const buildPreviewState = (
 
     previewText += sourceText.slice(cursor, start);
 
-    const replacementText = getReplacementPatchText(change);
+    const replacementText = mode === 'interactive' && change.accepted === false
+      ? sourceText.slice(start, end)
+      : getReplacementPatchText(change);
     const appliedStart = previewText.length;
     previewText += replacementText;
 
@@ -784,6 +852,22 @@ const findEvidenceRange = (
   return null;
 };
 
+const countEvidenceMatches = (
+  text: string,
+  container: ChangeRange,
+  item: ExplanationItem
+) => {
+  const needle = (item.after || '').trim();
+  if (!needle || needle.length > 80) return 0;
+  const segment = text.slice(container.start, container.end);
+  const escaped = escapeRegExp(needle);
+  const wordish = /^[A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*$/.test(needle);
+  const pattern = wordish
+    ? new RegExp(`(^|[^A-Za-z0-9])(${escaped})(?=$|[^A-Za-z0-9])`, 'ig')
+    : new RegExp(escaped, 'ig');
+  return Array.from(segment.matchAll(pattern)).length;
+};
+
 const isWordChar = (char: string) => /[A-Za-z0-9]/.test(char);
 
 const expandPreviewRange = (
@@ -819,8 +903,15 @@ const SimplifyPage: React.FC = () => {
   const [targetGrade, setTargetGrade] = useState(6);
   const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState(true);
+  const [progressPct, setProgressPct] = useState(0);
+  const [progressMsg, setProgressMsg] = useState('Starting...');
+  const [progressEta, setProgressEta] = useState<number | null>(null);
+  const [progressMeta, setProgressMeta] = useState<ProgressMeta>({});
+  const [progressStartedAt, setProgressStartedAt] = useState<number | null>(null);
+  const [progressNow, setProgressNow] = useState(Date.now());
   const [saving, setSaving] = useState(false);
   const [hoveredChange, setHoveredChange] = useState<number | null>(null);
+  const [hoveredSegmentKey, setHoveredSegmentKey] = useState<string | null>(null);
   const [hoveredEmbeddedWord, setHoveredEmbeddedWord] = useState(false);
   const [hoveredEvidenceItem, setHoveredEvidenceItem] = useState<ExplanationItem | null>(null);
   const [hoveredParagraphReview, setHoveredParagraphReview] = useState<ParagraphReview | null>(null);
@@ -832,6 +923,14 @@ const SimplifyPage: React.FC = () => {
   const [renderedRanges, setRenderedRanges] = useState<Record<number, ChangeRange>>({});
   const [previewMetrics, setPreviewMetrics] = useState<SimplificationPreviewMetrics | null>(null);
   const [selectionSummary, setSelectionSummary] = useState<SimplificationSelectionSummary | null>(null);
+  const [autoResultSnapshot, setAutoResultSnapshot] = useState<AutoResultSnapshot | null>(null);
+  const [useDemoCache, setUseDemoCache] = useState(() => (
+    localStorage.getItem(DEMO_CACHE_ENABLED_KEY) === '1'
+  ));
+  const [cacheAvailable, setCacheAvailable] = useState(false);
+  const [cacheNotice, setCacheNotice] = useState<string | null>(null);
+
+  const currentCacheKey = getDemoCacheKey(originalText, targetGrade);
 
   useEffect(() => {
     const fetchAnalysis = async () => {
@@ -856,6 +955,20 @@ const SimplifyPage: React.FC = () => {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!loading) return;
+    const timer = window.setInterval(() => setProgressNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
+
+  useEffect(() => {
+    localStorage.setItem(DEMO_CACHE_ENABLED_KEY, useDemoCache ? '1' : '0');
+  }, [useDemoCache]);
+
+  useEffect(() => {
+    setCacheAvailable(Boolean(currentCacheKey && localStorage.getItem(currentCacheKey)));
+  }, [currentCacheKey, cacheNotice]);
 
   useEffect(() => {
     if (!simplifiedText || simplifiedText.length < 50) {
@@ -899,38 +1012,201 @@ const SimplifyPage: React.FC = () => {
     };
   }, [simplifiedText, targetGrade]);
 
+  const readCachedResult = (cacheKey: string): CachedSimplifyResult | null => {
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as CachedSimplifyResult;
+      if (parsed.targetGrade !== targetGrade || !parsed.preview_text || !parsed.suggested_changes) {
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeCachedResult = (
+    cacheKey: string,
+    response: SimplifyAnalyzeResponse,
+    sourceText: string
+  ) => {
+    if (localStorage.getItem(cacheKey)) return;
+    if (!isExactTargetHit(response.preview_metrics ?? null, response.target_distance)) return;
+
+    const payload: CachedSimplifyResult = {
+      original_text: sourceText,
+      suggested_changes: response.suggested_changes || [],
+      preview_text: response.preview_text || '',
+      preview_metrics: response.preview_metrics,
+      target_distance: response.target_distance,
+      selection_summary: response.selection_summary,
+      targetGrade,
+      createdAt: new Date().toISOString(),
+    };
+    localStorage.setItem(cacheKey, JSON.stringify(payload));
+    setCacheAvailable(true);
+    setCacheNotice('Saved exact hit to demo cache.');
+  };
+
+  const applyAutoResponse = (
+    response: SimplifyAnalyzeResponse,
+    cacheHit = false
+  ) => {
+    const sourceText = response.original_text || originalText;
+    const newChanges: Change[] = (response.suggested_changes || []).map((change) =>
+      normalizeChange(change, 'auto')
+    );
+
+    const previewState = buildPreviewState(sourceText, newChanges, 'auto');
+    const serverPreviewText = response.preview_text || '';
+    const shouldUseServerPreview = serverPreviewText.trim().length > 0;
+    const previewText = shouldUseServerPreview
+      ? serverPreviewText
+      : newChanges.length > 0 ? previewState.text : sourceText;
+    const ranges = shouldUseServerPreview
+      ? buildServerPreviewRanges(previewText, newChanges)
+      : previewState.ranges;
+    const summary = response.selection_summary
+      ? { ...response.selection_summary, cache_hit: cacheHit }
+      : cacheHit
+        ? ({ cache_hit: true } as SimplificationSelectionSummary)
+        : null;
+
+    const snapshot: AutoResultSnapshot = {
+      originalText: sourceText,
+      changes: cloneChangesForMode(newChanges, 'auto'),
+      simplifiedText: previewText,
+      renderedRanges: ranges,
+      previewMetrics: response.preview_metrics ?? null,
+      selectionSummary: summary,
+      targetDistance: response.target_distance,
+    };
+
+    setOriginalText(sourceText);
+    setMode('auto');
+    setChanges(cloneChangesForMode(snapshot.changes, 'auto'));
+    setRenderedRanges(snapshot.renderedRanges);
+    setSimplifiedText(snapshot.simplifiedText);
+    setPreviewMetrics(snapshot.previewMetrics);
+    setSelectionSummary(snapshot.selectionSummary);
+    setSimplifiedGrade(response.preview_metrics?.predicted_grade_level ?? null);
+    setAutoResultSnapshot(snapshot);
+    return snapshot;
+  };
+
+  const restoreAutoSnapshot = () => {
+    if (!autoResultSnapshot) {
+      setMode('auto');
+      return;
+    }
+    const restoredChanges = cloneChangesForMode(autoResultSnapshot.changes, 'auto');
+    setMode('auto');
+    setChanges(restoredChanges);
+    setRenderedRanges(autoResultSnapshot.renderedRanges);
+    setSimplifiedText(autoResultSnapshot.simplifiedText);
+    setPreviewMetrics(autoResultSnapshot.previewMetrics);
+    setSelectionSummary(autoResultSnapshot.selectionSummary);
+    setSimplifiedGrade(autoResultSnapshot.previewMetrics?.predicted_grade_level ?? simplifiedGrade);
+    setCacheNotice(null);
+  };
+
+  const enterInteractiveMode = () => {
+    if (!autoResultSnapshot) return;
+    const interactiveChanges = cloneChangesForMode(autoResultSnapshot.changes, 'interactive');
+    const previewState = buildPreviewState(autoResultSnapshot.originalText, interactiveChanges, 'interactive');
+    setMode('interactive');
+    setChanges(interactiveChanges);
+    setRenderedRanges(previewState.ranges);
+    setSimplifiedText(previewState.text);
+    setPreviewMetrics(autoResultSnapshot.previewMetrics);
+    setSelectionSummary(autoResultSnapshot.selectionSummary);
+    setSimplifiedGrade(autoResultSnapshot.previewMetrics?.predicted_grade_level ?? simplifiedGrade);
+    setCacheNotice(null);
+  };
+
+  const handleTargetGradeChange = (nextGrade: number) => {
+    setTargetGrade(nextGrade);
+    setMode('auto');
+    setSimplifiedText('');
+    setChanges([]);
+    setRenderedRanges({});
+    setPreviewMetrics(null);
+    setSelectionSummary(null);
+    setAutoResultSnapshot(null);
+    setSimplifiedGrade(null);
+    setCacheNotice(null);
+  };
+
+  const clearCurrentCache = () => {
+    if (!currentCacheKey) return;
+    localStorage.removeItem(currentCacheKey);
+    setCacheAvailable(false);
+    setCacheNotice('Cleared cached result for this text and target.');
+  };
+
   const handleSimplify = async () => {
     if (!analysisId) return;
+    if (mode === 'interactive') return;
+    const cacheKey = currentCacheKey;
+    if (useDemoCache && cacheKey) {
+      const cached = readCachedResult(cacheKey);
+      if (cached) {
+        applyAutoResponse(cached, true);
+        setCacheNotice('Loaded exact hit from demo cache.');
+        return;
+      }
+    }
+
     setLoading(true);
+    setProgressPct(0);
+    setProgressMsg('Starting...');
+    setProgressEta(null);
+    setProgressMeta({});
+    setProgressStartedAt(Date.now());
+    setProgressNow(Date.now());
+
     try {
-      const response = await simplifyApi.analyze({
+      const { task_id } = await simplifyApi.analyzeAsync({
         analysisId: parseInt(analysisId),
         targetGrade,
-        mode,
+        mode: 'auto',
       });
 
-      const sourceText = response.original_text || originalText;
-      const newChanges: Change[] = (response.suggested_changes || []).map((change) =>
-        normalizeChange(change, mode)
-      );
+      let done = false;
+      while (!done) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const status = await simplifyApi.progress(task_id);
 
-      const previewState = buildPreviewState(sourceText, newChanges, mode);
-      const serverPreviewText = response.preview_text || '';
-      const shouldUseServerPreview = mode === 'auto' && serverPreviewText.trim().length > 0;
-      const previewText = shouldUseServerPreview
-        ? serverPreviewText
-        : newChanges.length > 0 ? previewState.text : sourceText;
-      const serverRanges = shouldUseServerPreview
-        ? buildServerPreviewRanges(previewText, newChanges)
-        : {};
-      const ranges = shouldUseServerPreview ? serverRanges : previewState.ranges;
+        if (status.status === 'processing') {
+          setProgressPct(status.progress ?? 0);
+          setProgressMsg(status.message ?? 'Processing...');
+          setProgressEta(status.eta_seconds ?? null);
+          setProgressMeta({
+            rewriteRoute: status.rewrite_route ?? null,
+            phase: status.phase ?? null,
+            currentParagraph: status.current_paragraph ?? null,
+            totalParagraphs: status.total_paragraphs ?? null,
+            llmCallsUsed: status.llm_calls_used ?? null,
+            llmCallBudget: status.llm_call_budget ?? null,
+          });
+          continue;
+        }
 
-      setChanges(newChanges);
-      setRenderedRanges(ranges);
-      setSimplifiedText(previewText);
-      setPreviewMetrics(response.preview_metrics ?? null);
-      setSelectionSummary(response.selection_summary ?? null);
-      setSimplifiedGrade(response.preview_metrics?.predicted_grade_level ?? null);
+        if (status.status === 'error') {
+          throw new Error(status.error || 'Simplification failed');
+        }
+
+        done = true;
+        setProgressPct(1);
+        setProgressMsg('Done');
+
+        const response = status as SimplifyAnalyzeResponse;
+        const snapshot = applyAutoResponse(response, false);
+        if (cacheKey) {
+          writeCachedResult(cacheKey, response, snapshot.originalText);
+        }
+      }
     } catch (error) {
       console.error('Simplification error:', error);
       alert('Failed to simplify text. Make sure the ML service is running.');
@@ -969,6 +1245,7 @@ const SimplifyPage: React.FC = () => {
     clearHoverDismissTimer();
     hoverDismissTimerRef.current = window.setTimeout(() => {
       setHoveredChange(null);
+      setHoveredSegmentKey(null);
       setHoveredEmbeddedWord(false);
       setHoveredEvidenceItem(null);
       setHoveredParagraphReview(null);
@@ -1055,6 +1332,7 @@ const SimplifyPage: React.FC = () => {
 
     clearHoverDismissTimer();
     setHoveredChange(changeId);
+    setHoveredSegmentKey(options?.segmentKey ?? null);
     setHoveredEmbeddedWord(Boolean(options?.embedded));
     setHoveredEvidenceItem(options?.evidenceItem ?? null);
     setHoveredParagraphReview(options?.paragraphReview ?? null);
@@ -1081,6 +1359,21 @@ const SimplifyPage: React.FC = () => {
   const autoParagraphReviews = mode === 'auto' && simplifiedText
     ? buildParagraphReviews(originalText, simplifiedText, changes, renderedRanges, targetGrade)
     : [];
+  const progressRouteLabel = progressMeta.rewriteRoute
+    ? ({ small_shift_fast: 'Local Rule-Based', medium_shift_controlled: 'Hybrid', large_shift_llm: 'Paragraph Rewrite', paragraph_rewrite: 'Paragraph Rewrite' } as Record<string, string>)[progressMeta.rewriteRoute] ?? progressMeta.rewriteRoute.replace(/_/g, ' ')
+    : 'preparing rewrite';
+  const progressPhaseLabel = progressMeta.phase
+    ? ({ route: 'Selecting strategy', analyze: 'Analyzing text', diff: 'Computing changes', sanity: 'Verifying quality', paragraph_rewrite: 'Rewriting paragraph', paragraph_complete: 'Paragraph done', document_check: 'Checking document', paragraph_repair: 'Polishing paragraph' } as Record<string, string>)[progressMeta.phase] ?? progressMeta.phase.replace(/_/g, ' ')
+    : 'starting';
+  const elapsedSeconds = progressStartedAt
+    ? Math.max(0, Math.round((progressNow - progressStartedAt) / 1000))
+    : 0;
+  const canUseInteractive = Boolean(autoResultSnapshot && simplifiedText && changes.length > 0 && previewMetrics);
+  const rewriteDisabled = loading || !originalText || mode === 'interactive';
+  const targetControlsDisabled = loading || mode === 'interactive';
+  const cacheStatusText = cacheAvailable
+    ? 'Cached exact hit available'
+    : 'No cached exact hit';
   if (loadingText) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1093,7 +1386,47 @@ const SimplifyPage: React.FC = () => {
 
   return (
     <div>
-      {loading && <LoadingSpinner message="Rewriting text..." fullScreen />}
+      {loading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Rewriting text...</h3>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-3">
+              <div
+                className="bg-blue-500 h-3 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${Math.max(2, Math.round(progressPct * 100))}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="cw-badge cw-badge-info">{Math.round(progressPct * 100)}%</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">{elapsedSeconds}s elapsed</span>
+            </div>
+            <p className="text-sm text-gray-700 dark:text-gray-200 font-medium">{progressMsg}</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <div>
+                <div className="font-semibold text-gray-700 dark:text-gray-300">Route</div>
+                <div className="capitalize">{progressRouteLabel}</div>
+              </div>
+              <div>
+                <div className="font-semibold text-gray-700 dark:text-gray-300">Phase</div>
+                <div className="capitalize">{progressPhaseLabel}</div>
+              </div>
+              {progressMeta.totalParagraphs ? (
+                <div>
+                  <div className="font-semibold text-gray-700 dark:text-gray-300">Paragraph</div>
+                  <div>
+                    {progressMeta.currentParagraph ?? '-'} / {progressMeta.totalParagraphs}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            {progressEta != null && progressEta > 0 && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                ~{Math.round(progressEta)}s remaining
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <Link
@@ -1117,7 +1450,8 @@ const SimplifyPage: React.FC = () => {
             <label className="cw-eyebrow block mb-1.5">Target Grade</label>
             <select
               value={targetGrade}
-              onChange={(e) => setTargetGrade(+e.target.value)}
+              onChange={(e) => handleTargetGradeChange(+e.target.value)}
+              disabled={targetControlsDisabled}
               className="cw-select"
               style={{ minWidth: 160 }}
             >
@@ -1136,7 +1470,7 @@ const SimplifyPage: React.FC = () => {
               style={{ background: 'var(--surface-sunk)', border: '1px solid var(--border)' }}
             >
               <button
-                onClick={() => setMode('auto')}
+                onClick={restoreAutoSnapshot}
                 className="px-3.5 py-1.5 rounded text-[12px] font-semibold transition-colors"
                 style={{
                   background: mode === 'auto' ? 'var(--surface-raised)' : 'transparent',
@@ -1147,12 +1481,14 @@ const SimplifyPage: React.FC = () => {
                 Auto
               </button>
               <button
-                onClick={() => setMode('interactive')}
+                onClick={enterInteractiveMode}
+                disabled={!canUseInteractive}
                 className="px-3.5 py-1.5 rounded text-[12px] font-semibold transition-colors"
                 style={{
                   background: mode === 'interactive' ? 'var(--surface-raised)' : 'transparent',
-                  color: mode === 'interactive' ? 'var(--p-900)' : 'var(--text-2)',
+                  color: !canUseInteractive ? 'var(--text-4)' : mode === 'interactive' ? 'var(--p-900)' : 'var(--text-2)',
                   boxShadow: mode === 'interactive' ? 'var(--sh-1)' : 'none',
+                  cursor: canUseInteractive ? 'pointer' : 'not-allowed',
                 }}
               >
                 Interactive
@@ -1161,9 +1497,31 @@ const SimplifyPage: React.FC = () => {
           </div>
 
           <div className="ml-auto flex gap-2 flex-wrap">
+            <label
+              className="cw-btn cw-btn-secondary"
+              style={{ gap: 8, cursor: 'pointer' }}
+              title={cacheStatusText}
+            >
+              <input
+                type="checkbox"
+                checked={useDemoCache}
+                onChange={(e) => setUseDemoCache(e.target.checked)}
+                style={{ accentColor: 'var(--p-700)' }}
+              />
+              Use demo cache
+            </label>
+            {cacheAvailable && (
+              <button
+                onClick={clearCurrentCache}
+                className="cw-btn cw-btn-secondary"
+                type="button"
+              >
+                Clear cache
+              </button>
+            )}
             <button
               onClick={handleSimplify}
-              disabled={loading || !originalText}
+              disabled={rewriteDisabled}
               className="cw-btn cw-btn-primary"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
@@ -1213,6 +1571,12 @@ const SimplifyPage: React.FC = () => {
           {mode === 'auto'
             ? 'Auto Mode — the system tries multiple rewrite candidates, keeps the closest valid version, and shows reviewable change reasons.'
             : 'Interactive Mode — hover any highlight for the reason, then Accept or Deny each change before saving.'}
+          {mode === 'interactive' && ' Switch back to Auto to unlock Rewrite.'}
+          {cacheNotice && (
+            <span style={{ display: 'block', marginTop: 6, color: 'var(--text-2)' }}>
+              {cacheNotice}
+            </span>
+          )}
         </p>
       </div>
 
@@ -1278,7 +1642,14 @@ const SimplifyPage: React.FC = () => {
           }}
         >
           <div className="flex items-center gap-2 mb-3">
-            <span className="cw-eyebrow" style={{ color: 'var(--err-700)' }}>Original</span>
+            <span className="cw-eyebrow" style={{ color: 'var(--err-700)' }}>
+              Original{originalGrade ? ` · ${originalGrade}` : ''}
+            </span>
+            {originalGrade && selectionSummary?.source_grade != null && (
+              <span className="cw-eyebrow" style={{ color: 'var(--err-700)' }}>
+                · Raw: {selectionSummary.source_grade.toFixed(2)}
+              </span>
+            )}
           </div>
           <div
             className="whitespace-pre-wrap"
@@ -1302,6 +1673,11 @@ const SimplifyPage: React.FC = () => {
             <span className="cw-eyebrow" style={{ color: 'var(--s-700)' }}>
               Rewritten · {targetGrade === 13 ? 'College' : `Grade ${targetGrade}`}
             </span>
+            {previewMetrics && (
+              <span className="cw-eyebrow" style={{ color: 'var(--s-700)' }}>
+                · Raw: {previewMetrics.raw_score.toFixed(2)}
+              </span>
+            )}
           </div>
           {simplifiedText ? (
             <div
@@ -1313,6 +1689,7 @@ const SimplifyPage: React.FC = () => {
                 ranges={renderedRanges}
                 mode={mode}
                 hoveredChange={hoveredChange}
+                hoveredSegmentKey={hoveredSegmentKey}
                 hoveredEvidenceItem={hoveredEvidenceItem}
                 paragraphReviews={autoParagraphReviews}
                 onHover={handleChangeHover}
@@ -1371,7 +1748,7 @@ const SimplifyPage: React.FC = () => {
             </p>
           )}
 
-          {mode === 'interactive' && hoveredChangeData.accepted === null && !hoveredEmbeddedWord && !hoveredParagraphReview && (
+          {mode === 'interactive' && !hoveredEmbeddedWord && !hoveredParagraphReview && (
             <div className="flex gap-2">
               <button
                 onClick={() => handleAccept(hoveredChangeData.id)}
@@ -1507,6 +1884,7 @@ interface HighlightedTextProps {
   ranges: Record<number, ChangeRange>;
   mode: 'auto' | 'interactive';
   hoveredChange: number | null;
+  hoveredSegmentKey: string | null;
   hoveredEvidenceItem: ExplanationItem | null;
   paragraphReviews?: ParagraphReview[];
   onHover: (id: number | null, event?: React.MouseEvent, options?: HoverOptions) => void;
@@ -1520,6 +1898,7 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
   ranges,
   mode,
   hoveredChange,
+  hoveredSegmentKey,
   hoveredEvidenceItem,
   paragraphReviews = [],
   onHover,
@@ -1527,7 +1906,6 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
   onDeny,
 }) => {
   const accepted = changes.filter((change) => {
-    if (change.accepted === false) return false;
     if (mode === 'auto') return change.accepted === true;
     return true;
   });
@@ -1599,6 +1977,7 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
 
     const sourceItems = sentence.paragraphReview?.evidence ?? sentence.change.explanation_items ?? [];
     for (const item of sourceItems) {
+      if (countEvidenceMatches(text, sentence, item) !== 1) continue;
       const range = findEvidenceRange(text, sentence, item, usedRanges);
       if (!range) continue;
       usedRanges.push(range);
@@ -1678,27 +2057,40 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
     }
 
     const isPending = seg.change.accepted === null;
+    const isAccepted = seg.change.accepted === true;
+    const isDenied = seg.change.accepted === false;
     const isWord = seg.scope === 'word';
     const isEmbeddedWord = isWord && Boolean(seg.embedded);
+    const evidenceKey = seg.evidenceItem
+      ? `${seg.evidenceItem.kind}-${seg.evidenceItem.before ?? ''}-${seg.evidenceItem.after ?? ''}`
+      : 'none';
+    const segmentKey = `${seg.change.id}:${renderStart}:${seg.end}:${seg.paragraphReview?.index ?? 'x'}:${evidenceKey}`;
+    const isHoveredSegment = hoveredSegmentKey
+      ? hoveredSegmentKey === segmentKey
+      : hoveredChange === seg.change.id;
 
     let highlightClass = 'rounded-sm cursor-help transition-colors ';
     if (isEmbeddedWord) {
       const embeddedHover =
-        hoveredChange === seg.change.id &&
+        isHoveredSegment &&
         (seg.evidenceItem ? hoveredEvidenceItem === seg.evidenceItem : !hoveredEvidenceItem);
       if (embeddedHover) {
         highlightClass += 'bg-teal-100 text-teal-950 border-b-2 border-teal-700';
       } else {
-        highlightClass += `${isPending ? 'bg-amber-100' : 'bg-blue-100'} text-teal-900 border-b-2 border-teal-500`;
+        highlightClass += `${isPending ? 'bg-amber-100' : isDenied ? 'bg-red-100' : 'bg-blue-100'} text-teal-900 border-b-2 border-teal-500`;
       }
-    } else if (hoveredChange === seg.change.id) {
+    } else if (isHoveredSegment) {
       highlightClass += isPending
         ? 'bg-amber-400 text-amber-900'
-        : isWord ? 'bg-green-400 text-green-900' : 'bg-blue-300 text-blue-900';
+        : isDenied
+          ? 'bg-red-300 text-red-900'
+          : isWord ? 'bg-green-400 text-green-900' : 'bg-blue-300 text-blue-900';
     } else {
       highlightClass += isPending
         ? 'bg-amber-100 text-amber-800 border-b-2 border-amber-400'
-        : isWord ? 'bg-green-200 text-green-800' : 'bg-blue-100 text-blue-800';
+        : isDenied
+          ? 'bg-red-100 text-red-800 border-b-2 border-red-400'
+          : isWord ? 'bg-green-200 text-green-800' : 'bg-blue-100 text-blue-800';
     }
 
     parts.push(
@@ -1709,22 +2101,23 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
           embedded: isEmbeddedWord,
           evidenceItem: seg.evidenceItem ?? null,
           paragraphReview: seg.paragraphReview ?? null,
+          segmentKey,
         })}
         onMouseLeave={() => onHover(null)}
       >
         {text.slice(renderStart, seg.end)}
-        {mode === 'interactive' && isPending && isWord && !isEmbeddedWord && (
+        {mode === 'interactive' && isWord && !isEmbeddedWord && (
           <span className="inline-flex ml-1 gap-0.5 align-middle">
             <button
               onClick={(e) => { e.stopPropagation(); onAccept(seg.change.id); }}
-              className="inline-flex items-center justify-center w-4 h-4 bg-green-500 text-white rounded-full text-xs hover:bg-green-700 leading-none"
+              className={`inline-flex items-center justify-center w-4 h-4 text-white rounded-full text-xs leading-none ${isAccepted ? 'bg-green-700' : 'bg-green-500 hover:bg-green-700'}`}
               title="Accept"
             >
               &#10003;
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onDeny(seg.change.id); }}
-              className="inline-flex items-center justify-center w-4 h-4 bg-red-500 text-white rounded-full text-xs hover:bg-red-700 leading-none"
+              className={`inline-flex items-center justify-center w-4 h-4 text-white rounded-full text-xs leading-none ${isDenied ? 'bg-red-700' : 'bg-red-500 hover:bg-red-700'}`}
               title="Deny"
             >
               &#10005;

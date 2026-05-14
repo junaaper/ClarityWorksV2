@@ -1,4 +1,5 @@
 import os
+import threading
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -578,6 +579,155 @@ def upload_rag_document():
         return jsonify({'error': str(e)}), 500
 
 
+_rag_upload_tasks = {}
+
+@app.route('/rag/upload-async', methods=['POST'])
+def upload_rag_document_async():
+    """Start async RAG upload and return task_id for progress polling."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+
+        file = request.files['file']
+        user_id = request.form.get('user_id', '')
+        original_filename = file.filename
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1])
+        file.save(tmp.name)
+        tmp.close()
+
+        task_id = str(uuid.uuid4())
+        _rag_upload_tasks[task_id] = {
+            'status': 'processing',
+            'progress': 0.0,
+            'message': 'Starting upload...',
+            'total_chunks': None,
+            'result': None,
+            'error': None,
+        }
+
+        def run_upload():
+            try:
+                _rag_upload_tasks[task_id].update(progress=0.05, message='Extracting text from document...')
+
+                fname = original_filename.lower()
+                page_records = None
+                extraction_quality = None
+                extraction_warnings = []
+
+                if fname.endswith('.pdf'):
+                    pdf_document = _extract_pdf_document_from_path(tmp.name)
+                    extraction_quality = pdf_document['quality']
+                    extraction_warnings = pdf_document['warnings']
+                    page_records = []
+                    for page in pdf_document['pages']:
+                        page_text = TextCleaner.remove_images_markers(page['text'])
+                        page_text = TextCleaner.clean_textbook_text(page_text)
+                        page_text = TextCleaner.clean_extracted_text(page_text)
+                        if page_text.strip():
+                            page_records.append({
+                                'text': page_text,
+                                'metadata': {
+                                    'page_number': str(page['page_number']),
+                                    'source_type': 'pdf',
+                                    'extractor': page.get('extractor', ''),
+                                    'extraction_quality': page.get('quality', {}).get('quality_label', ''),
+                                    'extraction_warnings': '; '.join(page.get('warnings', [])),
+                                }
+                            })
+                    text = '\n\n'.join(p['text'] for p in page_records)
+                elif fname.endswith(('.docx', '.doc')):
+                    doc = Document(tmp.name)
+                    text = '\n\n'.join(p.text for p in doc.paragraphs if p.text.strip())
+                else:
+                    _rag_upload_tasks[task_id].update(status='error', error='Unsupported file type')
+                    return
+
+                text = TextCleaner.remove_images_markers(text)
+                text = TextCleaner.clean_textbook_text(text)
+                text = TextCleaner.clean_extracted_text(text)
+
+                if not text or len(text) < 100:
+                    _rag_upload_tasks[task_id].update(status='error', error='Could not extract sufficient text')
+                    return
+
+                _rag_upload_tasks[task_id].update(progress=0.20, message='Text extracted, chunking document...')
+
+                doc_id = str(uuid.uuid4())
+
+                def on_progress(pct, msg):
+                    _rag_upload_tasks[task_id].update(progress=pct, message=msg)
+
+                result = rag_engine.upload_document(
+                    document_id=doc_id,
+                    text=text,
+                    metadata={
+                        'filename': original_filename,
+                        'user_id': user_id,
+                        'source_type': 'pdf' if fname.endswith('.pdf') else 'docx',
+                        'extraction_quality': (extraction_quality or {}).get('quality_label', ''),
+                        'extraction_warnings': '; '.join(extraction_warnings),
+                    },
+                    pages=page_records,
+                    progress_callback=on_progress,
+                )
+
+                _rag_upload_tasks[task_id].update(
+                    status='complete',
+                    progress=1.0,
+                    message='Upload complete',
+                    total_chunks=result['chunks_created'],
+                    result={
+                        'document_id': doc_id,
+                        'chunks_created': result['chunks_created'],
+                        'collection_id': result['collection_id'],
+                        'extraction_quality': extraction_quality,
+                        'warnings': extraction_warnings,
+                    },
+                )
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                _rag_upload_tasks[task_id].update(status='error', error=str(e))
+            finally:
+                try:
+                    os.unlink(tmp.name)
+                except OSError:
+                    pass
+
+        thread = threading.Thread(target=run_upload, daemon=True)
+        thread.start()
+
+        return jsonify({'task_id': task_id}), 202
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/rag/upload-progress/<task_id>', methods=['GET'])
+def rag_upload_progress(task_id):
+    """Poll RAG upload progress."""
+    task = _rag_upload_tasks.get(task_id)
+    if not task:
+        return jsonify({'error': 'Unknown task'}), 404
+
+    response = {
+        'status': task['status'],
+        'progress': task['progress'],
+        'message': task['message'],
+        'total_chunks': task.get('total_chunks'),
+    }
+
+    if task['status'] == 'complete':
+        response['result'] = task['result']
+        del _rag_upload_tasks[task_id]
+    elif task['status'] == 'error':
+        response['error'] = task['error']
+        del _rag_upload_tasks[task_id]
+
+    return jsonify(response)
+
+
 @app.route('/rag/query', methods=['POST'])
 def query_rag_documents():
     """Query across uploaded textbooks with True RAG answer generation"""
@@ -647,6 +797,125 @@ def analyze_for_simplification():
     except Exception as e:
         print(f"Simplification error: {e}")
         return jsonify({'error': str(e)}), 500
+
+_simplify_tasks = {}
+
+@app.route('/simplify/analyze-async', methods=['POST'])
+def analyze_for_simplification_async():
+    """Start async simplification and return task_id for progress polling."""
+    try:
+        data = request.get_json()
+        text = data.get('text', '')
+        target_grade_raw = data.get('target_grade', 6)
+        if isinstance(target_grade_raw, str):
+            import re as _re
+            m = _re.search(r'\d+', target_grade_raw)
+            target_grade = int(m.group()) if m else 6
+        else:
+            target_grade = int(target_grade_raw)
+        mode = data.get('mode', 'auto')
+
+        if not text or len(text.strip()) < 10:
+            return jsonify({'error': 'Text must be at least 10 characters'}), 400
+
+        task_id = str(uuid.uuid4())
+        _simplify_tasks[task_id] = {
+            'status': 'processing',
+            'progress': 0.0,
+            'message': 'Starting...',
+            'eta_seconds': None,
+            'rewrite_route': None,
+            'phase': 'start',
+            'current_paragraph': None,
+            'total_paragraphs': None,
+            'llm_calls_used': None,
+            'llm_call_budget': None,
+            'result': None,
+            'error': None,
+        }
+
+        def run_simplification():
+            try:
+                def on_progress(pct, msg, eta, meta=None):
+                    update = {
+                        'progress': pct,
+                        'message': msg,
+                        'eta_seconds': eta,
+                    }
+                    if isinstance(meta, dict):
+                        update.update({
+                            key: value
+                            for key, value in meta.items()
+                            if key in {
+                                'rewrite_route',
+                                'phase',
+                                'current_paragraph',
+                                'total_paragraphs',
+                                'llm_calls_used',
+                                'llm_call_budget',
+                            }
+                        })
+                    _simplify_tasks[task_id].update(**update)
+
+                result = simplifier.simplify_to_grade(
+                    text, target_grade, mode=mode, progress_callback=on_progress,
+                )
+                _simplify_tasks[task_id].update(
+                    status='complete',
+                    progress=1.0,
+                    message='Done',
+                    result={
+                        'original_text': text,
+                        'suggested_changes': result['changes'],
+                        'preview_text': result['simplified_text'],
+                        'preview_metrics': result.get('preview_metrics'),
+                        'target_distance': result.get('target_distance'),
+                        'selection_summary': result.get('selection_summary'),
+                    },
+                )
+            except Exception as e:
+                print(f"Async simplification error: {e}")
+                _simplify_tasks[task_id].update(status='error', error=str(e))
+
+        thread = threading.Thread(target=run_simplification, daemon=True)
+        thread.start()
+        return jsonify({'task_id': task_id}), 202
+
+    except Exception as e:
+        print(f"Async simplification setup error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/simplify/progress/<task_id>', methods=['GET'])
+def simplify_progress(task_id):
+    """Poll simplification progress."""
+    task = _simplify_tasks.get(task_id)
+    if not task:
+        return jsonify({'error': 'Unknown task'}), 404
+
+    if task['status'] == 'complete':
+        result = task['result']
+        del _simplify_tasks[task_id]
+        return jsonify({**result, 'status': 'complete'})
+
+    if task['status'] == 'error':
+        error = task['error']
+        del _simplify_tasks[task_id]
+        return jsonify({'status': 'error', 'error': error}), 500
+
+    return jsonify({
+        'status': task['status'],
+        'progress': task['progress'],
+        'message': task['message'],
+        'eta_seconds': task['eta_seconds'],
+        'rewrite_route': task.get('rewrite_route'),
+        'phase': task.get('phase'),
+        'current_paragraph': task.get('current_paragraph'),
+        'total_paragraphs': task.get('total_paragraphs'),
+        'llm_calls_used': task.get('llm_calls_used'),
+        'llm_call_budget': task.get('llm_call_budget'),
+    })
+
 
 @app.route('/simplify/apply', methods=['POST'])
 def apply_selected_changes():
