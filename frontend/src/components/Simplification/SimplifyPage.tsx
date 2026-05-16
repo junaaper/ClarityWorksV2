@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, Save, Wand2, Check, X, Download, FileText, TrendingDown, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Wand2, Check, X, Download, FileText, TrendingDown, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
 import { analysisApi, simplifyApi } from '../../services/api';
 import { exportSimplificationPDF, exportSimplificationDOCX } from '../../utils/exportSimplification';
 import type {
@@ -218,6 +218,7 @@ type ParagraphReview = {
   changeCount: number;
   sentenceCountBefore: number;
   sentenceCountAfter: number;
+  sentenceChanges: Change[];
 };
 
 const getEvidenceLabel = (item: ExplanationItem) => {
@@ -457,7 +458,7 @@ const extractDiffEvidence = (original: string, rewritten: string): ExplanationIt
   return items;
 };
 
-const dedupeEvidenceItems = (items: ExplanationItem[], limit = 6): ExplanationItem[] => {
+const dedupeEvidenceItems = (items: ExplanationItem[], limit = 20): ExplanationItem[] => {
   const seen = new Set<string>();
   const deduped: ExplanationItem[] = [];
   for (const item of items) {
@@ -561,7 +562,10 @@ const buildParagraphReviews = (
       ...extractHintEvidence(original.text, rewritten.text),
       ...extractDiffEvidence(original.text, rewritten.text),
     ];
-    const evidence = dedupeEvidenceItems([...backendEvidence, ...frontendEvidence], 6);
+    const evidence = dedupeEvidenceItems([...backendEvidence, ...frontendEvidence], 20);
+    const sentenceChanges = paragraphChanges.filter(
+      (c) => c.review_scope === 'sentence' || c.review_scope === 'paragraph'
+    );
     const sentenceCountBefore = countSentences(original.text);
     const sentenceCountAfter = countSentences(rewritten.text);
     const wordCountBefore = countWords(original.text);
@@ -587,6 +591,7 @@ const buildParagraphReviews = (
       changeCount: paragraphChanges.length,
       sentenceCountBefore,
       sentenceCountAfter,
+      sentenceChanges,
     });
   }
 
@@ -649,15 +654,125 @@ const EvidenceItems: React.FC<{
   );
 };
 
+const SentenceChangeCard: React.FC<{
+  change: Change;
+  sentenceIndex: number;
+  defaultOpen?: boolean;
+  mode?: 'auto' | 'interactive';
+  onAccept?: (id: number) => void;
+  onDeny?: (id: number) => void;
+}> = ({ change, sentenceIndex, defaultOpen = false, mode, onAccept, onDeny }) => {
+  const [open, setOpen] = React.useState(defaultOpen);
+  const items = change.explanation_items ?? [];
+  const label = change.type === 'sentence_split'
+    ? 'Sentence split'
+    : change.type === 'sentence_combine'
+      ? 'Sentences combined'
+      : 'Sentence rewrite';
+
+  return (
+    <div
+      className="rounded-md overflow-hidden"
+      style={{
+        border: '1px solid var(--border-default)',
+        background: 'var(--surface-raised)',
+      }}
+    >
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
+        style={{ background: open ? 'color-mix(in srgb, var(--p-50) 40%, var(--surface-raised))' : undefined }}
+      >
+        {open
+          ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
+          : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
+        }
+        <span className="cw-badge cw-badge-info" style={{ fontSize: 10 }}>Sentence {sentenceIndex + 1}</span>
+        <span className="cw-badge cw-badge-neutral" style={{ fontSize: 10 }}>{label}</span>
+        {items.length > 0 && (
+          <span className="cw-badge cw-badge-ok" style={{ fontSize: 10 }}>
+            {items.length} change{items.length === 1 ? '' : 's'}
+          </span>
+        )}
+        {mode === 'interactive' && change.accepted === null && onAccept && onDeny && (
+          <span className="ml-auto flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={(e) => { e.stopPropagation(); onAccept(change.id); }}
+              className="p-1 rounded hover:bg-green-100"
+              style={{ color: 'var(--ok-600)' }}
+              title="Accept"
+            >
+              <Check className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDeny(change.id); }}
+              className="p-1 rounded hover:bg-red-100"
+              style={{ color: 'var(--err-600)' }}
+              title="Deny"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </span>
+        )}
+        {mode === 'interactive' && change.accepted === true && (
+          <span className="cw-badge cw-badge-ok ml-auto" style={{ fontSize: 10 }}>Accepted</span>
+        )}
+        {mode === 'interactive' && change.accepted === false && (
+          <span className="cw-badge cw-badge-err ml-auto" style={{ fontSize: 10 }}>Denied</span>
+        )}
+      </button>
+      {!open && change.reason && (
+        <p className="px-3 pb-2" style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.45 }}>
+          {change.reason}
+        </p>
+      )}
+
+      {open && (
+        <div className="px-3 pb-3 pt-1" style={{ borderTop: '1px solid var(--border-default)' }}>
+          <div className="mb-2">
+            <div style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 2 }}>Original:</div>
+            <p style={{
+              fontSize: 11.5,
+              color: 'var(--err-700)',
+              textDecoration: 'line-through',
+              lineHeight: 1.5,
+              fontStyle: 'italic',
+            }}>
+              {change.original}
+            </p>
+          </div>
+          <div className="mb-2">
+            <div style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 2 }}>Rewritten:</div>
+            <p style={{
+              fontSize: 11.5,
+              color: 'var(--s-700)',
+              lineHeight: 1.5,
+              fontWeight: 500,
+            }}>
+              {change.simplified}
+            </p>
+          </div>
+          {items.length > 0 && (
+            <EvidenceItems items={items} limit={20} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ParagraphReviewCards: React.FC<{
   reviews: ParagraphReview[];
-}> = ({ reviews }) => {
+  mode?: 'auto' | 'interactive';
+  onAccept?: (id: number) => void;
+  onDeny?: (id: number) => void;
+}> = ({ reviews, mode, onAccept, onDeny }) => {
   if (!reviews.length) return null;
 
   return (
     <div className="cw-card cw-card-pad-lg mt-5">
       <h3 className="cw-section-title mb-4">Paragraph Reviews</h3>
-      <div className="space-y-3">
+      <div className="space-y-4">
         {reviews.map((review) => (
           <div
             key={`paragraph-review-${review.index}`}
@@ -667,22 +782,38 @@ const ParagraphReviewCards: React.FC<{
               borderLeft: '3px solid var(--s-500)',
             }}
           >
-            <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5 mb-2 flex-wrap">
               <span className="cw-badge cw-badge-neutral">Paragraph {review.index + 1}</span>
-              <span className="cw-badge cw-badge-neutral">Paragraph Review</span>
               <span className="cw-badge cw-badge-info">
                 {review.sentenceCountBefore} &rarr; {review.sentenceCountAfter} sentences
               </span>
               {review.changeCount > 0 && (
                 <span className="cw-badge cw-badge-ok">
-                  {review.changeCount} linked change{review.changeCount === 1 ? '' : 's'}
+                  {review.changeCount} change{review.changeCount === 1 ? '' : 's'}
                 </span>
               )}
             </div>
-            <p style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+            <p style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5, marginBottom: 8 }}>
               {review.reason}
             </p>
-            <EvidenceItems items={review.evidence} limit={6} />
+
+            {review.sentenceChanges.length > 0 ? (
+              <div className="space-y-1.5">
+                {review.sentenceChanges.map((change, idx) => (
+                  <SentenceChangeCard
+                    key={`sc-${review.index}-${change.id}`}
+                    change={change}
+                    sentenceIndex={idx}
+                    defaultOpen={idx === 0}
+                    mode={mode}
+                    onAccept={onAccept}
+                    onDeny={onDeny}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EvidenceItems items={review.evidence} limit={20} />
+            )}
           </div>
         ))}
       </div>
@@ -1775,8 +1906,8 @@ const SimplifyPage: React.FC = () => {
 
       {/* Auto explanations / Interactive changes */}
       {changes.length > 0 && (
-        mode === 'auto' && autoParagraphReviews.length > 0 ? (
-          <ParagraphReviewCards reviews={autoParagraphReviews} />
+        autoParagraphReviews.length > 0 ? (
+          <ParagraphReviewCards reviews={autoParagraphReviews} mode={mode} onAccept={handleAccept} onDeny={handleDeny} />
         ) : (
         <div className="cw-card cw-card-pad-lg mt-5">
           <h3 className="cw-section-title mb-4">All Changes</h3>
@@ -2041,92 +2172,261 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
     return <span className="text-gray-800 whitespace-pre-wrap">{text}</span>;
   }
 
+  // Group segments by parent sentence so we can wrap each sentence in one
+  // continuous <span> with a single background — embedded words become nested
+  // children that only add an underline, eliminating visual breaks.
+  type SentenceGroup = {
+    sentence: Segment;
+    children: Segment[];
+  };
+
+  const sentenceGroups: SentenceGroup[] = [];
+  const standaloneParts: Segment[] = [];
+
+  for (const seg of segments) {
+    if (seg.scope === 'sentence' && !seg.embedded) {
+      // Find or create a group for this sentence change span
+      let group = sentenceGroups.find(
+        (g) => g.sentence.change.id === seg.change.id &&
+               g.sentence.start <= seg.start && g.sentence.end >= seg.end
+      );
+      if (!group) {
+        // Find the original sentence highlight that contains this segment
+        const parentSentence = sentenceHighlights.find(
+          (sh) => sh.change.id === seg.change.id &&
+                  sh.start <= seg.start && sh.end >= seg.end
+        );
+        if (parentSentence) {
+          group = sentenceGroups.find(
+            (g) => g.sentence.change.id === parentSentence.change.id &&
+                   g.sentence.start === parentSentence.start &&
+                   g.sentence.end === parentSentence.end
+          );
+          if (!group) {
+            group = { sentence: parentSentence, children: [] };
+            sentenceGroups.push(group);
+          }
+        }
+        if (!group) {
+          group = { sentence: seg, children: [] };
+          sentenceGroups.push(group);
+        }
+      }
+    } else if (seg.embedded) {
+      // Find the parent sentence group for this embedded word
+      const parentGroup = sentenceGroups.find(
+        (g) => g.sentence.change.id === seg.change.id &&
+               seg.start >= g.sentence.start && seg.end <= g.sentence.end
+      ) || sentenceGroups.find(
+        (g) => seg.start >= g.sentence.start && seg.end <= g.sentence.end
+      );
+      if (parentGroup) {
+        parentGroup.children.push(seg);
+      } else {
+        standaloneParts.push(seg);
+      }
+    } else {
+      standaloneParts.push(seg);
+    }
+  }
+
   const parts: React.ReactNode[] = [];
   let key = 0;
   let pos = 0;
 
-  for (const seg of segments) {
-    if (seg.end <= pos) continue;
-    const renderStart = Math.max(seg.start, pos);
-    if (renderStart > pos) {
+  // Build a unified render list: sentence groups + standalone word segments, sorted by position
+  type RenderItem =
+    | { kind: 'sentence'; group: SentenceGroup }
+    | { kind: 'standalone'; seg: Segment };
+
+  const renderItems: RenderItem[] = [
+    ...sentenceGroups.map((group): RenderItem => ({ kind: 'sentence', group })),
+    ...standaloneParts.map((seg): RenderItem => ({ kind: 'standalone', seg })),
+  ].sort((a, b) => {
+    const aStart = a.kind === 'sentence' ? a.group.sentence.start : a.seg.start;
+    const bStart = b.kind === 'sentence' ? b.group.sentence.start : b.seg.start;
+    return aStart - bStart;
+  });
+
+  for (const item of renderItems) {
+    if (item.kind === 'sentence') {
+      const { sentence, children } = item.group;
+      if (sentence.end <= pos) continue;
+      const sentenceStart = Math.max(sentence.start, pos);
+
+      // Gap before this sentence
+      if (sentenceStart > pos) {
+        parts.push(
+          <span key={key++} className="text-gray-800">{text.slice(pos, sentenceStart)}</span>
+        );
+      }
+
+      const isPending = sentence.change.accepted === null;
+      const isDenied = sentence.change.accepted === false;
+      const sentenceSegKey = `${sentence.change.id}:${sentenceStart}:${sentence.end}:${sentence.paragraphReview?.index ?? 'x'}:none`;
+      const isSentenceHovered = hoveredSegmentKey
+        ? hoveredSegmentKey === sentenceSegKey
+        : hoveredChange === sentence.change.id;
+
+      let sentenceBg: string;
+      let sentenceText: string;
+      if (isSentenceHovered) {
+        sentenceBg = isPending ? 'bg-amber-400' : isDenied ? 'bg-red-300' : 'bg-blue-300';
+        sentenceText = isPending ? 'text-amber-900' : isDenied ? 'text-red-900' : 'text-blue-900';
+      } else {
+        sentenceBg = isPending ? 'bg-amber-100' : isDenied ? 'bg-red-100' : 'bg-blue-100';
+        sentenceText = isPending ? 'text-amber-800' : isDenied ? 'text-red-800' : 'text-blue-800';
+      }
+
+      // Build inner content: sentence text with embedded words as nested spans
+      const innerParts: React.ReactNode[] = [];
+      let innerKey = 0;
+      let cursor = sentenceStart;
+      const sortedChildren = [...children]
+        .filter((c) => c.end > sentenceStart && c.start < sentence.end)
+        .sort((a, b) => a.start - b.start);
+
+      for (const child of sortedChildren) {
+        const childStart = Math.max(child.start, cursor);
+        const childEnd = Math.min(child.end, sentence.end);
+        if (childEnd <= cursor) continue;
+
+        // Text before this embedded word (plain sentence text)
+        if (childStart > cursor) {
+          innerParts.push(
+            <span key={innerKey++}>{text.slice(cursor, childStart)}</span>
+          );
+        }
+
+        const childEvidenceKey = child.evidenceItem
+          ? `${child.evidenceItem.kind}-${child.evidenceItem.before ?? ''}-${child.evidenceItem.after ?? ''}`
+          : 'none';
+        const childSegKey = `${child.change.id}:${childStart}:${childEnd}:${child.paragraphReview?.index ?? 'x'}:${childEvidenceKey}`;
+        const isChildHovered = hoveredSegmentKey
+          ? hoveredSegmentKey === childSegKey
+          : false;
+        const embeddedHover =
+          isChildHovered &&
+          (child.evidenceItem ? hoveredEvidenceItem === child.evidenceItem : !hoveredEvidenceItem);
+
+        // Embedded word: inherits sentence background, only adds underline + optional hover
+        let embeddedClass = 'border-b-2 border-teal-500 font-medium cursor-help';
+        if (embeddedHover) {
+          embeddedClass = 'bg-teal-100 text-teal-950 border-b-2 border-teal-700 rounded-sm cursor-help';
+        }
+
+        innerParts.push(
+          <span
+            key={innerKey++}
+            className={embeddedClass}
+            onMouseEnter={(e) => onHover(child.change.id, e, {
+              embedded: true,
+              evidenceItem: child.evidenceItem ?? null,
+              paragraphReview: child.paragraphReview ?? null,
+              segmentKey: childSegKey,
+            })}
+            onMouseLeave={() => onHover(null)}
+          >
+            {text.slice(childStart, childEnd)}
+          </span>
+        );
+        cursor = childEnd;
+      }
+
+      // Remaining sentence text after last embedded word
+      if (cursor < sentence.end) {
+        innerParts.push(
+          <span key={innerKey++}>{text.slice(cursor, sentence.end)}</span>
+        );
+      }
+
+      // Wrap entire sentence in one continuous span
       parts.push(
-        <span key={key++} className="text-gray-800">
-          {text.slice(pos, renderStart)}
+        <span
+          key={key++}
+          className={`${sentenceBg} ${sentenceText} rounded-sm cursor-help transition-colors`}
+          onMouseEnter={(e) => onHover(sentence.change.id, e, {
+            embedded: false,
+            evidenceItem: null,
+            paragraphReview: sentence.paragraphReview ?? null,
+            segmentKey: sentenceSegKey,
+          })}
+          onMouseLeave={() => onHover(null)}
+        >
+          {innerParts}
         </span>
       );
-    }
-
-    const isPending = seg.change.accepted === null;
-    const isAccepted = seg.change.accepted === true;
-    const isDenied = seg.change.accepted === false;
-    const isWord = seg.scope === 'word';
-    const isEmbeddedWord = isWord && Boolean(seg.embedded);
-    const evidenceKey = seg.evidenceItem
-      ? `${seg.evidenceItem.kind}-${seg.evidenceItem.before ?? ''}-${seg.evidenceItem.after ?? ''}`
-      : 'none';
-    const segmentKey = `${seg.change.id}:${renderStart}:${seg.end}:${seg.paragraphReview?.index ?? 'x'}:${evidenceKey}`;
-    const isHoveredSegment = hoveredSegmentKey
-      ? hoveredSegmentKey === segmentKey
-      : hoveredChange === seg.change.id;
-
-    let highlightClass = 'rounded-sm cursor-help transition-colors ';
-    if (isEmbeddedWord) {
-      const embeddedHover =
-        isHoveredSegment &&
-        (seg.evidenceItem ? hoveredEvidenceItem === seg.evidenceItem : !hoveredEvidenceItem);
-      if (embeddedHover) {
-        highlightClass += 'bg-teal-100 text-teal-950 border-b-2 border-teal-700';
-      } else {
-        highlightClass += `${isPending ? 'bg-amber-100' : isDenied ? 'bg-red-100' : 'bg-blue-100'} text-teal-900 border-b-2 border-teal-500`;
-      }
-    } else if (isHoveredSegment) {
-      highlightClass += isPending
-        ? 'bg-amber-400 text-amber-900'
-        : isDenied
-          ? 'bg-red-300 text-red-900'
-          : isWord ? 'bg-green-400 text-green-900' : 'bg-blue-300 text-blue-900';
+      pos = sentence.end;
     } else {
-      highlightClass += isPending
-        ? 'bg-amber-100 text-amber-800 border-b-2 border-amber-400'
-        : isDenied
-          ? 'bg-red-100 text-red-800 border-b-2 border-red-400'
-          : isWord ? 'bg-green-200 text-green-800' : 'bg-blue-100 text-blue-800';
-    }
+      // Standalone word highlight (not inside a sentence)
+      const seg = item.seg;
+      if (seg.end <= pos) continue;
+      const renderStart = Math.max(seg.start, pos);
 
-    parts.push(
-      <span
-        key={key++}
-        className={highlightClass}
-        onMouseEnter={(e) => onHover(seg.change.id, e, {
-          embedded: isEmbeddedWord,
-          evidenceItem: seg.evidenceItem ?? null,
-          paragraphReview: seg.paragraphReview ?? null,
-          segmentKey,
-        })}
-        onMouseLeave={() => onHover(null)}
-      >
-        {text.slice(renderStart, seg.end)}
-        {mode === 'interactive' && isWord && !isEmbeddedWord && (
-          <span className="inline-flex ml-1 gap-0.5 align-middle">
-            <button
-              onClick={(e) => { e.stopPropagation(); onAccept(seg.change.id); }}
-              className={`inline-flex items-center justify-center w-4 h-4 text-white rounded-full text-xs leading-none ${isAccepted ? 'bg-green-700' : 'bg-green-500 hover:bg-green-700'}`}
-              title="Accept"
-            >
-              &#10003;
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onDeny(seg.change.id); }}
-              className={`inline-flex items-center justify-center w-4 h-4 text-white rounded-full text-xs leading-none ${isDenied ? 'bg-red-700' : 'bg-red-500 hover:bg-red-700'}`}
-              title="Deny"
-            >
-              &#10005;
-            </button>
-          </span>
-        )}
-      </span>
-    );
-    pos = seg.end;
+      if (renderStart > pos) {
+        parts.push(
+          <span key={key++} className="text-gray-800">{text.slice(pos, renderStart)}</span>
+        );
+      }
+
+      const isPending = seg.change.accepted === null;
+      const isAccepted = seg.change.accepted === true;
+      const isDenied = seg.change.accepted === false;
+      const segmentKey = `${seg.change.id}:${renderStart}:${seg.end}:${seg.paragraphReview?.index ?? 'x'}:none`;
+      const isHoveredSegment = hoveredSegmentKey
+        ? hoveredSegmentKey === segmentKey
+        : hoveredChange === seg.change.id;
+
+      let highlightClass = 'rounded-sm cursor-help transition-colors ';
+      if (isHoveredSegment) {
+        highlightClass += isPending
+          ? 'bg-amber-400 text-amber-900'
+          : isDenied
+            ? 'bg-red-300 text-red-900'
+            : 'bg-green-400 text-green-900';
+      } else {
+        highlightClass += isPending
+          ? 'bg-amber-100 text-amber-800 border-b-2 border-amber-400'
+          : isDenied
+            ? 'bg-red-100 text-red-800 border-b-2 border-red-400'
+            : 'bg-green-200 text-green-800';
+      }
+
+      parts.push(
+        <span
+          key={key++}
+          className={highlightClass}
+          onMouseEnter={(e) => onHover(seg.change.id, e, {
+            embedded: false,
+            evidenceItem: seg.evidenceItem ?? null,
+            paragraphReview: seg.paragraphReview ?? null,
+            segmentKey,
+          })}
+          onMouseLeave={() => onHover(null)}
+        >
+          {text.slice(renderStart, seg.end)}
+          {mode === 'interactive' && (
+            <span className="inline-flex ml-1 gap-0.5 align-middle">
+              <button
+                onClick={(e) => { e.stopPropagation(); onAccept(seg.change.id); }}
+                className={`inline-flex items-center justify-center w-4 h-4 text-white rounded-full text-xs leading-none ${isAccepted ? 'bg-green-700' : 'bg-green-500 hover:bg-green-700'}`}
+                title="Accept"
+              >
+                &#10003;
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDeny(seg.change.id); }}
+                className={`inline-flex items-center justify-center w-4 h-4 text-white rounded-full text-xs leading-none ${isDenied ? 'bg-red-700' : 'bg-red-500 hover:bg-red-700'}`}
+                title="Deny"
+              >
+                &#10005;
+              </button>
+            </span>
+          )}
+        </span>
+      );
+      pos = seg.end;
+    }
   }
 
   if (pos < text.length) {

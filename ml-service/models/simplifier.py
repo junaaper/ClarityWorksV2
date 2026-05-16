@@ -9220,20 +9220,19 @@ ORIGINAL TEXT:
             if tag == 'equal':
                 continue
 
-            if prefer_sentence_level:
-                sentence_aligned_changes = self._diff_sentence_block_by_order(
-                    original_text=original_text,
-                    rewritten_text=rewritten_text,
-                    original_sentences=original_sentences[i1:i2],
-                    rewritten_sentences=rewritten_sentences[j1:j2],
-                    target_grade=target_grade,
-                    going_up=going_up,
-                    original_offset=original_offset,
-                    rewritten_offset=rewritten_offset,
-                )
-                if sentence_aligned_changes:
-                    changes.extend(sentence_aligned_changes)
-                    continue
+            sentence_aligned_changes = self._diff_sentence_block_by_order(
+                original_text=original_text,
+                rewritten_text=rewritten_text,
+                original_sentences=original_sentences[i1:i2],
+                rewritten_sentences=rewritten_sentences[j1:j2],
+                target_grade=target_grade,
+                going_up=going_up,
+                original_offset=original_offset,
+                rewritten_offset=rewritten_offset,
+            )
+            if sentence_aligned_changes:
+                changes.extend(sentence_aligned_changes)
+                continue
 
             original_start = original_sentences[i1]['start'] if i1 < len(original_sentences) else original_length
             original_end = original_sentences[i2 - 1]['end'] if i2 > i1 else original_start
@@ -9332,36 +9331,75 @@ ORIGINAL TEXT:
             return None
 
         changes = []
+        llm_pairs = []
+        pair_to_change_index = {}
+
         for original_index, rewritten_index, original_span_count, rewritten_span_count in pairings:
             original_start = original_sentences[original_index]['start']
             original_end = original_sentences[original_index + original_span_count - 1]['end']
             rewritten_start = rewritten_sentences[rewritten_index]['start']
             rewritten_end = rewritten_sentences[rewritten_index + rewritten_span_count - 1]['end']
 
-            block_changes = self._diff_change_block(
-                original_text[original_start:original_end],
-                rewritten_text[rewritten_start:rewritten_end],
+            orig_span = original_text[original_start:original_end]
+            rew_span = rewritten_text[rewritten_start:rewritten_end]
+
+            if orig_span.strip() == rew_span.strip():
+                continue
+
+            change = self._build_patch_change(
+                orig_span,
+                rew_span,
+                original_offset + original_start,
+                original_offset + original_end,
+                rewritten_offset + rewritten_start,
                 target_grade,
                 going_up,
-                original_offset=original_offset + original_start,
-                rewritten_offset=rewritten_offset + rewritten_start,
-                prefer_sentence_level=True,
+                allow_fallback=True,
             )
-            if not block_changes:
-                change = self._build_patch_change(
-                    original_text[original_start:original_end],
-                    rewritten_text[rewritten_start:rewritten_end],
-                    original_offset + original_start,
-                    original_offset + original_end,
-                    rewritten_offset + rewritten_start,
-                    target_grade,
-                    going_up,
-                    allow_fallback=True,
-                )
-                if change:
-                    block_changes = [change]
+            if change:
+                pair_to_change_index[len(llm_pairs)] = len(changes)
+                llm_pairs.append({'original': orig_span.strip(), 'rewritten': rew_span.strip()})
+                changes.append(change)
 
-            changes.extend(block_changes)
+        if llm_pairs and self._llm_calls_remaining():
+            llm_explanations = self.llm_validator.explain_sentence_changes(llm_pairs, going_up)
+            self._llm_calls_made += 1
+            for pair_idx_str, items in llm_explanations.items():
+                try:
+                    pair_idx = int(pair_idx_str)
+                except (ValueError, TypeError):
+                    continue
+                change_idx = pair_to_change_index.get(pair_idx)
+                if change_idx is None or change_idx >= len(changes):
+                    continue
+                explanation_items = []
+                for item in (items or []):
+                    if not isinstance(item, dict):
+                        continue
+                    before = item.get('before', '')
+                    after = item.get('after', '')
+                    reason = item.get('reason', '')
+                    before_lookup = re.sub(r"[^\w]", '', before).lower()
+                    after_lookup = re.sub(r"[^\w]", '', after).lower()
+                    freq_before = zipf_frequency(before_lookup, 'en') if before_lookup else 0.0
+                    freq_after = zipf_frequency(after_lookup, 'en') if after_lookup else 0.0
+                    syl_before = self.text_processor.count_syllables(before_lookup) if before_lookup else 0
+                    syl_after = self.text_processor.count_syllables(after_lookup) if after_lookup else 0
+                    kind = 'word_upgrade' if going_up else 'word_replacement'
+                    if 'split' in reason.lower() or 'combin' in reason.lower():
+                        kind = 'sentence_rewrite'
+                    explanation_items.append({
+                        'kind': kind,
+                        'before': before,
+                        'after': after,
+                        'frequency_before': round(freq_before, 2),
+                        'frequency_after': round(freq_after, 2),
+                        'syllables_before': syl_before,
+                        'syllables_after': syl_after,
+                        'text': f"Replaced '{before}' with '{after}' — {reason}" if before and after else reason,
+                    })
+                if explanation_items:
+                    changes[change_idx]['explanation_items'] = explanation_items
 
         return changes or None
 
@@ -10267,6 +10305,7 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
             None,
             rewrite_route='large_shift_llm',
             phase='document_check',
+            current_paragraph=n_groups,
             total_paragraphs=n_groups,
             llm_calls_used=self._llm_calls_made,
             llm_call_budget=self._llm_call_budget,
@@ -10372,10 +10411,11 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
         self._emit_progress(
             progress_callback,
             0.95,
-            'Generating changes...',
+            'Analyzing changes...',
             None,
             rewrite_route='large_shift_llm',
             phase='diff',
+            current_paragraph=n_groups,
             total_paragraphs=n_groups,
             llm_calls_used=self._llm_calls_made,
             llm_call_budget=self._llm_call_budget,

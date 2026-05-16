@@ -117,6 +117,69 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
         except Exception:
             return fallback
 
+    def explain_sentence_changes(self, pairs, going_up):
+        """Return per-sentence-pair word/phrase change explanations.
+
+        Args:
+            pairs: list of {"original": str, "rewritten": str}
+            going_up: bool — whether we're upgrading complexity
+
+        Returns:
+            dict mapping str(index) -> list of
+              {"before": str, "after": str, "reason": str}
+        """
+        if not self.client or not pairs:
+            return {}
+
+        try:
+            direction = "upgraded (made more formal/academic)" if going_up else "simplified (made easier)"
+            pair_lines = []
+            for i, pair in enumerate(pairs):
+                pair_lines.append(
+                    f"Pair {i}:\n"
+                    f"Original: {pair['original'][:400]}\n"
+                    f"Rewritten: {pair['rewritten'][:400]}"
+                )
+
+            prompt = f"""The following sentence pairs show text that was {direction}.
+For each pair, identify the specific word or short phrase changes (not whole sentences).
+List only meaningful content-word changes — skip punctuation, articles, and minor function words.
+
+{chr(10).join(pair_lines)}
+
+Return ONLY valid JSON — a mapping from pair index (as string) to a list of changes:
+{{
+  "0": [
+    {{"before": "had", "after": "owned", "reason": "more formal verb"}},
+    {{"before": "liked to run", "after": "enjoyed running", "reason": "more academic phrasing"}}
+  ],
+  "1": [...]
+}}
+
+Rules:
+- Each change must have "before", "after", and "reason" fields.
+- "before" must appear in the Original text; "after" must appear in the Rewritten text.
+- Keep reasons under 10 words.
+- If a sentence was split or combined, include one entry with before/after showing the structural change and reason "sentence split" or "sentence combined".
+- Maximum 6 changes per pair.
+"""
+
+            response = self.client.chat.completions.create(
+                model=FIREWORKS_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+                max_tokens=1500,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+            )
+            content = response.choices[0].message.content
+            result = self._parse_json_response(content, {})
+            if not isinstance(result, dict):
+                return {}
+            return result
+        except Exception as e:
+            print(f"LLM explain_sentence_changes error: {e}")
+            return {}
+
     def critic_candidates(self, original_text, target_grade, candidates):
         """
         Review top deterministic candidates and return bounded JSON feedback.
