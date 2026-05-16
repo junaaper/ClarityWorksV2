@@ -816,6 +816,111 @@ def run_route_gap_beats_paragraph_count_case(simplifier):
         raise AssertionError(f"Raw 8.0 -> 10 should stay medium_shift_controlled, got {route_raw_8_to_10}")
 
 
+def run_short_high_upgrade_route_case(simplifier):
+    text = (
+        "Tom had a small brown dog named Max. Every day after lunch Tom and Max would go to the yard. "
+        "Tom threw a red ball far across the green grass. Max ran as fast as he could to bring the ball back to Tom.\n\n"
+        "One warm day they took a long walk by the pond. They saw some fat ducks on the clear blue water. "
+        "The ducks did not seem to care. Max barked but would not jump in the cold water after them.\n\n"
+        "After their walk they went home and Tom gave Max all of his food and then lay down on his soft warm bed to rest. "
+        "That night Tom sat next to Max and read a new book about ships and the deep blue sea. "
+        "Max slept on the rug near his feet while the fire kept them warm."
+    )
+    source_grade = 3.1
+    for target in (8, 10):
+        route = simplifier._classify_rewrite_route(text, source_grade, target)
+        if route != 'medium_shift_controlled':
+            raise AssertionError(f"Tom/Max Grade 3 -> {target} should stay medium_shift_controlled, got {route}")
+
+    route_12 = simplifier._classify_rewrite_route(text, source_grade, 12)
+    if route_12 != 'short_high_upgrade':
+        raise AssertionError(f"Tom/Max Grade 3 -> 12 should use short_high_upgrade, got {route_12}")
+    if simplifier._should_use_paragraph_pipeline(text):
+        raise AssertionError("Tom/Max short text should not use paragraph pipeline.")
+
+    original_client = simplifier.llm_client
+    original_select = simplifier._select_authoring_candidate
+    original_paragraph = simplifier._paragraph_pipeline
+    captured = {}
+    try:
+        simplifier.llm_client = object()
+        simplifier._paragraph_pipeline = lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("short high upgrade should not call paragraph pipeline")
+        )
+
+        def fake_select(*args, **kwargs):
+            captured['prefer_rule_based'] = kwargs.get('prefer_rule_based')
+            captured['called'] = True
+            return {
+                'text': text.replace('small brown dog', 'small, energetic brown dog'),
+                'score': 1.0,
+                'going_up': True,
+                'selection_summary': {
+                    'generation_mode': 'test_whole_text',
+                    'source_grade': source_grade,
+                    'target_grade': 12,
+                    'selected_score': 1.0,
+                    'selected_path': ['test.whole_text'],
+                    'direction_hit': True,
+                    'target_distance': 1.0,
+                    'invalid_sentence_count': 0,
+                    'semantic_similarity_score': 0.95,
+                    'top_candidates': [],
+                },
+                'top_candidates': [],
+            }
+
+        simplifier._select_authoring_candidate = fake_select
+        simplifier.simplify_to_grade(text, 12, mode='auto')
+    finally:
+        simplifier.llm_client = original_client
+        simplifier._select_authoring_candidate = original_select
+        simplifier._paragraph_pipeline = original_paragraph
+
+    if not captured.get('called'):
+        raise AssertionError("Short high upgrade should call whole-text authoring selection.")
+    if captured.get('prefer_rule_based') is not False:
+        raise AssertionError(
+            "Short high upgrade should seed with rules but allow whole-text LLM candidates "
+            f"(prefer_rule_based={captured.get('prefer_rule_based')!r})."
+        )
+
+
+def run_short_high_upgrade_timeout_case(simplifier):
+    original_client = simplifier.llm_client
+    original_chat = simplifier._llm_chat
+    try:
+        simplifier.llm_client = object()
+        simplifier._llm_call_budget = 2
+        simplifier._llm_calls_made = 0
+        simplifier._metrics_tls.llm_timeout_fallback = False
+
+        def fake_timeout(*_args, **_kwargs):
+            simplifier._llm_calls_made += 1
+            raise TimeoutError("Request timed out.")
+
+        simplifier._llm_chat = fake_timeout
+        candidates = simplifier._generate_llm_candidates(
+            original_text="Tom had a small brown dog named Max. They went to the park each morning.",
+            target_grade=12,
+            source_grade=3.1,
+            going_up=True,
+            mode='auto',
+            policy={'beam_width': 3},
+            rule_selection={'text': "Tom had a small, active brown dog named Max. They visited the park each morning."},
+        )
+    finally:
+        simplifier.llm_client = original_client
+        simplifier._llm_chat = original_chat
+        simplifier._llm_call_budget = None
+        simplifier._llm_calls_made = 0
+
+    if candidates:
+        raise AssertionError(f"Timed-out short high upgrade should return deterministic fallback only, got {candidates}")
+    if not getattr(simplifier._metrics_tls, 'llm_timeout_fallback', False):
+        raise AssertionError("Timed-out short high upgrade should mark llm_timeout_fallback.")
+
+
 def run_paragraph_prompt_metric_contract_case(simplifier):
     text = (
         "Video games can support learning because players solve problems, make plans, "
@@ -1080,6 +1185,8 @@ def main() -> int:
         run_llm_meta_commentary_strip_case(simplifier)
         run_paragraph_exact_group_case(simplifier)
         run_route_gap_beats_paragraph_count_case(simplifier)
+        run_short_high_upgrade_route_case(simplifier)
+        run_short_high_upgrade_timeout_case(simplifier)
         run_paragraph_prompt_metric_contract_case(simplifier)
         run_no_whole_doc_fallback_after_paragraph_failure_case(simplifier)
         run_small_shift_polish_fragment_case(simplifier)

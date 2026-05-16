@@ -716,6 +716,9 @@ class TextSimplifier:
     def _planned_llm_call_budget(self, source_grade, target_grade, text=None):
         if source_grade is None:
             return self.max_llm_calls_per_request
+        if text and self._is_short_high_upgrade(text, source_grade, target_grade):
+            planned = 2 if self.target_lock_quality_mode else 1
+            return min(self.max_llm_calls_per_request, planned)
         if self.rate_limited_llm and not self.target_lock_quality_mode:
             return min(self.max_llm_calls_per_request, 1)
 
@@ -756,6 +759,16 @@ class TextSimplifier:
             return False
         return float(source_grade) - float(target_grade) >= 3.0
 
+    def _is_short_high_upgrade(self, text, source_grade, target_grade):
+        if source_grade is None:
+            return False
+        words = len(re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", text or ''))
+        return (
+            words < 350 and
+            11 <= int(target_grade) <= 12 and
+            float(target_grade) > float(source_grade)
+        )
+
     def _classify_rewrite_route(self, text, source_grade, target_grade):
         words = len(re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", text or ''))
         paragraphs = self._extract_paragraph_chunks(text)
@@ -765,6 +778,8 @@ class TextSimplifier:
             return 'small_shift_fast'
         if display_gap <= 2 or gap <= 3.0:
             return 'medium_shift_controlled'
+        if self._is_short_high_upgrade(text, source_grade, target_grade):
+            return 'short_high_upgrade'
         if words < 350 and target_grade <= 10 and float(target_grade) > float(source_grade):
             return 'medium_shift_controlled'
         if gap > 3.0 or words >= 350 or len(paragraphs) >= 3:
@@ -898,6 +913,17 @@ LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
         )
 
     @staticmethod
+    def _is_timeout_error(exc):
+        err_str = str(exc).lower()
+        return 'timed out' in err_str or 'timeout' in err_str
+
+    def _mark_llm_timeout_fallback(self):
+        try:
+            self._metrics_tls.llm_timeout_fallback = True
+        except Exception:
+            pass
+
+    @staticmethod
     def _parse_retry_after(err_str):
         """Extract retry-after seconds from API error message."""
         import re as _re
@@ -958,6 +984,7 @@ LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
         )
         self._llm_calls_made = 0
         self._metrics_tls.cache = {}
+        self._metrics_tls.llm_timeout_fallback = False
         self._emit_progress(
             progress_callback,
             0.03,
@@ -972,6 +999,7 @@ LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
         try:
             selection = None
             paragraph_pipeline_failed = False
+            paragraph_pipeline_failed_reason = ''
             if (self.llm_client and not prefer_rule_based
                     and rewrite_route == 'large_shift_llm'):
                 try:
@@ -981,6 +1009,9 @@ LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
                 except Exception as e:
                     print(f"[paragraph_pipeline] failed, using rule fallback instead of whole-document LLM: {e}")
                     paragraph_pipeline_failed = True
+                    paragraph_pipeline_failed_reason = str(e)
+                    if self._is_timeout_error(e):
+                        self._mark_llm_timeout_fallback()
                     selection = None
 
             if selection is None:
@@ -997,6 +1028,12 @@ LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
                     self._route_uses_rule_first(rewrite_route) or
                     paragraph_pipeline_failed
                 )
+                if (
+                    paragraph_pipeline_failed and
+                    self._is_timeout_error(paragraph_pipeline_failed_reason) and
+                    self._is_short_high_upgrade(text, source_grade_for_budget, target_grade)
+                ):
+                    use_rule_first = False
                 selection = self._select_authoring_candidate(
                     text=text,
                     target_grade=target_grade,
@@ -1007,8 +1044,14 @@ LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
                 if paragraph_pipeline_failed:
                     selection['selection_summary'] = {
                         **dict(selection.get('selection_summary') or {}),
-                        'generation_mode': 'rule_primary_after_paragraph_pipeline_failure',
+                        'generation_mode': (
+                            'whole_text_after_paragraph_pipeline_timeout'
+                            if not use_rule_first else
+                            'rule_primary_after_paragraph_pipeline_failure'
+                        ),
                         'paragraph_pipeline_failed': True,
+                        'paragraph_pipeline_failed_reason': paragraph_pipeline_failed_reason,
+                        'llm_timeout_fallback': self._is_timeout_error(paragraph_pipeline_failed_reason),
                     }
                 # Escalate to LLM when rule-based returned identity and target hasn't been met
                 if (
@@ -1267,6 +1310,7 @@ LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
             'invalid_sentence_count': final_metrics['invalid_sentence_count'],
             'semantic_similarity_score': final_metrics['semantic_similarity_score'],
             'llm_calls_used': llm_calls_used,
+            'llm_timeout_fallback': bool(getattr(self._metrics_tls, 'llm_timeout_fallback', False)),
             'forced_exact_delivery': forced_exact_delivery,
             'defence_target_fallback_used': defence_target_fallback_used,
             'local_sanity_valid': local_sanity['valid'],
@@ -2677,15 +2721,24 @@ POLISHED REWRITE:"""
         seed = rule_seed_text if (rule_seed_text and rule_seed_text != original_text) else original_text
         seed_label = 'rule_seeded' if seed != original_text else 'direct'
 
-        variants = self._llm_multi_variant_rewrite(
-            original_text=original_text,
-            seed_text=seed,
-            target_grade=target_grade,
-            source_grade=source_grade,
-            going_up=going_up,
-            policy=policy,
-            seed_label=seed_label,
-        )
+        timed_out = False
+        try:
+            variants = self._llm_multi_variant_rewrite(
+                original_text=original_text,
+                seed_text=seed,
+                target_grade=target_grade,
+                source_grade=source_grade,
+                going_up=going_up,
+                policy=policy,
+                seed_label=seed_label,
+            )
+        except Exception as exc:
+            if not self._is_timeout_error(exc):
+                raise
+            self._mark_llm_timeout_fallback()
+            print(f"[fireworks] multi-variant rewrite timed out; using deterministic fallback: {exc}")
+            timed_out = True
+            variants = []
         for variant in variants:
             variant_name = variant.get('name') or 'targeted'
             if hard_jump:
@@ -2715,19 +2768,28 @@ POLISHED REWRITE:"""
                 mode=mode,
                 policy=policy,
             )
+        if timed_out:
+            return []
 
         if self._llm_call_budget is not None and self._llm_calls_made >= self._llm_call_budget:
             return []
 
-        llm_text, _ = self._llm_full_rewrite(
-            seed,
-            target_grade,
-            going_up=going_up,
-            rewrite_style='balanced',
-            reference_text=original_text,
-            plan_label=f'llm.{seed_label}.fallback_balanced',
-            include_diff=False,
-        )
+        try:
+            llm_text, _ = self._llm_full_rewrite(
+                seed,
+                target_grade,
+                going_up=going_up,
+                rewrite_style='balanced',
+                reference_text=original_text,
+                plan_label=f'llm.{seed_label}.fallback_balanced',
+                include_diff=False,
+            )
+        except Exception as exc:
+            if not self._is_timeout_error(exc):
+                raise
+            self._mark_llm_timeout_fallback()
+            print(f"[fireworks] fallback rewrite timed out; using deterministic fallback: {exc}")
+            llm_text = None
         if llm_text and llm_text.strip():
             llm_text = self._restore_paragraph_shape(original_text, llm_text)
             generated.append({
@@ -2777,16 +2839,28 @@ POLISHED REWRITE:"""
         if not self._llm_cascade_needs_more_work(best, target_grade, source_grade):
             return generated
 
-        if self._llm_calls_remaining():
-            corrected = self._llm_target_correction(
-                original_text=original_text,
-                candidate_text=best['text'],
-                metrics=best,
-                target_grade=target_grade,
-                source_grade=source_grade,
-                going_up=going_up,
-                pass_label='target_correction',
-            )
+        short_high_upgrade = self._is_short_high_upgrade(original_text, source_grade, target_grade)
+        should_try_correction = self._llm_calls_remaining()
+        if short_high_upgrade and 11 <= int(target_grade) <= 12:
+            should_try_correction = should_try_correction and float(best.get('raw_score', 0.0) or 0.0) < 10.0
+
+        if should_try_correction:
+            try:
+                corrected = self._llm_target_correction(
+                    original_text=original_text,
+                    candidate_text=best['text'],
+                    metrics=best,
+                    target_grade=target_grade,
+                    source_grade=source_grade,
+                    going_up=going_up,
+                    pass_label='target_correction',
+                )
+            except Exception as exc:
+                if not self._is_timeout_error(exc):
+                    raise
+                self._mark_llm_timeout_fallback()
+                print(f"[fireworks] cascade/target_correction timed out; keeping first-pass candidates: {exc}")
+                corrected = None
             if corrected:
                 corrected = self._restore_paragraph_shape(original_text, corrected)
                 generated.append({
@@ -2794,6 +2868,11 @@ POLISHED REWRITE:"""
                     'rule_history': best.get('rule_history', []) + ['llm.target_correction'],
                     'stage_notes': best.get('stage_notes', []) + ['llm:target_correction'],
                 })
+        elif short_high_upgrade:
+            print(
+                "[fireworks] cascade/target_correction skipped for short high upgrade: "
+                f"raw={float(best.get('raw_score', 0.0) or 0.0):.2f}"
+            )
 
         best_after_correction = self._best_llm_cascade_seed(
             original_text=original_text,
@@ -2804,6 +2883,8 @@ POLISHED REWRITE:"""
             policy=policy,
         )
         if not best_after_correction:
+            return generated
+        if short_high_upgrade:
             return generated
 
         reserve_target_contract = self._should_reserve_target_contract_call(
@@ -3101,11 +3182,18 @@ raw={far_candidate.get('raw_score', 0):.2f}, display_grade={self._display_grade_
 OTHER NEARER/BLOCKED CONTEXT:
 {closest_context}
 """
-        response = self._llm_chat(
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.28 if (not going_up and target_grade <= 7) else 0.18,
-            max_tokens=4096,
-        )
+        try:
+            response = self._llm_chat(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.28 if (not going_up and target_grade <= 7) else 0.18,
+                max_tokens=4096,
+            )
+        except Exception as exc:
+            if not self._is_timeout_error(exc):
+                raise
+            self._mark_llm_timeout_fallback()
+            print(f"[selection] target_contract_rescue timed out; keeping selected candidate: {exc}")
+            return []
         if response is None:
             return []
 
@@ -9726,17 +9814,43 @@ ORIGINAL TEXT:
             )
         else:
             move_label = "large shift"
-            scope_rule = (
-                "A broader rewrite is allowed, but the numeric targets still matter more "
-                "than sounding impressive."
-            )
+            if target_grade >= 11 and grade_delta > 5.0:
+                scope_rule = (
+                    "A comprehensive academic rewrite is required. Transform the prose to match "
+                    "the target grade's vocabulary and sentence complexity. Hit the syllable and "
+                    "words-per-sentence targets."
+                )
+            else:
+                scope_rule = (
+                    "A broader rewrite is allowed, but the numeric targets still matter more "
+                    "than sounding impressive."
+                )
 
         if local_direction > 0:
-            direction_rule = (
-                "Raise readability gradually. Prefer slightly longer, clearer sentences "
-                "and a few natural two-syllable words. Do not use rare academic words just "
-                "to raise the score."
-            )
+            if grade_delta > 5.0 and target_grade >= 13:
+                direction_rule = (
+                    "This is a MAJOR upgrade to College level. Use professional academic prose: "
+                    "multi-syllable domain vocabulary, complex subordinate clauses, and long "
+                    "information-dense sentences. Academic terminology IS required to reach the target. "
+                    f"Aim for avg {target_syl:.2f} syllables/word and {target_wps} words/sentence."
+                )
+            elif grade_delta > 5.0 and target_grade >= 11:
+                direction_rule = (
+                    "This is a MAJOR upgrade. Use sophisticated academic vocabulary, longer sentences "
+                    "with multiple clauses, and formal prose structure. Multi-syllable academic words "
+                    f"ARE required. Aim for avg {target_syl:.2f} syllables/word and {target_wps} words/sentence."
+                )
+            elif grade_delta > 3.0:
+                direction_rule = (
+                    "Raise readability substantially. Use academic vocabulary and longer, more complex "
+                    "sentences to reach the target. Multi-syllable words are appropriate."
+                )
+            else:
+                direction_rule = (
+                    "Raise readability gradually. Prefer slightly longer, clearer sentences "
+                    "and a few natural two-syllable words. Do not use rare academic words just "
+                    "to raise the score."
+                )
             task_label = "UPGRADE THIS PARAGRAPH"
         elif local_direction < 0:
             direction_rule = (
@@ -9821,8 +9935,12 @@ ORIGINAL TEXT:
                 vocab_level = "plain high-school vocabulary with common two-syllable words; avoid college, technical, or rare academic terms"
                 clause_rule = "Use at most one subordinate clause per sentence. Keep sentences direct."
             elif target_grade <= 12:
-                vocab_level = "sophisticated high-school academic vocabulary — NOT college prose"
-                clause_rule = "Use 2-3 clauses per sentence maximum."
+                if contract['grade_delta'] > 5.0:
+                    vocab_level = "sophisticated academic vocabulary with multi-syllable terms and formal register"
+                    clause_rule = "Use 2-3 clauses per sentence. Employ subordinate clauses and complex syntax to reach the target."
+                else:
+                    vocab_level = "sophisticated high-school academic vocabulary — NOT college prose"
+                    clause_rule = "Use 2-3 clauses per sentence maximum."
             else:
                 vocab_level = "professional academic prose with domain-specific terminology"
                 clause_rule = "Use full academic sentence complexity."
@@ -9844,10 +9962,10 @@ RULES:
 2. DIRECTION: {contract['direction_rule']}
 3. VOCABULARY: Use {vocab_level}.
 4. CLAUSE COMPLEXITY: {clause_rule}
-5. SYLLABLE COUNT: Aim for avg {target_syl:.2f} syllables/word. Do not overshoot this.
+5. SYLLABLE COUNT: Aim for avg {target_syl:.2f} syllables/word.{' Do not overshoot this.' if contract['grade_delta'] <= 5.0 else ''}
 6. SENTENCE LENGTH: Every sentence must be {min_wps}-{max_wps} words.
 7. CONTEXTUAL FIT: Every word must make sense in context.
-8. TARGET CEILING: Do NOT write above {grade_label}. Do not use college-level diction, technical jargon, or rare Latinate words to raise the score.
+8. {'TARGET FLOOR: You MUST reach College level (raw grade 13+). Use academic vocabulary and complex sentences to ensure you hit the target.' if target_grade >= 13 else ('TARGET: Hit ' + grade_label + ' level. Academic vocabulary IS appropriate for this grade. Focus on reaching the syllable and sentence length targets.' if target_grade >= 11 and contract['grade_delta'] > 5.0 else 'TARGET CEILING: Do NOT write above ' + grade_label + '. Do not use college-level diction, technical jargon, or rare Latinate words to raise the score.')}
 9. PRESERVE MEANING: Keep all facts and proper nouns exactly.
 10. NO REPETITION: Each idea appears once only.
 11. OUTPUT: Write ONLY the rewritten paragraph. No labels or commentary.{glossary_block}{position_note}
@@ -9953,11 +10071,26 @@ SIMPLIFIED PARAGRAPH ({grade_label}):"""
             cur_wps = metric_feedback.get('wps', 0)
             unusable_reason = metric_feedback.get('unusable_reason')
             if cur_grade < band_lower:
-                direction_hint = (
-                    f"Your result ({cur_grade:.1f}) is BELOW the target band "
-                    f"[{band_lower:.0f}-{band_upper:.0f}). Use slightly longer sentences "
-                    f"and slightly higher syllable vocabulary to raise the grade, but stay inside the band."
-                )
+                gap_to_band = band_lower - cur_grade
+                if gap_to_band > 3.0:
+                    direction_hint = (
+                        f"Your result ({cur_grade:.1f}) is FAR BELOW the target band "
+                        f"[{band_lower:.0f}-{band_upper:.0f}). Use significantly longer sentences with "
+                        f"multiple clauses and replace simple words with multi-syllable academic equivalents. "
+                        f"Aim for avg {target_syl:.2f} syllables/word and {metrics['target_wps']} words/sentence."
+                    )
+                elif gap_to_band > 1.5:
+                    direction_hint = (
+                        f"Your result ({cur_grade:.1f}) is well below the target band "
+                        f"[{band_lower:.0f}-{band_upper:.0f}). Use noticeably longer sentences "
+                        f"and higher-syllable vocabulary to raise the grade toward the band."
+                    )
+                else:
+                    direction_hint = (
+                        f"Your result ({cur_grade:.1f}) is BELOW the target band "
+                        f"[{band_lower:.0f}-{band_upper:.0f}). Use slightly longer sentences "
+                        f"and slightly higher syllable vocabulary to raise the grade, but stay inside the band."
+                    )
             elif cur_grade >= band_upper:
                 direction_hint = (
                     f"Your result ({cur_grade:.1f}) is ABOVE the target band "
@@ -9996,10 +10129,12 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
             temperature = 0.14
         elif source_gap <= 5.0:
             temperature = 0.28
+        elif target_grade >= 11 and source_gap > 7.0:
+            temperature = 0.42
         else:
             temperature = 0.35
         if metric_feedback:
-            temperature = min(0.45, temperature + 0.15)
+            temperature = min(0.50, temperature + 0.15)
         resp = self._llm_chat(
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
@@ -10336,7 +10471,9 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
 
         band_lower, band_upper = self._get_target_band(target_grade)
 
-        for repair_round in range(1):
+        grade_gap = abs(float(target_grade) - source_grade)
+        max_repair_rounds = 1 if grade_gap <= 3.0 else (2 if grade_gap <= 6.0 else 3)
+        for repair_round in range(max_repair_rounds):
             if distance <= 0:
                 break
             if rate_limited:
@@ -10350,7 +10487,7 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
             worst_idx = -1
             worst_distance = -1
             for j, (group, rtext) in enumerate(zip(groups, rewritten_texts)):
-                if repair_attempts.get(j, 0) >= 1:
+                if repair_attempts.get(j, 0) >= max_repair_rounds:
                     continue
                 pg, _, _ = self._measure_text_metrics(rtext)
                 pd = self._distance_to_target_band(pg, target_grade)
@@ -10424,8 +10561,35 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
                 print(f"[para-pipeline] repair round {repair_round + 1}: grade={doc_grade:.1f}, distance={distance:.2f}")
 
         far_miss = distance > 2.0
-        if far_miss:
-            print(f"[para-pipeline] distance {distance:.2f} > 2.0, delivering best safe paragraph result without whole-doc fallback")
+        fallback_used = False
+        if far_miss and not rate_limited and self._llm_calls_remaining():
+            print(f"[para-pipeline] distance {distance:.2f} > 2.0, attempting whole-doc fallback")
+            fallback_feedback = {'raw_score': doc_grade, 'target_distance': distance}
+            try:
+                fallback_result, _ = self._llm_full_rewrite(
+                    original_text=text,
+                    target_grade=target_grade,
+                    going_up=going_up,
+                    rewrite_style='aggressive',
+                    reference_text=assembled,
+                    metric_feedback=fallback_feedback,
+                    plan_label='wholedoc_fallback',
+                    include_diff=False,
+                )
+                if fallback_result:
+                    fb_grade, fb_syl, fb_wps = self._measure_text_metrics(fallback_result)
+                    fb_distance = self._distance_to_target_band(fb_grade, target_grade)
+                    print(f"[para-pipeline] whole-doc fallback: grade={fb_grade:.1f}, distance={fb_distance:.2f}")
+                    if fb_distance < distance:
+                        assembled = fallback_result
+                        doc_grade, doc_syl, doc_wps = fb_grade, fb_syl, fb_wps
+                        distance = fb_distance
+                        far_miss = distance > 2.0
+                        fallback_used = True
+            except Exception as exc:
+                print(f"[para-pipeline] whole-doc fallback failed: {exc}")
+        elif far_miss:
+            print(f"[para-pipeline] distance {distance:.2f} > 2.0, no LLM budget for whole-doc fallback")
 
         self._emit_progress(
             progress_callback,
@@ -10454,7 +10618,7 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
                 'paragraph_pipeline_far_miss': far_miss,
                 'paragraph_pipeline_failed_paragraphs': sorted(set(failed_paragraphs)),
                 'paragraph_pipeline_rate_limited': rate_limited,
-                'fallback_used': False,
+                'fallback_used': fallback_used,
                 '_rewrite_groups': groups,
                 '_rewritten_texts': rewritten_texts,
             },
@@ -10547,7 +10711,11 @@ CURRENT CANDIDATE METRICS:
 
 Use these numbers to correct the current wording instead of rewriting the full passage from scratch."""
 
+            source_grade_estimate = self._measure_text_metrics(original_text)[0]
+            wholedoc_grade_delta = float(target_grade) - source_grade_estimate
+
             def _build_upgrade_prompt(text_to_rewrite):
+                large_jump = wholedoc_grade_delta > 5.0
                 if target_grade <= 6:
                     vocab_level = "slightly more formal words with some two-syllable terms"
                     clause_rule = "Write clear, simple sentences. Use 'and', 'but', 'so' to combine ideas. AVOID complex clause nesting."
@@ -10558,11 +10726,22 @@ Use these numbers to correct the current wording instead of rewriting the full p
                     vocab_level = "plain high-school vocabulary with common two-syllable words; avoid college, technical, or rare academic terms"
                     clause_rule = "Use at most one subordinate clause per sentence. Keep sentences direct."
                 elif target_grade <= 12:
-                    vocab_level = "sophisticated high-school academic vocabulary with argument structure — NOT college/graduate prose"
-                    clause_rule = "Use 2–3 clauses per sentence maximum. Do NOT write at College level — keep it high-school."
+                    if large_jump:
+                        vocab_level = "sophisticated academic vocabulary with multi-syllable terms and formal register"
+                        clause_rule = "Use 2–3 clauses per sentence. Employ subordinate clauses, relative clauses, and complex syntax."
+                    else:
+                        vocab_level = "sophisticated high-school academic vocabulary with argument structure — NOT college/graduate prose"
+                        clause_rule = "Use 2–3 clauses per sentence maximum. Do NOT write at College level — keep it high-school."
                 else:
                     vocab_level = "professional academic prose with domain-specific terminology"
                     clause_rule = "Use full academic sentence complexity with multiple clauses and transitions."
+
+                if target_grade >= 13:
+                    ceiling_rule = "7. TARGET FLOOR: You MUST reach College level (raw grade 13+). Use academic vocabulary and complex sentences to ensure you hit the target."
+                elif target_grade >= 11 and large_jump:
+                    ceiling_rule = f"7. TARGET: Hit {grade_label} level. Academic vocabulary IS appropriate for this grade. Focus on reaching the syllable and sentence length targets."
+                else:
+                    ceiling_rule = f"7. TARGET CEILING: Do NOT write above {grade_label}. Do not use college-level diction, technical jargon, or rare Latinate words to raise the score."
 
                 return f"""Rewrite the following text at exactly {grade_label} writing level.
 
@@ -10582,8 +10761,8 @@ RULES:
    "get" → "obtain"  |  "find" → "discover"  |  "make" → "create" or "produce"
 4. CONTEXTUAL FIT: Every word replacement MUST make sense in the sentence's context. Do NOT use a word just because it is more complex — it must fit the noun/verb it modifies. "big park" → "large park" is OK. "big park" → "substantial park" is WRONG because parks are not "substantial". Always ask: would a native speaker naturally use this word here?
 5. CLAUSE COMPLEXITY: {clause_rule}
-6. SYLLABLE COUNT: Aim for avg {target_syl:.2f} syllables/word. Use 2-syllable words (per-son, com-plete, for-mal, dai-ly, of-ten).
-7. TARGET CEILING: Do NOT write above {grade_label}. Do not use college-level diction, technical jargon, or rare Latinate words to raise the score.
+6. SYLLABLE COUNT: Aim for avg {target_syl:.2f} syllables/word.{'' if large_jump else ' Use 2-syllable words (per-son, com-plete, for-mal, dai-ly, of-ten).'}
+{ceiling_rule}
 8. PARAGRAPH SHAPE: Keep the SAME number of paragraphs as the original. Each rewritten paragraph must correspond to the same original paragraph and stay within that paragraph's scope.
 9. ENDING DISCIPLINE: Do NOT add a conclusion, takeaway, moral, reflection, or whole-text summary. Do NOT turn the final paragraph into an academic wrap-up. If the original final paragraph is short, keep it proportionally short unless grammar forces a small adjustment.
 10. PRESERVE MEANING: Keep all facts. Do not omit any information.

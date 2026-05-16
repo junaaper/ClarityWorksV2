@@ -1,9 +1,12 @@
 # AGENTS.md - ClarityWorks Project Context
 
-> **Last Updated:** 2026-05-13
+> **Last Updated:** 2026-05-16
 > This file must be updated after every code change.
 
 ---
+
+### Recent Updates (2026-05-16)
+- Short child-level upgrade demos now avoid paragraph-first rewriting through Grade 12: short Grade 11/12 upgrades use a whole-text high-upgrade route with rule seeding, bounded Fireworks calls, timeout-aware deterministic fallback diagnostics, and regression coverage for the Tom/Max Grade 3 sample.
 
 ### Recent Updates (2026-05-13)
 - Paragraph simplification now handles Fireworks 429s as a graceful partial-delivery case: hidden OpenAI SDK retries are disabled for Fireworks calls, rate-limited paragraph rewrites switch remaining paragraphs to deterministic local fallback, and the pipeline keeps already completed paragraph rewrites instead of abandoning them for a full rule fallback restart.
