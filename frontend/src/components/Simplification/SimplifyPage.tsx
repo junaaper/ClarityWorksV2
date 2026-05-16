@@ -1245,11 +1245,12 @@ const SimplifyPage: React.FC = () => {
   const enterInteractiveMode = () => {
     if (!autoResultSnapshot) return;
     const interactiveChanges = cloneChangesForMode(autoResultSnapshot.changes, 'interactive');
-    const previewState = buildPreviewState(autoResultSnapshot.originalText, interactiveChanges, 'interactive');
+    const serverText = autoResultSnapshot.simplifiedText;
+    const ranges = buildServerPreviewRanges(serverText, interactiveChanges);
     setMode('interactive');
     setChanges(interactiveChanges);
-    setRenderedRanges(previewState.ranges);
-    setSimplifiedText(previewState.text);
+    setRenderedRanges(ranges);
+    setSimplifiedText(serverText);
     setPreviewMetrics(autoResultSnapshot.previewMetrics);
     setSelectionSummary(autoResultSnapshot.selectionSummary);
     setSimplifiedGrade(autoResultSnapshot.previewMetrics?.predicted_grade_level ?? simplifiedGrade);
@@ -1403,9 +1404,48 @@ const SimplifyPage: React.FC = () => {
   };
 
   const rebuildText = (updatedChanges: Change[]) => {
-    const previewState = buildPreviewState(originalText, updatedChanges, mode);
-    setRenderedRanges(previewState.ranges);
-    setSimplifiedText(previewState.text);
+    if (mode === 'interactive' && autoResultSnapshot) {
+      const serverText = autoResultSnapshot.simplifiedText;
+      const denied = updatedChanges
+        .filter((c) => c.accepted === false && typeof c.preview_start === 'number' && typeof c.preview_end === 'number')
+        .sort((a, b) => (b.preview_start ?? 0) - (a.preview_start ?? 0));
+
+      let rebuilt = serverText;
+      const shifts: { pos: number; delta: number }[] = [];
+
+      for (const c of denied) {
+        const ps = c.preview_start!;
+        const pe = c.preview_end!;
+        const origSlice = originalText.slice(c.start, c.end);
+        rebuilt = rebuilt.slice(0, ps) + origSlice + rebuilt.slice(pe);
+        shifts.push({ pos: ps, delta: origSlice.length - (pe - ps) });
+      }
+
+      shifts.sort((a, b) => a.pos - b.pos);
+      const ranges: Record<number, ChangeRange> = {};
+      for (const c of updatedChanges) {
+        if (typeof c.preview_start !== 'number' || typeof c.preview_end !== 'number') continue;
+        let ps = c.preview_start;
+        let pe = c.preview_end;
+        for (const s of shifts) {
+          if (s.pos <= ps) { ps += s.delta; pe += s.delta; }
+          else if (s.pos < pe) { pe += s.delta; }
+        }
+        if (c.accepted === false) {
+          const origSlice = originalText.slice(c.start, c.end);
+          ranges[c.id] = { start: ps, end: ps + origSlice.length };
+        } else {
+          ranges[c.id] = { start: ps, end: pe };
+        }
+      }
+
+      setRenderedRanges(ranges);
+      setSimplifiedText(rebuilt);
+    } else {
+      const previewState = buildPreviewState(originalText, updatedChanges, mode);
+      setRenderedRanges(previewState.ranges);
+      setSimplifiedText(previewState.text);
+    }
   };
 
   const handleSave = async () => {
@@ -1541,14 +1581,6 @@ const SimplifyPage: React.FC = () => {
                 <div className="font-semibold text-gray-700 dark:text-gray-300">Phase</div>
                 <div className="capitalize">{progressPhaseLabel}</div>
               </div>
-              {progressMeta.totalParagraphs ? (
-                <div>
-                  <div className="font-semibold text-gray-700 dark:text-gray-300">Paragraph</div>
-                  <div>
-                    {progressMeta.currentParagraph ?? '-'} / {progressMeta.totalParagraphs}
-                  </div>
-                </div>
-              ) : null}
             </div>
             {progressEta != null && progressEta > 0 && (
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -2341,6 +2373,7 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
       }
 
       // Wrap entire sentence in one continuous span
+      const isAccepted = sentence.change.accepted === true;
       parts.push(
         <span
           key={key++}
@@ -2354,6 +2387,24 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
           onMouseLeave={() => onHover(null)}
         >
           {innerParts}
+          {mode === 'interactive' && (
+            <span className="inline-flex ml-1 gap-0.5 align-middle">
+              <button
+                onClick={(e) => { e.stopPropagation(); onAccept(sentence.change.id); }}
+                className={`inline-flex items-center justify-center w-4 h-4 text-white rounded-full text-xs leading-none ${isAccepted ? 'bg-green-700' : 'bg-green-500 hover:bg-green-700'}`}
+                title="Accept"
+              >
+                &#10003;
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDeny(sentence.change.id); }}
+                className={`inline-flex items-center justify-center w-4 h-4 text-white rounded-full text-xs leading-none ${isDenied ? 'bg-red-700' : 'bg-red-500 hover:bg-red-700'}`}
+                title="Deny"
+              >
+                &#10005;
+              </button>
+            </span>
+          )}
         </span>
       );
       pos = sentence.end;

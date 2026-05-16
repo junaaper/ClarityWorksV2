@@ -2,6 +2,7 @@ import difflib
 import json
 import os
 import re
+import threading
 import time
 from collections import Counter
 from pathlib import Path
@@ -673,6 +674,7 @@ class TextSimplifier:
             self.llm_client = OpenAI(
                 base_url="https://api.fireworks.ai/inference/v1",
                 api_key=os.getenv('FIREWORKS_API_KEY'),
+                timeout=45.0,
             )
 
         # Grade-specific constraints derived from GRADE_TARGET_METRICS
@@ -684,6 +686,7 @@ class TextSimplifier:
         # Cache for synonym lookups (word -> best simple synonym)
         self._synonym_cache = {}
         self._selection_context = {}
+        self._metrics_tls = threading.local()
         self.rate_limited_llm = os.getenv('CLARITYWORKS_RATE_LIMITED_LLM', '1').lower() not in {'0', 'false', 'no'}
         self.target_lock_quality_mode = os.getenv(
             'CLARITYWORKS_TARGET_LOCK_QUALITY_MODE',
@@ -761,6 +764,8 @@ class TextSimplifier:
         if display_gap <= 1 or gap <= 1.25:
             return 'small_shift_fast'
         if display_gap <= 2 or gap <= 3.0:
+            return 'medium_shift_controlled'
+        if words < 350 and target_grade <= 10 and float(target_grade) > float(source_grade):
             return 'medium_shift_controlled'
         if gap > 3.0 or words >= 350 or len(paragraphs) >= 3:
             return 'large_shift_llm'
@@ -952,6 +957,7 @@ LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
             if self.llm_client else None
         )
         self._llm_calls_made = 0
+        self._metrics_tls.cache = {}
         self._emit_progress(
             progress_callback,
             0.03,
@@ -1042,6 +1048,7 @@ LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
             llm_calls_used = self._llm_calls_made
             self._llm_call_budget = previous_budget
             self._llm_calls_made = previous_calls
+            self._metrics_tls.cache = None
 
         current_text = selection['text']
         going_up = selection['going_up']
@@ -6073,6 +6080,12 @@ ORIGINAL TEXT:
         targeting decisions match the grade shown to users. Fall back to the
         older syllable/words-per-sentence approximation when no model is wired in.
         """
+        cache = getattr(self._metrics_tls, 'cache', None)
+        if cache is not None:
+            cached = cache.get(text)
+            if cached is not None:
+                return cached
+
         doc = nlp(text)
         words = [t for t in doc if t.is_alpha]
         sentences = list(doc.sents)
@@ -6095,7 +6108,11 @@ ORIGINAL TEXT:
             predicted = -21.16 + 14.33 * avg_syl + 0.6 * avg_wps
 
         # Do NOT clamp; targeting must match the raw_score the UI renders.
-        return predicted, avg_syl, avg_wps
+        result = (predicted, avg_syl, avg_wps)
+        cache = getattr(self._metrics_tls, 'cache', None)
+        if cache is not None:
+            cache[text] = result
+        return result
 
     def _estimate_current_grade(self, text):
         """Backward-compat wrapper."""
@@ -9635,8 +9652,10 @@ ORIGINAL TEXT:
 
     def _should_use_paragraph_pipeline(self, text):
         words = len(text.split())
+        if words < 350:
+            return False
         paragraphs = self._extract_paragraph_chunks(text)
-        return words >= 350 or len(paragraphs) >= 3
+        return len(paragraphs) >= 3
 
     def _split_into_rewrite_groups(self, text):
         paragraphs = self._extract_paragraph_chunks(text)
@@ -10317,7 +10336,7 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
 
         band_lower, band_upper = self._get_target_band(target_grade)
 
-        for repair_round in range(3):
+        for repair_round in range(1):
             if distance <= 0:
                 break
             if rate_limited:
