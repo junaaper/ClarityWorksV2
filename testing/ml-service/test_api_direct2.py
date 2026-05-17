@@ -1,7 +1,10 @@
 """Test fixes: Qwen thinking disabled + gpt-oss-120b with higher max_tokens."""
 import os
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+
+ROOT = Path(__file__).resolve().parents[2] / 'ml-service'
+load_dotenv(dotenv_path=ROOT / '.env')
 from openai import OpenAI
 
 client = OpenAI(

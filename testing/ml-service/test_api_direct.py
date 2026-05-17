@@ -1,7 +1,10 @@
 """Direct Fireworks API test — check what the response actually looks like."""
 import os, json
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+
+ROOT = Path(__file__).resolve().parents[2] / 'ml-service'
+load_dotenv(dotenv_path=ROOT / '.env')
 
 from openai import OpenAI
 

@@ -205,7 +205,7 @@ CLAUDE:
 Elementary is grades 3-6. Command:
 
     cd ml-service
-    .\venv\Scripts\python.exe test_simplification_matrix.py --sources grade_3.txt,grade_4.txt,grade_5.txt,grade_6.txt --json > matrix_elementary_v5.json
+    .\ml-service\venv\Scripts\python.exe testing/ml-service/test_simplification_matrix.py --sources grade_3.txt,grade_4.txt,grade_5.txt,grade_6.txt --json > matrix_elementary_v5.json
 
 ----------------------------------------------------------------------
 

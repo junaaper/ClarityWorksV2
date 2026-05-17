@@ -790,7 +790,7 @@ def simplify_to_grade(self, text, target_grade):
 
 ## STEP 7: Test the Enhanced Simplifier
 
-**Create test script:** `ml-service/test_enhanced_simplifier.py`
+**Create test script:** `testing/ml-service/test_enhanced_simplifier.py`
 
 ```python
 from models.simplifier import TextSimplifier
@@ -839,7 +839,7 @@ print(f"Suggestions: {result['validation']['suggestions']}")
 
 **Run it:**
 ```bash
-python test_enhanced_simplifier.py
+python testing/ml-service/test_enhanced_simplifier.py
 ```
 
 **Expected output:**
@@ -949,7 +949,7 @@ Should validate changes and provide feedback.
 
 ### Test 4: Full Simplification
 ```bash
-python test_enhanced_simplifier.py
+python testing/ml-service/test_enhanced_simplifier.py
 ```
 Should simplify text with detailed change tracking.
 

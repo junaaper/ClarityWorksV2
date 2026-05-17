@@ -2,12 +2,14 @@
 import os
 import sys
 import time
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(__file__))
+ROOT = Path(__file__).resolve().parents[2] / 'ml-service'
+sys.path.insert(0, str(ROOT))
 os.environ.setdefault('THINC_NO_TORCH', '1')
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(dotenv_path=ROOT / '.env')
 
 from models.simplifier import TextSimplifier
 

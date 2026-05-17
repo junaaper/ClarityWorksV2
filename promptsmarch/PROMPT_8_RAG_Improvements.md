@@ -1074,7 +1074,7 @@ export async function exportRAGResultsDOCX(data: {
 
 ### Step 10.1: Create RAG Test Script
 
-**Create:** `ml-service/test_rag_improvements.py`
+**Create:** `testing/ml-service/test_rag_improvements.py`
 
 ```python
 """
@@ -1185,7 +1185,7 @@ if __name__ == "__main__":
 
 **Run:**
 ```bash
-python test_rag_improvements.py
+python testing/ml-service/test_rag_improvements.py
 ```
 
 ---

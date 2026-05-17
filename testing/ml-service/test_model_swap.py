@@ -1,9 +1,12 @@
 """Quick test: does gpt-oss-120b follow our simplifier's metric targets?"""
 import os, sys, time
-sys.path.insert(0, os.path.dirname(__file__))
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2] / 'ml-service'
+sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(dotenv_path=ROOT / '.env')
 
 from models.simplifier import TextSimplifier, GRADE_TARGET_METRICS
 

@@ -75,7 +75,7 @@ The CLEAR Corpus has **labeled grade levels** for ~5,000 texts.
 
 #### Quick Test Script
 
-Create a file: `ml-service/test_accuracy.py`
+Create a file: `testing/ml-service/test_accuracy.py`
 
 ```python
 """Test model accuracy on CLEAR Corpus test set."""
@@ -187,7 +187,7 @@ if __name__ == "__main__":
 **Run it:**
 ```bash
 cd ml-service
-./venv/Scripts/python.exe test_accuracy.py
+./ml-service/venv/Scripts/python.exe testing/ml-service/test_accuracy.py
 ```
 
 **Expected Output:**
@@ -315,7 +315,7 @@ cd ml-service
 
 2. **Test on 100 samples** from CLEAR Corpus:
 ```bash
-./venv/Scripts/python.exe test_accuracy.py
+./ml-service/venv/Scripts/python.exe testing/ml-service/test_accuracy.py
 ```
 
 3. **Note the metrics** to mention during demo:

@@ -5,12 +5,13 @@ Tests: chunking, re-ranking, Fireworks answer generation
 
 import os
 import sys
+from pathlib import Path
 
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(__file__))
+ROOT = Path(__file__).resolve().parents[2] / 'ml-service'
+sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(dotenv_path=ROOT / '.env')
 
 
 def test_rag_system():

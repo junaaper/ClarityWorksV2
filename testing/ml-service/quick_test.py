@@ -1,6 +1,9 @@
 """Quick inline text tester - reads from stdin, shows metrics."""
 import sys, os
-sys.path.insert(0, os.path.dirname(__file__))
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2] / 'ml-service'
+sys.path.insert(0, str(ROOT))
 import textstat
 from models.readability_model import ReadabilityModel
 

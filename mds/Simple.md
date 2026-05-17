@@ -286,7 +286,7 @@
 
 | What | Where | File |
 |------|-------|------|
-| **Test Improvements Script** | ML Service | [ml-service/test_improvements.py](ml-service/test_improvements.py) |
+| **Test Improvements Script** | ML Service | [testing/ml-service/test_improvements.py](testing/ml-service/test_improvements.py) |
 | **Query Users Script** | Backend | [backend/query_users.js](backend/query_users.js) |
 
 ---
@@ -333,7 +333,7 @@ node query_users.js
 
 ```bash
 cd ml-service
-./venv/Scripts/python.exe test_improvements.py
+./ml-service/venv/Scripts/python.exe testing/ml-service/test_improvements.py
 ```
 
 ---

@@ -6,6 +6,7 @@ from flashrank import Ranker, RerankRequest
 import os
 import json
 import re
+import math
 from collections import Counter
 
 
@@ -195,6 +196,38 @@ class RAGEngine:
             methods.update(filter(None, str(candidate.get('retrieval_method', '')).split('+')))
             existing['retrieval_method'] = '+'.join(sorted(methods))
         return list(merged.values())
+
+    @staticmethod
+    def _sigmoid(x):
+        return 1.0 / (1.0 + math.exp(-x))
+
+    def _normalize_rerank_score(self, raw_score):
+        """Map one raw FlashRank score to a display-friendly 0-1 relevance value."""
+        return self._sigmoid(raw_score * 3.0)
+
+    def _normalize_rerank_scores(self, raw_scores):
+        """
+        FlashRank scores are raw cross-encoder scores, not percentages.
+        Use sigmoid as the absolute signal, with a small query-local spread so
+        tightly clustered candidates do not all display as the same relevance.
+        """
+        sigmoid_scores = [self._normalize_rerank_score(score) for score in raw_scores]
+        if len(sigmoid_scores) < 2:
+            return [round(score, 4) for score in sigmoid_scores]
+
+        min_raw = min(raw_scores)
+        max_raw = max(raw_scores)
+        raw_span = max_raw - min_raw
+        if raw_span <= 1e-9:
+            return [round(score, 4) for score in sigmoid_scores]
+
+        local_weight = 0.25 if raw_span < 0.25 else 0.15
+        normalized = []
+        for raw_score, sigmoid_score in zip(raw_scores, sigmoid_scores):
+            local_score = (raw_score - min_raw) / raw_span
+            blended = sigmoid_score * (1.0 - local_weight) + local_score * local_weight
+            normalized.append(round(max(0.0, min(1.0, blended)), 4))
+        return normalized
 
     def _relevance_label(self, score):
         if score >= 0.65:
@@ -482,10 +515,12 @@ class RAGEngine:
         # Build final results from re-ranked order (or embedding similarity fallback)
         final_results = []
         if use_reranked:
-            for item in reranked[:top_k]:
+            top_reranked = reranked[:top_k]
+            raw_rerank_scores = [float(item['score']) for item in top_reranked]
+            normalized_rerank_scores = self._normalize_rerank_scores(raw_rerank_scores)
+            for item, raw_rerank, rerank_score in zip(top_reranked, raw_rerank_scores, normalized_rerank_scores):
                 meta = item.get("meta", {})
-                rerank_score = round(float(item['score']), 4)
-                relevance_score = max(0.0, min(1.0, rerank_score))
+                relevance_score = rerank_score
                 final_results.append({
                     'text': item['text'],
                     'metadata': meta.get('metadata', {}),
@@ -493,6 +528,7 @@ class RAGEngine:
                     'semantic_score': float(meta.get('semantic_score', meta.get('similarity_score', 0))),
                     'keyword_score': float(meta.get('keyword_score', 0)),
                     'hybrid_score': float(meta.get('hybrid_score', meta.get('similarity_score', 0))),
+                    'raw_rerank_score': raw_rerank,
                     'rerank_score': rerank_score,
                     'relevance_score': relevance_score,
                     'relevance_label': self._relevance_label(relevance_score),

@@ -741,7 +741,7 @@ The thinc library (spaCy dependency) tries to import torch, which may fail with 
 - 11 test files created (grade_3.txt through grade_12.txt + college.txt)
 - All 11/11 pass validation with graduated tolerance (±1.0 for grades 3-8, ±1.5 for grades 9-12, ±2.0 for college)
 - Key insight: model is extremely sensitive to avg syllables/word — even grade 12 text needs <1.55 syl/word
-- Run `python validate_test_files.py` to verify
+- Run `python testing/ml-service/validate_test_files.py` to verify
 
 ### Prompt 3: Text Simplification Engine - COMPLETED (Enhanced by Prompt 6)
 - Created simplifier.py (TextSimplifier class)
@@ -804,7 +804,7 @@ The thinc library (spaCy dependency) tries to import torch, which may fail with 
   - exportRAG.ts: PDF/DOCX exports include "Answer" section between query and sources
   - RAGExportData interface updated with optional `answer` field
 - **Part 10 (Test Script):**
-  - Created `ml-service/test_rag_improvements.py` — 6 tests: FlashRank init, Groq init, chunking, embeddings, answer generation, return format
+  - Created `testing/ml-service/test_rag_improvements.py` — 6 tests: FlashRank init, Groq init, chunking, embeddings, answer generation, return format
 - Files modified: `rag_engine.py`, `app.py`, `RAGQuery.tsx`, `exportRAG.ts`, `api.ts`
 - Files created: `test_rag_improvements.py`
 

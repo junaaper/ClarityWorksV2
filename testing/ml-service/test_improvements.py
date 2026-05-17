@@ -2,6 +2,10 @@
 
 import sys
 import io
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2] / 'ml-service'
+sys.path.insert(0, str(ROOT))
 
 # Set UTF-8 encoding for Windows console
 if sys.platform == 'win32':

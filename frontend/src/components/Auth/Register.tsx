@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { BookOpen, Mail, Lock, User, AlertCircle, Eye, EyeOff, BarChart3, FileText, Sparkles, ArrowRight } from 'lucide-react';
+import { BookOpen, Mail, Lock, User, AlertCircle, Eye, EyeOff, BarChart3, FileText, Search, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../utils/auth';
 import PasswordStrength, { isPasswordValid } from './PasswordStrength';
 
@@ -134,7 +134,7 @@ const Register: React.FC = () => {
             {[
               { icon: BarChart3, title: 'ML Grade Prediction', desc: '3-model ensemble trained on 5,000+ reading passages.' },
               { icon: FileText, title: 'Text Simplification', desc: 'Rewrite text to any grade level with NLP-powered analysis.' },
-              { icon: Sparkles, title: 'RAG Textbook Search', desc: 'Upload textbooks and query them with AI-powered answers.' },
+              { icon: Search, title: 'Textbook Search', desc: 'Upload textbooks and query them for instant answers.' },
             ].map(({ icon: Icon, title, desc }) => (
               <div
                 key={title}

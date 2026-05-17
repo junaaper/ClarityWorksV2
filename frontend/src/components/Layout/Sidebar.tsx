@@ -61,7 +61,7 @@ const Sidebar: React.FC = () => {
       <li>
         <Link
           to={item.path}
-          className="group flex items-center gap-2.5 pl-3 pr-3 py-2 rounded-md text-[12.5px] font-medium transition-all duration-150"
+          className="group flex items-center gap-2.5 pl-3 pr-3 py-2 rounded-md text-[13px] font-medium transition-all duration-200 ease-out"
           style={{
             color: active ? 'var(--p-900)' : 'var(--text-2)',
             background: active ? 'var(--surface-raised)' : 'transparent',
@@ -70,20 +70,22 @@ const Sidebar: React.FC = () => {
           }}
           onMouseEnter={(e) => {
             if (!active) {
-              (e.currentTarget as HTMLAnchorElement).style.background = 'color-mix(in srgb, var(--surface-raised) 60%, transparent)';
-              (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-1)';
-              (e.currentTarget as HTMLAnchorElement).style.transform = 'translateX(2px)';
+              e.currentTarget.style.background = 'color-mix(in srgb, var(--surface-raised) 70%, transparent)';
+              e.currentTarget.style.color = 'var(--text-1)';
+              e.currentTarget.style.boxShadow = 'var(--sh-1)';
+              e.currentTarget.style.transform = 'translateX(2px) scale(1.02)';
             }
           }}
           onMouseLeave={(e) => {
             if (!active) {
-              (e.currentTarget as HTMLAnchorElement).style.background = 'transparent';
-              (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-2)';
-              (e.currentTarget as HTMLAnchorElement).style.transform = 'translateX(0)';
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--text-2)';
+              e.currentTarget.style.boxShadow = 'none';
+              e.currentTarget.style.transform = 'translateX(0) scale(1)';
             }
           }}
         >
-          <item.icon className="w-[15px] h-[15px] flex-shrink-0" />
+          <item.icon className="w-[15px] h-[15px] flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
           <span className="truncate">{item.label}</span>
         </Link>
       </li>
@@ -95,7 +97,7 @@ const Sidebar: React.FC = () => {
       className="px-3 pt-4 pb-1.5"
       style={{
         fontFamily: 'var(--font-sans)',
-        fontSize: 10,
+        fontSize: 11,
         letterSpacing: '0.12em',
         textTransform: 'uppercase',
         color: 'var(--text-4)',
@@ -133,7 +135,7 @@ const Sidebar: React.FC = () => {
             style={{
               fontFamily: 'var(--font-display)',
               fontWeight: 800,
-              fontSize: 14,
+              fontSize: 15,
               color: 'var(--text-1)',
               letterSpacing: '0.05em',
               textTransform: 'uppercase',
@@ -218,16 +220,16 @@ const Sidebar: React.FC = () => {
           <div className="flex-1 min-w-0">
             <div
               className="truncate"
-              style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)', lineHeight: 1.2 }}
+              style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', lineHeight: 1.2 }}
             >
               {user?.fullName}
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
               <div
                 className="truncate"
-                style={{ fontSize: 10.5, color: 'var(--text-4)' }}
+                style={{ fontSize: 11.5, color: 'var(--text-4)' }}
               >
-                {isAdmin ? 'Administrator' : 'Researcher'}
+                {isAdmin ? 'Administrator' : 'Member'}
               </div>
               {isAdmin && <span className="cw-badge cw-badge-primary" style={{ height: 15, fontSize: 9, padding: '0 6px' }}>Admin</span>}
             </div>
@@ -240,7 +242,7 @@ const Sidebar: React.FC = () => {
           style={{
             color: isActive('/profile') ? 'var(--p-900)' : 'var(--text-2)',
             background: isActive('/profile') ? 'var(--surface-raised)' : 'transparent',
-            fontSize: 12,
+            fontSize: 13,
             fontWeight: 500,
           }}
         >
@@ -251,7 +253,7 @@ const Sidebar: React.FC = () => {
         <button
           onClick={toggleDarkMode}
           className="flex items-center gap-2.5 px-2.5 py-1.5 w-full rounded-md transition-colors"
-          style={{ color: 'var(--text-2)', fontSize: 12, fontWeight: 500 }}
+          style={{ color: 'var(--text-2)', fontSize: 13, fontWeight: 500 }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--surface-raised) 60%, transparent)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >
@@ -262,7 +264,7 @@ const Sidebar: React.FC = () => {
         <button
           onClick={logout}
           className="flex items-center gap-2.5 px-2.5 py-1.5 w-full rounded-md transition-colors"
-          style={{ color: 'var(--text-2)', fontSize: 12, fontWeight: 500 }}
+          style={{ color: 'var(--text-2)', fontSize: 13, fontWeight: 500 }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--surface-raised) 60%, transparent)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >

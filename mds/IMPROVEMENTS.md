@@ -259,7 +259,7 @@ The improvements are already applied to the codebase. To see them in action:
 2. **Test with the new logic**:
    ```bash
    cd ml-service
-   ./venv/Scripts/python.exe test_improvements.py
+   ./ml-service/venv/Scripts/python.exe testing/ml-service/test_improvements.py
    ```
 
 3. **Use the web app** - The changes will automatically be used for all new analyses

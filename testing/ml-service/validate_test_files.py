@@ -1,6 +1,9 @@
 import sys
 import os
-sys.path.insert(0, os.path.dirname(__file__))
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2] / 'ml-service'
+sys.path.insert(0, str(ROOT))
 
 from models.text_processor import TextProcessor
 from models.feature_extractor import FeatureExtractor
@@ -11,7 +14,7 @@ feature_extractor = FeatureExtractor()
 model = ReadabilityModel()
 model.load_models()
 
-test_files_dir = os.path.join(os.path.dirname(__file__), 'data', 'test_files')
+test_files_dir = ROOT / 'data' / 'test_files'
 
 print("=" * 80)
 print("VALIDATING CALIBRATED TEST FILES")

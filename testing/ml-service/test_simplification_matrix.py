@@ -10,7 +10,7 @@ from pathlib import Path
 os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2] / 'ml-service'
 sys.path.insert(0, str(ROOT))
 
 from models.readability_model import ReadabilityModel

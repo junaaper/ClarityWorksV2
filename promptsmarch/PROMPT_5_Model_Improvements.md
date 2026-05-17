@@ -476,7 +476,7 @@ Within ±0.5 grade: 64.2%
 **6.1 Test with calibrated files:**
 
 ```bash
-python validate_test_files.py
+python testing/ml-service/validate_test_files.py
 ```
 
 All 10 files should now predict even more accurately (error < 0.2 grades).

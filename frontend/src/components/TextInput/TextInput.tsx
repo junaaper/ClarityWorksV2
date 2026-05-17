@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  FileText, Upload, Image, Mic, MicOff, AlertCircle, CheckCircle, Loader2, Sparkles
+  FileText, Upload, Image, Mic, MicOff, AlertCircle, CheckCircle, Loader2, BookOpen, ArrowRight
 } from 'lucide-react';
 import { analysisApi, textApi } from '../../services/api';
 import LoadingSpinner from '../common/LoadingSpinner';
@@ -327,7 +327,7 @@ const TextInput: React.FC = () => {
             >
               {validityState.label}
             </span>
-            <span style={{ fontSize: 10.5, color: 'var(--text-4)' }}>{charCount.toLocaleString()} chars</span>
+            <span style={{ fontSize: 11.5, color: 'var(--text-4)' }}>{charCount.toLocaleString()} chars</span>
           </div>
         </div>
 
@@ -339,7 +339,7 @@ const TextInput: React.FC = () => {
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Give your analysis a title…"
             className="cw-input"
-            style={{ height: 40, fontSize: 13.5 }}
+            style={{ height: 40, fontSize: 15 }}
           />
           <p className="mt-2" style={{ fontSize: 11, color: 'var(--text-4)' }}>
             Auto-generated from file name when uploading.
@@ -437,11 +437,11 @@ const TextInput: React.FC = () => {
                 onChange={(e) => setText(e.target.value)}
                 placeholder="Paste or type your text here…"
                 className="cw-textarea"
-                style={{ minHeight: 260, fontSize: 13.5, lineHeight: 1.6 }}
+                style={{ minHeight: 260, fontSize: 15, lineHeight: 1.6 }}
               />
               <div
                 className="flex justify-between mt-2"
-                style={{ fontSize: 10.5, color: 'var(--text-4)', letterSpacing: '0.04em' }}
+                style={{ fontSize: 11.5, color: 'var(--text-4)', letterSpacing: '0.04em' }}
               >
                 <span>{wordCount.toLocaleString()} WORDS</span>
                 <span>{charCount.toLocaleString()} / 50,000 CHARS</span>
@@ -453,7 +453,7 @@ const TextInput: React.FC = () => {
                 style={{ background: 'var(--surface-alt)', padding: 14 }}
               >
                 <div className="flex items-center gap-2 mb-3">
-                  <Sparkles className="w-3.5 h-3.5" style={{ color: 'var(--p-700)' }} />
+                  <BookOpen className="w-3.5 h-3.5" style={{ color: 'var(--p-700)' }} />
                   <span className="cw-eyebrow" style={{ color: 'var(--text-2)' }}>
                     Try a calibrated sample
                   </span>
@@ -504,7 +504,7 @@ const TextInput: React.FC = () => {
                   >
                     <p
                       style={{
-                        fontSize: 10.5,
+                        fontSize: 11.5,
                         fontWeight: 700,
                         color: 'var(--p-900)',
                         letterSpacing: '0.08em',
@@ -567,11 +567,11 @@ const TextInput: React.FC = () => {
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     className="cw-textarea"
-                    style={{ minHeight: 200, fontSize: 13.5, lineHeight: 1.6 }}
+                    style={{ minHeight: 200, fontSize: 15, lineHeight: 1.6 }}
                   />
                   <div
                     className="flex justify-between mt-2"
-                    style={{ fontSize: 10.5, color: 'var(--text-4)', letterSpacing: '0.04em' }}
+                    style={{ fontSize: 11.5, color: 'var(--text-4)', letterSpacing: '0.04em' }}
                   >
                     <span>{wordCount.toLocaleString()} WORDS</span>
                     <span>{charCount.toLocaleString()} CHARS</span>
@@ -617,11 +617,11 @@ const TextInput: React.FC = () => {
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     className="cw-textarea"
-                    style={{ minHeight: 180, fontSize: 13.5, lineHeight: 1.6 }}
+                    style={{ minHeight: 180, fontSize: 15, lineHeight: 1.6 }}
                   />
                   <div
                     className="flex justify-between mt-2"
-                    style={{ fontSize: 10.5, color: 'var(--text-4)', letterSpacing: '0.04em' }}
+                    style={{ fontSize: 11.5, color: 'var(--text-4)', letterSpacing: '0.04em' }}
                   >
                     <span>{wordCount.toLocaleString()} WORDS</span>
                     <span>{charCount.toLocaleString()} CHARS</span>
@@ -649,7 +649,7 @@ const TextInput: React.FC = () => {
           ) : (
             <>
               Analyze Text
-              <Sparkles className="w-4 h-4" />
+              <ArrowRight className="w-4 h-4" />
             </>
           )}
         </button>

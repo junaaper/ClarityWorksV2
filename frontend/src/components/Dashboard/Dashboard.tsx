@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  PlusCircle, BookOpen, ArrowRight, Sparkles, TrendingUp, ArrowUpRight,
+  PlusCircle, BookOpen, ArrowRight, TrendingUp, ArrowUpRight,
   FileText, Hash, Gauge, BarChart3,
 } from 'lucide-react';
 import {
@@ -81,7 +81,7 @@ const Dashboard: React.FC = () => {
     <div className="space-y-8">
       {/* Hero */}
       <section>
-        <span className="cw-eyebrow">Researcher Dashboard</span>
+        <span className="cw-eyebrow">Dashboard</span>
         <h1 className="cw-hero mt-2">
           Welcome back, {user?.fullName?.split(' ')[0]}
         </h1>
@@ -121,15 +121,14 @@ const Dashboard: React.FC = () => {
       </section>
 
       {/* Action row */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Primary CTA */}
+      <section>
         <Link
           to="/analyze"
-          className="lg:col-span-2 relative overflow-hidden rounded-lg p-7 group"
-          style={{ background: 'var(--g-scholar)', color: '#fff', minHeight: 150 }}
+          className="relative overflow-hidden rounded-lg p-7 group block"
+          style={{ background: 'var(--g-scholar)', color: '#fff', minHeight: 130 }}
         >
           <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:opacity-20 transition-opacity pointer-events-none">
-            <Sparkles className="w-36 h-36" />
+            <BookOpen className="w-36 h-36" />
           </div>
           <div className="relative">
             <span
@@ -142,7 +141,7 @@ const Dashboard: React.FC = () => {
               className="mt-2"
               style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: 24,
+                fontSize: 26,
                 fontWeight: 800,
                 letterSpacing: '-0.02em',
                 color: '#fff',
@@ -151,12 +150,12 @@ const Dashboard: React.FC = () => {
             >
               Start a New Analysis
             </h3>
-            <p className="mt-2 max-w-lg" style={{ fontSize: 13, color: 'rgba(255,255,255,0.82)', lineHeight: 1.5 }}>
+            <p className="mt-2 max-w-lg" style={{ fontSize: 14, color: 'rgba(255,255,255,0.82)', lineHeight: 1.5 }}>
               Upload raw text or academic PDFs for instant linguistic decomposition and readability scoring.
             </p>
             <div
               className="mt-4 inline-flex items-center gap-2 px-3.5 h-9 rounded-md group-hover:translate-x-1 transition-transform"
-              style={{ background: '#fff', color: 'var(--p-900)', fontSize: 12.5, fontWeight: 700 }}
+              style={{ background: '#fff', color: 'var(--p-900)', fontSize: 13.5, fontWeight: 700 }}
             >
               <PlusCircle className="w-4 h-4" />
               Launch Tool
@@ -164,39 +163,6 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         </Link>
-
-        {/* AI insight card (teal) */}
-        <div
-          className="rounded-lg p-6"
-          style={{ background: 'var(--s-200)', color: 'var(--s-700)' }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-4 h-4" />
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 800,
-                letterSpacing: '0.12em',
-                textTransform: 'uppercase',
-              }}
-            >
-              AI Observation
-            </span>
-          </div>
-          <p
-            className="italic"
-            style={{
-              fontSize: 13,
-              lineHeight: 1.5,
-              color: 'var(--s-900)',
-              fontFamily: 'var(--font-serif)',
-            }}
-          >
-            {totalAnalyses >= 3
-              ? `Your corpus trends ${avgGrade >= 9 ? 'advanced' : 'accessible'} at an average grade ${avgGrade.toFixed(1)}. Consider ${avgGrade >= 9 ? 'simplifying transitions for wider readability' : 'varying sentence complexity to challenge readers'}.`
-              : 'Analyze a few texts to unlock pattern-based observations about your writing corpus.'}
-          </p>
-        </div>
       </section>
 
       {/* Trend chart */}

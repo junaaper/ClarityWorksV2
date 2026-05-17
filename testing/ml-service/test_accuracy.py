@@ -1,9 +1,15 @@
 import pandas as pd
 import numpy as np
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2] / 'ml-service'
+sys.path.insert(0, str(ROOT))
+
 from models.readability_model import ReadabilityModel
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
-def test_model_accuracy(corpus_path='data/clear_corpus/clear_corpus.csv', sample_size=100):
+def test_model_accuracy(corpus_path=ROOT / 'data' / 'clear_corpus' / 'clear_corpus.csv', sample_size=100):
     """Test model on sample of CLEAR Corpus."""
 
     # Load model

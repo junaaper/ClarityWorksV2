@@ -153,7 +153,7 @@ After creating each file, validate it:
 
 **4.1 Create Validation Script**
 
-Create `ml-service/validate_test_files.py`:
+Create `testing/ml-service/validate_test_files.py`:
 
 ```python
 from models.text_processor import TextProcessor
@@ -219,7 +219,7 @@ print("\n" + "=" * 80)
 
 ```bash
 cd ml-service
-python validate_test_files.py
+python testing/ml-service/validate_test_files.py
 ```
 
 **4.3 Iterate Until All Pass:**
@@ -267,7 +267,7 @@ Once all files pass validation, update the comment header in each file with actu
 
 ## SUCCESS CRITERIA
 
-Run `python validate_test_files.py` and see:
+Run `python testing/ml-service/validate_test_files.py` and see:
 
 ```
 ✅ PASS Grade 3

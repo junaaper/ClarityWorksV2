@@ -39,7 +39,7 @@ These epistemological considerations possess profound implications for understan
 
 ### Step 1.2: Update Validation Script
 
-**Modify:** `ml-service/validate_test_files.py`
+**Modify:** `testing/ml-service/validate_test_files.py`
 
 Add college to the validation loop:
 
@@ -76,7 +76,7 @@ for grade in test_grades:
 **Run:**
 ```bash
 cd ml-service
-python validate_test_files.py
+python testing/ml-service/validate_test_files.py
 ```
 
 **For any FAILING tests:**
@@ -1561,7 +1561,7 @@ Add heatmap after charts:
 
 ### Test 1: Calibrated Files
 ```bash
-python validate_test_files.py
+python testing/ml-service/validate_test_files.py
 ```
 All 11 should show ✅ PASS (Grades 3-12 + College)
 

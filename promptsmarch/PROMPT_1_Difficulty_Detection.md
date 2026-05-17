@@ -453,7 +453,7 @@ def count_subordinate_clauses(self, sentence):
 
 **5.1 Create Test Script**
 
-Create `ml-service/test_enhanced_reasons.py`:
+Create `testing/ml-service/test_enhanced_reasons.py`:
 
 ```python
 from models.text_processor import TextProcessor
@@ -486,7 +486,7 @@ for sent in result['difficult_sentences']:
 
 ```bash
 cd ml-service
-python test_enhanced_reasons.py
+python testing/ml-service/test_enhanced_reasons.py
 ```
 
 **Expected Output:**
