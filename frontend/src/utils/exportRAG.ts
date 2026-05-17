@@ -14,6 +14,7 @@ interface RAGResult {
   keyword_score?: number;
   relevance_score?: number;
   relevance_label?: string;
+  raw_rerank_score?: number;
   rerank_score?: number;
   collection: string;
 }

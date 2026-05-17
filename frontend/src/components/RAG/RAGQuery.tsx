@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Upload, Copy, Download, Loader2, FileText, ChevronDown, ChevronRight, Bot, BookOpen } from 'lucide-react';
+import { Search, Upload, Copy, Download, Loader2, FileText, ChevronDown, ChevronRight, BookOpen } from 'lucide-react';
 import { ragApi } from '../../services/api';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { exportRAGResultsPDF, exportRAGResultsDOCX } from '../../utils/exportRAG';
@@ -21,6 +21,7 @@ interface QueryResult {
     filename?: string;
   };
   similarity_score: number;
+  raw_rerank_score?: number;
   rerank_score?: number;
   semantic_score?: number;
   keyword_score?: number;
@@ -277,7 +278,7 @@ const RAGQuery: React.FC = () => {
                 <div className="cw-insight">
                   <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
                     <div className="flex items-center gap-2">
-                      <Bot className="w-4 h-4" />
+                      <BookOpen className="w-4 h-4" />
                       <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700 }}>
                         Answer
                       </span>

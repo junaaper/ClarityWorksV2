@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { BookOpen, Mail, Lock, AlertCircle, Eye, EyeOff, BarChart3, Sparkles, BookOpenCheck, ArrowRight } from 'lucide-react';
+import { BookOpen, Mail, Lock, AlertCircle, Eye, EyeOff, BarChart3, TrendingUp, BookOpenCheck, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../utils/auth';
 
 interface LoginForm {
@@ -120,7 +120,7 @@ const Login: React.FC = () => {
           <div className="space-y-3">
             {[
               { icon: BarChart3, title: '8 Readability Formulas', desc: 'Flesch, SMOG, ARI, Coleman-Liau and more — instant results.' },
-              { icon: Sparkles, title: 'ML Grade Prediction', desc: '3-model ensemble trained on 5,000+ reading passages.' },
+              { icon: TrendingUp, title: 'Grade Prediction', desc: '3-model ensemble trained on 5,000+ reading passages.' },
               { icon: BookOpenCheck, title: 'Smart Simplification', desc: 'Rewrite text to any target grade level with NLP analysis.' },
             ].map(({ icon: Icon, title, desc }) => (
               <div
@@ -148,12 +148,6 @@ const Login: React.FC = () => {
           </div>
         </div>
 
-        {/* Bottom: copyright line */}
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.25)', letterSpacing: 0.2 }}>
-            &copy; 2025 ClarityWorks &mdash; Final Year Project
-          </div>
-        </div>
       </div>
 
       {/* Right Panel */}
@@ -320,38 +314,6 @@ const Login: React.FC = () => {
             </Link>
           </p>
 
-          {/* Status badge */}
-          <div
-            className="mt-8 flex items-center gap-3 rounded-xl"
-            style={{
-              padding: '16px 20px',
-              background: 'var(--surface-alt)',
-              border: '1px solid var(--border)',
-              fontSize: 13,
-              color: 'var(--text-3)',
-            }}
-          >
-            <div
-              className="flex items-center justify-center flex-shrink-0"
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: 'var(--r-full)',
-                background: 'var(--ok-50)',
-                border: '1px solid color-mix(in srgb, var(--ok-500) 25%, transparent)',
-              }}
-            >
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--ok-500)' }} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 600, color: 'var(--text-2)', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.3 }}>
-                System Status: Active
-              </div>
-              <div style={{ fontSize: 12.5, marginTop: 2, color: 'var(--text-4)' }}>
-                ML models loaded. All services operational.
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

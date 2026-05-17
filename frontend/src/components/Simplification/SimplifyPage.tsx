@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, Save, Wand2, Check, X, Download, FileText, TrendingDown, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Pencil, Check, X, Download, FileText, TrendingDown, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
 import { analysisApi, simplifyApi } from '../../services/api';
 import { exportSimplificationPDF, exportSimplificationDOCX } from '../../utils/exportSimplification';
 import type {
@@ -1682,14 +1682,17 @@ const SimplifyPage: React.FC = () => {
                 Clear cache
               </button>
             )}
-            <button
-              onClick={handleSimplify}
-              disabled={rewriteDisabled}
-              className="cw-btn cw-btn-primary"
-            >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-              {loading ? 'Processing…' : 'Rewrite'}
-            </button>
+            <span title={mode === 'interactive' ? 'Rewrites cannot be started while in interactive mode' : undefined}>
+              <button
+                onClick={handleSimplify}
+                disabled={rewriteDisabled}
+                className="cw-btn cw-btn-primary"
+                style={mode === 'interactive' ? { pointerEvents: 'none' } : undefined}
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pencil className="w-4 h-4" />}
+                {loading ? 'Processing…' : 'Rewrite'}
+              </button>
+            </span>
 
             {simplifiedText && (
               <>

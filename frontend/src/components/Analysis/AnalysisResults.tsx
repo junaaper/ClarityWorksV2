@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useLocation, Link, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, BarChart3, FileText, AlertTriangle, Target, Wand2, Clock, Info,
+  ArrowLeft, BarChart3, FileText, AlertTriangle, Target, Pencil, Clock, Info,
   ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { analysisApi } from '../../services/api';
@@ -221,7 +221,7 @@ const AnalysisResults: React.FC = () => {
         <div className="min-w-0 flex-1">
           <div className="cw-eyebrow mb-2">Analysis Result</div>
           <h1 className="cw-hero truncate" style={{ fontSize: 28 }}>{data.title}</h1>
-          <p className="mt-2" style={{ color: 'var(--text-3)', fontSize: 12 }}>
+          <p className="mt-2" style={{ color: 'var(--text-3)', fontSize: 13 }}>
             {new Date(data.createdAt).toLocaleString()}
           </p>
         </div>
@@ -230,7 +230,7 @@ const AnalysisResults: React.FC = () => {
             onClick={() => navigate(`/simplify/${id}`)}
             className="cw-btn cw-btn-teal"
           >
-            <Wand2 className="w-4 h-4" />
+            <Pencil className="w-4 h-4" />
             Rewrite Text
           </button>
           <button

@@ -87,7 +87,7 @@ export default {
         'overline': '0.14em',
       },
       maxWidth: {
-        'canvas': '1180px',
+        'canvas': '1320px',
       },
     },
   },
