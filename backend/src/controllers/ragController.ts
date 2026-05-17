@@ -69,6 +69,116 @@ export const uploadDocument = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
+export const uploadDocumentAsync = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: 'No file uploaded' });
+      return;
+    }
+
+    const userId = req.userId;
+
+    const formData = new FormData();
+    formData.append('file', fs.createReadStream(req.file.path), {
+      filename: req.file.originalname,
+    });
+    formData.append('user_id', String(userId));
+
+    const response = await axios.post(
+      `${PYTHON_SERVICE_URL}/rag/upload-async`,
+      formData,
+      {
+        headers: formData.getHeaders(),
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+        timeout: 300000,
+      }
+    );
+
+    // Store file info for later DB insert when progress completes
+    const taskId = response.data.task_id;
+    ragUploadMeta[taskId] = {
+      userId: userId!,
+      filename: req.file.filename,
+      originalFilename: req.file.originalname,
+      fileSize: req.file.size,
+      filePath: req.file.path,
+    };
+
+    res.status(202).json({ task_id: taskId });
+  } catch (error: any) {
+    console.error('Async RAG upload error:', error.message);
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: 'Failed to start upload' });
+  }
+};
+
+const ragUploadMeta: Record<string, {
+  userId: number;
+  filename: string;
+  originalFilename: string;
+  fileSize: number;
+  filePath: string;
+}> = {};
+
+export const getRagUploadProgress = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { taskId } = req.params;
+    const response = await axios.get(`${PYTHON_SERVICE_URL}/rag/upload-progress/${taskId}`);
+    const data = response.data;
+
+    if (data.status === 'complete' && data.result) {
+      const meta = ragUploadMeta[taskId];
+      if (meta) {
+        try {
+          const dbResult = await pool.query(
+            `INSERT INTO rag_documents
+             (user_id, filename, original_filename, file_size_bytes, total_chunks, chromadb_collection_id)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING *`,
+            [
+              meta.userId,
+              meta.filename,
+              meta.originalFilename,
+              meta.fileSize,
+              data.result.chunks_created,
+              data.result.collection_id,
+            ]
+          );
+          data.result.db_record = dbResult.rows[0];
+        } catch (dbErr: any) {
+          console.error('DB insert on RAG complete:', dbErr.message);
+        }
+        if (meta.filePath && fs.existsSync(meta.filePath)) {
+          fs.unlinkSync(meta.filePath);
+        }
+        delete ragUploadMeta[taskId];
+      }
+    }
+
+    if (data.status === 'error') {
+      const meta = ragUploadMeta[taskId];
+      if (meta) {
+        if (meta.filePath && fs.existsSync(meta.filePath)) {
+          fs.unlinkSync(meta.filePath);
+        }
+        delete ragUploadMeta[taskId];
+      }
+    }
+
+    res.json(data);
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      res.status(404).json({ error: 'Unknown task' });
+      return;
+    }
+    console.error('RAG progress error:', error.message);
+    res.status(500).json({ error: 'Failed to get progress' });
+  }
+};
+
 export const queryDocuments = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { query, documentIds } = req.body;

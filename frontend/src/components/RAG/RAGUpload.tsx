@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Upload, Trash2, FileText, Loader2, Search, Network } from 'lucide-react';
 import { ragApi } from '../../services/api';
-import LoadingSpinner from '../common/LoadingSpinner';
 import ConceptGraphSection from '../Analysis/ConceptGraph';
 import { ConceptGraph } from '../../types';
 
@@ -19,6 +18,8 @@ const RAGUpload: React.FC = () => {
   const [documents, setDocuments] = useState<RagDocument[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
+  const [uploadPct, setUploadPct] = useState(0);
+  const [totalChunks, setTotalChunks] = useState<number | null>(null);
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [expandedGraphId, setExpandedGraphId] = useState<number | null>(null);
   const [conceptLoading, setConceptLoading] = useState(false);
@@ -49,25 +50,51 @@ const RAGUpload: React.FC = () => {
 
     setUploading(true);
     setUploadProgress('Uploading file...');
+    setUploadPct(0);
+    setTotalChunks(null);
 
     try {
-      setUploadProgress('Processing and chunking document... This may take a few minutes for large files.');
-      const result = await ragApi.uploadDocument(file);
+      const { task_id } = await ragApi.uploadDocumentAsync(file);
+      setUploadProgress('Processing document...');
 
-      setUploadProgress(`Success! Created ${result.total_chunks} chunks`);
-      fetchDocuments();
+      const poll = async () => {
+        try {
+          const status = await ragApi.uploadProgress(task_id);
+          setUploadPct(Math.round((status.progress || 0) * 100));
+          setUploadProgress(status.message || 'Processing...');
+          if (status.total_chunks) setTotalChunks(status.total_chunks);
 
-      setTimeout(() => {
-        setUploadProgress('');
-        setUploading(false);
-      }, 3000);
+          if (status.status === 'complete') {
+            setUploadProgress(`Done — ${status.result?.chunks_created ?? 0} chunks created`);
+            setUploadPct(100);
+            setTotalChunks(status.result?.chunks_created ?? null);
+            fetchDocuments();
+            setTimeout(() => {
+              setUploadProgress('');
+              setUploading(false);
+              setUploadPct(0);
+              setTotalChunks(null);
+            }, 3000);
+            return;
+          }
+          if (status.status === 'error') {
+            setUploadProgress('Upload failed: ' + (status.error || 'Unknown error'));
+            setUploading(false);
+            return;
+          }
+          setTimeout(poll, 800);
+        } catch {
+          setUploadProgress('Lost connection to server');
+          setUploading(false);
+        }
+      };
+      setTimeout(poll, 1000);
     } catch (error: any) {
       console.error('Upload error:', error);
       setUploadProgress('Upload failed: ' + (error.response?.data?.error || 'Unknown error'));
       setUploading(false);
     }
 
-    // Reset file input
     e.target.value = '';
   };
 
@@ -128,7 +155,7 @@ const RAGUpload: React.FC = () => {
 
   return (
     <div>
-      {uploading && <LoadingSpinner message="Uploading and processing textbook..." fullScreen />}
+      {/* Progress is shown inline in the upload area — no fullscreen overlay */}
 
       <div className="flex items-start justify-between mb-8 gap-4 flex-wrap">
         <div>
@@ -184,9 +211,38 @@ const RAGUpload: React.FC = () => {
           </label>
 
           {uploadProgress && (
-            <p className="mt-4" style={{ fontSize: 12, color: 'var(--text-2)' }}>
-              {uploadProgress}
-            </p>
+            <div className="mt-4" style={{ maxWidth: 360, margin: '16px auto 0' }}>
+              <div className="flex items-center justify-between mb-1.5">
+                <span style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 500 }}>
+                  {uploadProgress}
+                </span>
+                {uploading && uploadPct > 0 && (
+                  <span style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+                    {uploadPct}%
+                  </span>
+                )}
+              </div>
+              {uploading && (
+                <div
+                  className="rounded-full overflow-hidden"
+                  style={{ height: 6, background: 'var(--surface-sunk)' }}
+                >
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${uploadPct}%`,
+                      background: 'var(--p-500)',
+                      transition: 'width 0.4s ease',
+                    }}
+                  />
+                </div>
+              )}
+              {totalChunks !== null && uploading && (
+                <p style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 6 }}>
+                  {totalChunks} chunks
+                </p>
+              )}
+            </div>
           )}
         </div>
 

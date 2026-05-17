@@ -237,7 +237,7 @@ class RAGEngine:
         candidates.sort(key=lambda c: c['keyword_score'], reverse=True)
         return candidates[:limit]
 
-    def upload_document(self, document_id, text, metadata, pages=None):
+    def upload_document(self, document_id, text, metadata, pages=None, progress_callback=None):
         """
         Chunk document, generate embeddings, store in ChromaDB
 
@@ -246,6 +246,7 @@ class RAGEngine:
             text: Full extracted text
             metadata: {'filename', 'user_id'}
             pages: Optional list of {'text', 'metadata'} records for page-aware PDFs
+            progress_callback: Optional fn(pct, message) for reporting progress
 
         Returns:
             {'chunks_created', 'collection_id'}
@@ -290,7 +291,11 @@ class RAGEngine:
                 })
 
         chunk_texts = [record['text'] for record in chunk_records]
-        print(f"Created {len(chunk_texts)} chunks")
+        total_chunks = len(chunk_texts)
+        print(f"Created {total_chunks} chunks")
+
+        if progress_callback:
+            progress_callback(0.30, f"Chunked into {total_chunks} pieces")
 
         # Create collection for this document
         collection_name = f"doc_{document_id}"
@@ -310,10 +315,26 @@ class RAGEngine:
                 'collection_id': collection_name
             }
 
-        # Generate embeddings with e5 prefix (required for e5 models)
+        # Generate embeddings in batches with progress reporting
         print("Generating embeddings...")
         passage_texts = ["passage: " + t for t in chunk_texts]
-        embeddings = self.embedding_model.encode(passage_texts, show_progress_bar=True)
+        batch_size = 32
+        all_embeddings = []
+        for batch_start in range(0, len(passage_texts), batch_size):
+            batch_end = min(batch_start + batch_size, len(passage_texts))
+            batch = passage_texts[batch_start:batch_end]
+            batch_embeddings = self.embedding_model.encode(batch, show_progress_bar=False)
+            all_embeddings.append(batch_embeddings)
+
+            if progress_callback:
+                embed_pct = 0.30 + 0.55 * (batch_end / len(passage_texts))
+                progress_callback(embed_pct, f"Embedding chunks {batch_end}/{total_chunks}")
+
+        import numpy as np
+        embeddings = np.vstack(all_embeddings)
+
+        if progress_callback:
+            progress_callback(0.88, f"Storing {total_chunks} chunks in vector database")
 
         # Store in ChromaDB
         print("Storing in vector database...")
@@ -329,10 +350,13 @@ class RAGEngine:
             ids=[f"chunk_{i}" for i in range(len(chunk_texts))]
         )
 
-        print(f"Document uploaded: {len(chunk_texts)} chunks stored")
+        if progress_callback:
+            progress_callback(1.0, f"Done — {total_chunks} chunks stored")
+
+        print(f"Document uploaded: {total_chunks} chunks stored")
 
         return {
-            'chunks_created': len(chunk_texts),
+            'chunks_created': total_chunks,
             'collection_id': collection_name
         }
 
@@ -546,13 +570,14 @@ INSTRUCTIONS:
 ANSWER:"""
 
             response = self.llm_client.chat.completions.create(
-                model="accounts/fireworks/models/llama-v3p3-70b-instruct",
+                model="accounts/fireworks/models/qwen3p6-plus",
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.25,
                 max_tokens=2500,
-                top_p=0.9
+                top_p=0.9,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
 
             answer = response.choices[0].message.content.strip()

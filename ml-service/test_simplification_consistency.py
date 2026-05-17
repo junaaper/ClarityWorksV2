@@ -784,6 +784,276 @@ def run_llm_meta_commentary_strip_case(simplifier):
         )
 
 
+def run_paragraph_exact_group_case(simplifier):
+    text = (
+        "Tiny first paragraph.\n\n"
+        "A very short second paragraph.\n\n"
+        "This third paragraph is intentionally longer, but it must still remain its own rewrite unit."
+    )
+    groups = simplifier._split_into_rewrite_groups(text)
+    if len(groups) != 3:
+        raise AssertionError(f"Expected exactly three paragraph groups, got {groups!r}")
+    for index, group in enumerate(groups):
+        if group.get('paragraph_index') != index or group.get('group_indices') != [index]:
+            raise AssertionError(f"Paragraph group {index} lost exact paragraph identity: {group!r}")
+
+
+def run_route_gap_beats_paragraph_count_case(simplifier):
+    text = (
+        "Video games have grown into a major form of entertainment with goals, stories, and repeated challenges.\n\n"
+        "Players make choices, solve problems, and react to events while the game world changes around them.\n\n"
+        "Games can also support learning because they ask players to plan, communicate, and pay attention.\n\n"
+        "They should still be balanced with sleep, exercise, school work, and time with other people."
+    )
+    route_grade_9 = simplifier._classify_rewrite_route(text, 8.8, 9)
+    route_grade_10 = simplifier._classify_rewrite_route(text, 8.8, 10)
+    route_raw_8_to_10 = simplifier._classify_rewrite_route(text, 8.0, 10)
+    if route_grade_9 != 'small_shift_fast':
+        raise AssertionError(f"Grade 8.8 -> 9 should stay small_shift_fast, got {route_grade_9}")
+    if route_grade_10 != 'small_shift_fast':
+        raise AssertionError(f"Grade 8.8 -> 10 should stay small_shift_fast, got {route_grade_10}")
+    if route_raw_8_to_10 != 'medium_shift_controlled':
+        raise AssertionError(f"Raw 8.0 -> 10 should stay medium_shift_controlled, got {route_raw_8_to_10}")
+
+
+def run_short_high_upgrade_route_case(simplifier):
+    text = (
+        "Tom had a small brown dog named Max. Every day after lunch Tom and Max would go to the yard. "
+        "Tom threw a red ball far across the green grass. Max ran as fast as he could to bring the ball back to Tom.\n\n"
+        "One warm day they took a long walk by the pond. They saw some fat ducks on the clear blue water. "
+        "The ducks did not seem to care. Max barked but would not jump in the cold water after them.\n\n"
+        "After their walk they went home and Tom gave Max all of his food and then lay down on his soft warm bed to rest. "
+        "That night Tom sat next to Max and read a new book about ships and the deep blue sea. "
+        "Max slept on the rug near his feet while the fire kept them warm."
+    )
+    source_grade = 3.1
+    for target in (8, 10):
+        route = simplifier._classify_rewrite_route(text, source_grade, target)
+        if route != 'medium_shift_controlled':
+            raise AssertionError(f"Tom/Max Grade 3 -> {target} should stay medium_shift_controlled, got {route}")
+
+    route_12 = simplifier._classify_rewrite_route(text, source_grade, 12)
+    if route_12 != 'short_high_upgrade':
+        raise AssertionError(f"Tom/Max Grade 3 -> 12 should use short_high_upgrade, got {route_12}")
+    if simplifier._should_use_paragraph_pipeline(text):
+        raise AssertionError("Tom/Max short text should not use paragraph pipeline.")
+
+    original_client = simplifier.llm_client
+    original_select = simplifier._select_authoring_candidate
+    original_paragraph = simplifier._paragraph_pipeline
+    captured = {}
+    try:
+        simplifier.llm_client = object()
+        simplifier._paragraph_pipeline = lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("short high upgrade should not call paragraph pipeline")
+        )
+
+        def fake_select(*args, **kwargs):
+            captured['prefer_rule_based'] = kwargs.get('prefer_rule_based')
+            captured['called'] = True
+            return {
+                'text': text.replace('small brown dog', 'small, energetic brown dog'),
+                'score': 1.0,
+                'going_up': True,
+                'selection_summary': {
+                    'generation_mode': 'test_whole_text',
+                    'source_grade': source_grade,
+                    'target_grade': 12,
+                    'selected_score': 1.0,
+                    'selected_path': ['test.whole_text'],
+                    'direction_hit': True,
+                    'target_distance': 1.0,
+                    'invalid_sentence_count': 0,
+                    'semantic_similarity_score': 0.95,
+                    'top_candidates': [],
+                },
+                'top_candidates': [],
+            }
+
+        simplifier._select_authoring_candidate = fake_select
+        simplifier.simplify_to_grade(text, 12, mode='auto')
+    finally:
+        simplifier.llm_client = original_client
+        simplifier._select_authoring_candidate = original_select
+        simplifier._paragraph_pipeline = original_paragraph
+
+    if not captured.get('called'):
+        raise AssertionError("Short high upgrade should call whole-text authoring selection.")
+    if captured.get('prefer_rule_based') is not False:
+        raise AssertionError(
+            "Short high upgrade should seed with rules but allow whole-text LLM candidates "
+            f"(prefer_rule_based={captured.get('prefer_rule_based')!r})."
+        )
+
+
+def run_short_high_upgrade_timeout_case(simplifier):
+    original_client = simplifier.llm_client
+    original_chat = simplifier._llm_chat
+    try:
+        simplifier.llm_client = object()
+        simplifier._llm_call_budget = 2
+        simplifier._llm_calls_made = 0
+        simplifier._metrics_tls.llm_timeout_fallback = False
+
+        def fake_timeout(*_args, **_kwargs):
+            simplifier._llm_calls_made += 1
+            raise TimeoutError("Request timed out.")
+
+        simplifier._llm_chat = fake_timeout
+        candidates = simplifier._generate_llm_candidates(
+            original_text="Tom had a small brown dog named Max. They went to the park each morning.",
+            target_grade=12,
+            source_grade=3.1,
+            going_up=True,
+            mode='auto',
+            policy={'beam_width': 3},
+            rule_selection={'text': "Tom had a small, active brown dog named Max. They visited the park each morning."},
+        )
+    finally:
+        simplifier.llm_client = original_client
+        simplifier._llm_chat = original_chat
+        simplifier._llm_call_budget = None
+        simplifier._llm_calls_made = 0
+
+    if candidates:
+        raise AssertionError(f"Timed-out short high upgrade should return deterministic fallback only, got {candidates}")
+    if not getattr(simplifier._metrics_tls, 'llm_timeout_fallback', False):
+        raise AssertionError("Timed-out short high upgrade should mark llm_timeout_fallback.")
+
+
+def run_paragraph_prompt_metric_contract_case(simplifier):
+    text = (
+        "Video games can support learning because players solve problems, make plans, "
+        "and work with other players during difficult challenges."
+    )
+    prompt = simplifier._build_paragraph_prompt(
+        text,
+        target_grade=10,
+        going_up=True,
+        glossary={},
+        para_index=0,
+        total_paras=1,
+    )
+    required_fragments = [
+        "LOCAL READABILITY CONTRACT:",
+        "Current paragraph: raw grade",
+        "Target paragraph band: Grade 10 raw [10.0, 11.0)",
+        "Required movement:",
+        "grade = -21.16 + 14.33*(avg syllables/word) + 0.60*(avg words/sentence)",
+        "Do not overshoot this",
+    ]
+    for fragment in required_fragments:
+        if fragment not in prompt:
+            raise AssertionError(f"Paragraph prompt is missing metric contract fragment: {fragment}")
+
+
+def run_no_whole_doc_fallback_after_paragraph_failure_case(simplifier):
+    text = (
+        "Paragraph one has enough information to count as a document paragraph for this routing test.\n\n"
+        "Paragraph two stays separate and should not be merged with paragraph one.\n\n"
+        "Paragraph three forces the large paragraph route without allowing whole document LLM fallback."
+    )
+    original_llm_client = simplifier.llm_client
+    original_paragraph_pipeline = simplifier._paragraph_pipeline
+    original_select = simplifier._select_authoring_candidate
+    captured = {}
+
+    try:
+        simplifier.llm_client = object()
+        simplifier._paragraph_pipeline = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("forced paragraph failure"))
+
+        def fake_select(*args, **kwargs):
+            captured['prefer_rule_based'] = kwargs.get('prefer_rule_based')
+            captured['called'] = True
+            source_grade, _, _ = simplifier._measure_text_metrics(text)
+            return {
+                'text': text,
+                'score': 0.0,
+                'going_up': 7 > source_grade,
+                'selection_summary': {
+                    'generation_mode': 'rule_primary',
+                    'source_grade': source_grade,
+                    'target_grade': 7,
+                    'selected_score': 0.0,
+                    'selected_path': ['test.rule'],
+                    'direction_hit': True,
+                    'target_distance': 0.0,
+                    'invalid_sentence_count': 0,
+                    'semantic_similarity_score': 1.0,
+                    'top_candidates': [],
+                },
+                'top_candidates': [],
+            }
+
+        simplifier._select_authoring_candidate = fake_select
+        result = simplifier.simplify_to_grade(text, 7, mode='auto')
+        if not captured.get('called') or captured.get('prefer_rule_based') is not True:
+            raise AssertionError("Paragraph failure should fall back only to rule-primary selection.")
+        summary = result.get('selection_summary') or {}
+        if summary.get('generation_mode') != 'rule_primary_after_paragraph_pipeline_failure':
+            raise AssertionError(f"Expected rule fallback summary, got {summary}")
+    finally:
+        simplifier.llm_client = original_llm_client
+        simplifier._paragraph_pipeline = original_paragraph_pipeline
+        simplifier._select_authoring_candidate = original_select
+
+
+def run_small_shift_polish_fragment_case(simplifier):
+    original_client = simplifier.llm_client
+    original_polish = simplifier._minimal_llm_grammar_polish
+    try:
+        simplifier.llm_client = object()
+        original = "Max then went to the store."
+        candidate = "Max then went. To the store."
+        metrics = simplifier._measure_candidate_preview_metrics(original, candidate, 4)
+        sanity = simplifier._run_local_sanity_check(original, candidate, 4, final_metrics=metrics)
+        simplifier._minimal_llm_grammar_polish = (
+            lambda **_kwargs: "Max then went to the store."
+        )
+        polished, _changes, polished_metrics, polished_sanity, summary = simplifier._maybe_apply_route_polish(
+            original_text=original,
+            current_text=candidate,
+            target_grade=4,
+            going_up=False,
+            rewrite_route='small_shift_fast',
+            changes=[],
+            final_metrics=metrics,
+            sanity=sanity,
+        )
+        if summary.get('route_polish_applied') is not True:
+            raise AssertionError(f"Expected small-shift polish to apply, got {summary}")
+        if polished != original:
+            raise AssertionError(f"Expected fragment to be repaired, got {polished!r}")
+        if polished_metrics['target_distance'] > metrics['target_distance'] + 0.05:
+            raise AssertionError("Small-shift polish should not damage target accuracy.")
+        if polished_sanity.get('severe_flags'):
+            raise AssertionError(f"Polish should clear severe sanity flags, got {polished_sanity}")
+    finally:
+        simplifier.llm_client = original_client
+        simplifier._minimal_llm_grammar_polish = original_polish
+
+
+def run_max_grade7_no_utilized_case(simplifier):
+    text = (
+        "Tom had a small brown dog named Max who liked to run and play all day. "
+        "Every day after lunch Tom and Max would go to the big park near their house. "
+        "Tom threw a red ball far across the green grass for Max to fetch. "
+        "Max would run as fast as he could to bring the ball back to Tom.\n\n"
+        "One warm day they took a long walk down to the old pond near the farm. "
+        "They saw some fat ducks on the clear blue water by the tall grass. "
+        "Max barked at the ducks but they did not seem to care at all about him. "
+        "Tom held Max back so he would not jump in the cold water after them.\n\n"
+        "After their walk they went home and Tom gave Max some food and cool water. "
+        "Max ate all of his food and then lay down on his soft warm bed to rest. "
+        "That night Tom sat next to Max and read a new book about ships and the deep blue sea. "
+        "Max slept on the rug near his feet while the fire kept them warm."
+    )
+    result = simplifier.simplify_to_grade(text, 7, mode='auto')
+    lowered = result['simplified_text'].lower()
+    if 'utilized a small brown dog' in lowered or 'utilized' in lowered:
+        raise AssertionError(f"Grade 7 Max rewrite should avoid stiff utilize wording:\n{result['simplified_text']}")
+
+
 def run_final_review_reflection_case(simplifier):
     text = load_test_text('grade_12.txt')
     original_client = simplifier.llm_validator.client
@@ -816,15 +1086,11 @@ def run_final_review_reflection_case(simplifier):
         )
 
         result = simplifier.simplify_to_grade(text, 10, mode='interactive')
-        if 'planned research' not in result['simplified_text']:
-            raise AssertionError("Final review case: expected repaired wording to appear in the preview text.")
-
-        reviewed_changes = [change for change in result['changes'] if change.get('final_reviewed')]
-        if not reviewed_changes:
-            raise AssertionError("Final review case: expected at least one anchored change to be marked as final-reviewed.")
-
-        if not any('meaning check' in (change.get('final_review_note') or '').lower() for change in reviewed_changes):
-            raise AssertionError("Final review case: expected reviewed changes to carry the final meaning-check note.")
+        summary = result.get('selection_summary') or {}
+        if summary.get('final_review_applied'):
+            raise AssertionError("Fast rewrite routes should skip the multi-round final LLM review stack.")
+        if 'planned research' in result['simplified_text']:
+            raise AssertionError("Final review polish should not run during fast route delivery.")
     finally:
         simplifier.llm_validator.client = original_client
         simplifier.llm_validator.validate_changes = original_validate
@@ -917,6 +1183,14 @@ def main() -> int:
         run_auto_interactive_parity_with_greedy_case(simplifier)
         run_grade_3_to_6_upgrade_case(simplifier)
         run_llm_meta_commentary_strip_case(simplifier)
+        run_paragraph_exact_group_case(simplifier)
+        run_route_gap_beats_paragraph_count_case(simplifier)
+        run_short_high_upgrade_route_case(simplifier)
+        run_short_high_upgrade_timeout_case(simplifier)
+        run_paragraph_prompt_metric_contract_case(simplifier)
+        run_no_whole_doc_fallback_after_paragraph_failure_case(simplifier)
+        run_small_shift_polish_fragment_case(simplifier)
+        run_max_grade7_no_utilized_case(simplifier)
         run_final_review_reflection_case(simplifier)
         run_water_cycle_grade_3_case(simplifier)
 

@@ -98,11 +98,28 @@ export interface ReadabilityScores {
   coleman_liau_index: number;
 }
 
+export interface ModelPredictionDetail {
+  id: string;
+  label: string;
+  raw_score: number;
+  weight: number;
+}
+
+export interface ModelBreakdown {
+  ensemble_method: 'equal_average' | string;
+  active_model_count: number;
+  models: ModelPredictionDetail[];
+  calculation: string;
+  final_raw_score: number;
+}
+
 export interface Predictions {
   predicted_grade_level: string;
   predicted_complexity: string;
   confidence: number;
   raw_score?: number;
+  model_predictions?: Record<string, number>;
+  model_breakdown?: ModelBreakdown;
 }
 
 export interface DifficultWord {
@@ -171,6 +188,10 @@ export interface SimplificationChange {
   replacement_text?: string;
   preview_start?: number;
   preview_end?: number;
+  paragraph_index?: number;
+  rewrite_group_index?: number;
+  paragraph_start?: number;
+  paragraph_end?: number;
   review_scope?: 'word' | 'sentence' | 'paragraph';
   direction?: 'up' | 'down';
   quality_score?: number;
@@ -230,6 +251,7 @@ export interface SimplificationCandidateSummary {
 }
 
 export interface SimplificationSelectionSummary {
+  rewrite_route?: 'small_shift_fast' | 'medium_shift_controlled' | 'large_shift_llm';
   policy_bucket: string;
   beam_width: number;
   source_grade: number;
@@ -261,6 +283,14 @@ export interface SimplificationSelectionSummary {
   forced_exact_delivery?: boolean;
   final_review_applied?: boolean;
   review_adjusted_change_count?: number;
+  local_sanity_valid?: boolean;
+  local_sanity_flags?: string[];
+  local_sanity_severe_flags?: string[];
+  route_polish_attempted?: boolean;
+  route_polish_applied?: boolean;
+  route_polish_reason?: string;
+  route_polish_calls_used?: number;
+  cache_hit?: boolean;
   top_candidates: SimplificationSelectionCandidate[];
 }
 

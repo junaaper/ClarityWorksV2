@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useLocation, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, BarChart3, FileText, AlertTriangle, Target, Wand2, Clock, Info,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { analysisApi } from '../../services/api';
 import type { SavedAnalysis, Analysis } from '../../types';
@@ -95,6 +96,7 @@ const AnalysisResults: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [conceptLoading, setConceptLoading] = useState(false);
+  const [showModelDetails, setShowModelDetails] = useState(false);
 
   const freshAnalysis = location.state?.analysis as { analysis: Analysis; analysisId: number } | undefined;
   const freshOriginalText = (location.state?.originalText as string | undefined) || '';
@@ -186,6 +188,21 @@ const AnalysisResults: React.FC = () => {
     flesch_reading_ease: analysis.readability_scores.flesch_reading_ease,
   });
   const paceDesc = getReadingPaceDescription(readingTime.wordsPerMinute);
+  const modelBreakdown = analysis.predictions.model_breakdown;
+  const modelRows = modelBreakdown?.models ?? (
+    analysis.predictions.model_predictions
+      ? Object.entries(analysis.predictions.model_predictions).map(([id, rawScore]) => ({
+          id,
+          label: id
+            .split('_')
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' '),
+          raw_score: rawScore,
+          weight: 0,
+        }))
+      : []
+  );
+  const hasModelDetails = modelRows.length > 0;
   const fTone = fleschTone(analysis.readability_scores.flesch_reading_ease);
 
   return (
@@ -303,6 +320,96 @@ const AnalysisResults: React.FC = () => {
           sub={`${paceDesc} · ${readingTime.wordsPerMinute} WPM`}
         />
       </div>
+
+      {hasModelDetails && (
+        <div className="cw-card cw-card-pad-lg mb-6">
+          <button
+            type="button"
+            onClick={() => setShowModelDetails((value) => !value)}
+            className="w-full flex items-center justify-between gap-4"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              color: 'var(--text-1)',
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            <div>
+              <div className="cw-section-title">Advanced Model Details</div>
+              <p className="mt-1" style={{ color: 'var(--text-3)', fontSize: 12.5 }}>
+                Show each model's raw grade estimate and the ensemble calculation.
+              </p>
+            </div>
+            {showModelDetails ? (
+              <ChevronUp className="w-5 h-5" style={{ color: 'var(--text-3)' }} />
+            ) : (
+              <ChevronDown className="w-5 h-5" style={{ color: 'var(--text-3)' }} />
+            )}
+          </button>
+
+          {showModelDetails && (
+            <div className="mt-5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {modelRows.map((model) => (
+                  <div
+                    key={model.id}
+                    className="rounded-lg"
+                    style={{
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface)',
+                      padding: '14px 16px',
+                    }}
+                  >
+                    <div className="cw-eyebrow mb-2">{model.label}</div>
+                    <div
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 22,
+                        fontWeight: 800,
+                        color: 'var(--text-1)',
+                      }}
+                    >
+                      {model.raw_score.toFixed(2)}
+                    </div>
+                    {model.weight > 0 && (
+                      <div className="mt-1" style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                        Weight {(model.weight * 100).toFixed(1)}%
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div
+                className="mt-4 rounded-lg"
+                style={{
+                  border: '1px solid color-mix(in srgb, var(--p-700) 18%, var(--border))',
+                  background: 'color-mix(in srgb, var(--p-50) 65%, var(--surface))',
+                  padding: '14px 16px',
+                }}
+              >
+                <div className="cw-eyebrow mb-2">Final Ensemble</div>
+                <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-1)', fontSize: 13 }}>
+                  {modelBreakdown?.calculation ?? (
+                    `${modelRows.map((model) => model.raw_score.toFixed(2)).join(' + ')} / ${modelRows.length} = ${
+                      (analysis.predictions.raw_score ?? 0).toFixed(2)
+                    }`
+                  )}
+                </div>
+                <div className="mt-2" style={{ color: 'var(--text-3)', fontSize: 12.5 }}>
+                  Final raw score {(
+                    modelBreakdown?.final_raw_score ??
+                    analysis.predictions.raw_score ??
+                    modelRows.reduce((sum, model) => sum + model.raw_score, 0) / Math.max(1, modelRows.length)
+                  ).toFixed(2)} maps to {analysis.predictions.predicted_grade_level}; confidence is {(analysis.predictions.confidence * 100).toFixed(0)}%.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Grade Explanation */}
       <div className="mb-6">

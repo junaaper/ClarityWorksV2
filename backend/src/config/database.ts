@@ -66,6 +66,9 @@ export const initDatabase = async (): Promise<void> => {
         predicted_grade_level VARCHAR(50),
         predicted_complexity VARCHAR(50),
         confidence DECIMAL,
+        raw_score DECIMAL,
+        model_predictions JSONB,
+        model_breakdown JSONB,
         difficult_words_count INTEGER,
         difficult_words_percentage DECIMAL,
         difficult_words JSONB,
@@ -80,6 +83,13 @@ export const initDatabase = async (): Promise<void> => {
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses(created_at DESC)
+    `);
+
+    await client.query(`
+      ALTER TABLE analyses
+      ADD COLUMN IF NOT EXISTS raw_score DECIMAL,
+      ADD COLUMN IF NOT EXISTS model_predictions JSONB,
+      ADD COLUMN IF NOT EXISTS model_breakdown JSONB
     `);
 
     // Create simplification_history table
