@@ -221,12 +221,15 @@ type ParagraphReview = {
   sentenceChanges: Change[];
 };
 
+const isPhrase = (item: ExplanationItem) =>
+  (item.before && item.before.includes(' ')) || (item.after && item.after.includes(' '));
+
 const getEvidenceLabel = (item: ExplanationItem) => {
   switch (item.kind) {
     case 'word_upgrade':
-      return 'Word Upgrade';
+      return isPhrase(item) ? 'Phrase Upgrade' : 'Word Upgrade';
     case 'word_replacement':
-      return 'Word Replacement';
+      return isPhrase(item) ? 'Phrase Rewrite' : 'Word Replacement';
     case 'connector_added':
       return 'Connector';
     default:
@@ -632,12 +635,12 @@ const EvidenceItems: React.FC<{
                   <span style={{ fontSize: 11.5, color: 'var(--s-700)', fontWeight: 700 }}>
                     {item.after}
                   </span>
-                  {typeof item.frequency_before === 'number' && typeof item.frequency_after === 'number' && (
+                  {!isPhrase(item) && typeof item.frequency_before === 'number' && typeof item.frequency_after === 'number' && (
                     <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
                       Zipf {item.frequency_before.toFixed(1)} → {item.frequency_after.toFixed(1)}
                     </span>
                   )}
-                  {typeof item.syllables_before === 'number' && typeof item.syllables_after === 'number' && (
+                  {!isPhrase(item) && typeof item.syllables_before === 'number' && typeof item.syllables_after === 'number' && (
                     <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
                       {item.syllables_before} → {item.syllables_after} syll.
                     </span>
