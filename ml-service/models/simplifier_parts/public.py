@@ -22,10 +22,17 @@ class PublicSimplifierMixin:
         self._llm_calls_made = 0
         self._metrics_tls.cache = {}
         self._metrics_tls.llm_timeout_fallback = False
+        route_progress_label = (
+            'paragraph rewrite'
+            if rewrite_route == 'large_shift_llm' else
+            'guided rewrite'
+            if rewrite_route == 'medium_shift_controlled' else
+            'quick rewrite'
+        )
         self._emit_progress(
             progress_callback,
             0.03,
-            f'Using {rewrite_route.replace("_", " ")} route...',
+            f'Starting {route_progress_label}...',
             None,
             rewrite_route=rewrite_route,
             phase='route',
@@ -144,13 +151,14 @@ class PublicSimplifierMixin:
         self._emit_progress(
             progress_callback,
             0.90,
-            'Generating changes...',
+            'Preparing review highlights...',
             None,
             rewrite_route=rewrite_route,
             phase='diff',
             llm_calls_used=llm_calls_used,
         )
 
+        fast_exact_review_patch = False
         if used_paragraph_pipeline:
             groups = selection['selection_summary'].get('_rewrite_groups')
             rtexts = selection['selection_summary'].get('_rewritten_texts')
@@ -163,12 +171,38 @@ class PublicSimplifierMixin:
                 self._distance_to_target_band(final_metrics['raw_score'], target_grade), 2
             )
         else:
-            current_text, changes, final_metrics = self._finalize_preview_candidate(
-                original_text=text,
-                candidate_text=current_text,
-                target_grade=target_grade,
-                going_up=going_up,
+            exact_change = (
+                self._build_exact_rebuild_change(text, current_text, target_grade, going_up)
+                if self._should_use_fast_exact_review_patch(
+                    original_text=text,
+                    candidate_text=current_text,
+                    target_grade=target_grade,
+                    going_up=going_up,
+                    source_grade=source_grade_for_budget,
+                    selection=selection,
+                )
+                else None
             )
+            if exact_change:
+                exact_change['id'] = 0
+                changes = self._assign_dependency_groups([exact_change])
+                fast_exact_review_patch = True
+                final_metrics = self._measure_preview_metrics(current_text)
+                final_metrics['semantic_similarity_score'] = round(
+                    self._semantic_similarity_score(text, current_text),
+                    2,
+                )
+                final_metrics['target_distance'] = round(
+                    self._distance_to_target_band(final_metrics['raw_score'], target_grade),
+                    2,
+                )
+            else:
+                current_text, changes, final_metrics = self._finalize_preview_candidate(
+                    original_text=text,
+                    candidate_text=current_text,
+                    target_grade=target_grade,
+                    going_up=going_up,
+                )
 
         if not used_paragraph_pipeline and changes and final_metrics.get('target_distance', 0) > 0:
             greedy_changes, greedy_text, greedy_metrics = self._greedy_select_changes_for_target(
@@ -215,7 +249,7 @@ class PublicSimplifierMixin:
                 )
                 forced_exact_delivery = True
 
-        if not used_paragraph_pipeline and self._should_apply_defence_target_fallback(
+        if self._should_apply_defence_target_fallback(
             original_text=text,
             target_grade=target_grade,
             going_up=going_up,
@@ -249,6 +283,13 @@ class PublicSimplifierMixin:
                         final_metrics = fallback_metrics
                         forced_exact_delivery = True
                         defence_target_fallback_used = True
+                        if used_paragraph_pipeline:
+                            selection['selection_summary'] = {
+                                **dict(selection.get('selection_summary') or {}),
+                                'generation_mode': 'defence_target_fallback_after_paragraph_pipeline',
+                                'paragraph_pipeline_far_miss': True,
+                            }
+                            used_paragraph_pipeline = False
                         print(
                             "[selection] defence_target_fallback selected "
                             f"raw={final_metrics['raw_score']:.2f} "
@@ -258,8 +299,8 @@ class PublicSimplifierMixin:
 
         self._emit_progress(
             progress_callback,
-            0.96,
-            'Running local sanity checks...',
+            0.94,
+            'Checking rewritten text...',
             None,
             rewrite_route=rewrite_route,
             phase='sanity',
@@ -285,6 +326,15 @@ class PublicSimplifierMixin:
         llm_calls_used += route_polish_summary.get('route_polish_calls_used', 0)
         normalized_current_text = re.sub(r'\n[ \t]+', '\n', current_text).strip()
         if normalized_current_text != current_text:
+            self._emit_progress(
+                progress_callback,
+                0.96,
+                'Finalizing preview...',
+                None,
+                rewrite_route=rewrite_route,
+                phase='diff',
+                llm_calls_used=llm_calls_used,
+            )
             current_text, changes, final_metrics = self._finalize_preview_candidate(
                 original_text=text,
                 candidate_text=normalized_current_text,
@@ -349,6 +399,7 @@ class PublicSimplifierMixin:
             'llm_calls_used': llm_calls_used,
             'llm_timeout_fallback': bool(getattr(self._metrics_tls, 'llm_timeout_fallback', False)),
             'forced_exact_delivery': forced_exact_delivery,
+            'fast_exact_review_patch': fast_exact_review_patch,
             'defence_target_fallback_used': defence_target_fallback_used,
             'local_sanity_valid': local_sanity['valid'],
             'local_sanity_flags': local_sanity['flags'],
@@ -360,9 +411,23 @@ class PublicSimplifierMixin:
             selection_summary['critic_review'] = critic_review
         self._selection_context['selection_summary'] = selection_summary
 
-        display_items = self._build_display_changes(text, current_text, target_grade, going_up)
-        if display_items:
-            self._enrich_changes_with_display_items(changes, display_items)
+        skip_display_enrichment = bool(
+            selection_summary.get('fast_exact_review_patch') and
+            final_metrics.get('target_distance', 999) == 0
+        )
+        if not skip_display_enrichment:
+            self._emit_progress(
+                progress_callback,
+                0.98,
+                'Finalizing preview...',
+                None,
+                rewrite_route=rewrite_route,
+                phase='diff',
+                llm_calls_used=llm_calls_used,
+            )
+            display_items = self._build_display_changes(text, current_text, target_grade, going_up)
+            if display_items:
+                self._enrich_changes_with_display_items(changes, display_items)
         reason_summary = self._reason_coverage_summary(changes)
         selection_summary.update(reason_summary)
         self._selection_context['selection_summary'] = selection_summary
@@ -378,3 +443,36 @@ class PublicSimplifierMixin:
             'target_distance': final_metrics['target_distance'],
             'selection_summary': api_summary,
         }
+
+    def _should_use_fast_exact_review_patch(
+        self,
+        original_text,
+        candidate_text,
+        target_grade,
+        going_up,
+        source_grade,
+        selection,
+    ):
+        if going_up or target_grade not in {11, 12}:
+            return False
+        if not candidate_text or candidate_text.strip() == original_text.strip():
+            return False
+        words = len(re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", original_text or ''))
+        if words < 350 and len(self._extract_paragraph_chunks(original_text)) < 3:
+            return False
+        summary = selection.get('selection_summary') or {}
+        selected_display = summary.get('selected_display_grade')
+        selected_distance_value = summary.get('target_distance')
+        selected_distance = (
+            float(selected_distance_value)
+            if selected_distance_value is not None else
+            999.0
+        )
+        selected_flags = summary.get('selected_validation_flags') or []
+        selected_blocking = summary.get('selected_blocking_flags') or []
+        return (
+            int(selected_display or -1) == int(target_grade) and
+            selected_distance <= 0 and
+            not selected_blocking and
+            not any(flag in {'llm_meta_artifact', 'repeated_garbled_text'} for flag in selected_flags)
+        )

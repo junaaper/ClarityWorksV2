@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor, wait
+
 from .base import *
 
 
@@ -317,7 +319,20 @@ PARAGRAPH TO REWRITE:
 
 SIMPLIFIED PARAGRAPH ({grade_label}):"""
 
-    def _rewrite_single_paragraph(self, paragraph_text, target_grade, going_up, glossary, para_index, total_paras, metric_feedback=None):
+    def _rewrite_single_paragraph(
+        self,
+        paragraph_text,
+        target_grade,
+        going_up,
+        glossary,
+        para_index,
+        total_paras,
+        metric_feedback=None,
+        request_timeout=None,
+        deadline=None,
+    ):
+        if not hasattr(self._metrics_tls, 'cache') or self._metrics_tls.cache is None:
+            self._metrics_tls.cache = {}
         metrics = GRADE_TARGET_METRICS.get(target_grade, GRADE_TARGET_METRICS[8])
         target_syl = metrics['target_syl']
         min_wps = metrics['min_wps']
@@ -403,8 +418,12 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
             max_tokens=2200,
+            request_timeout=request_timeout,
         )
         if resp is None:
+            return paragraph_text, 0.0, 0.0, 0.0
+
+        if deadline is not None and time.monotonic() > deadline:
             return paragraph_text, 0.0, 0.0, 0.0
 
         text_out = self._strip_llm_meta_commentary(resp.choices[0].message.content.strip())
@@ -506,12 +525,18 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
                          f == 'worse_than_original_for_target'}
             if relaxable:
                 severe = [f for f in severe if f not in relaxable]
-                print(f"[para-usable] relaxed {len(relaxable)} flag(s) (improvement={improvement:.1f} grades, cand={cand_grade:.2f}→target={target_grade})")
+                print(f"[para-usable] relaxed {len(relaxable)} flag(s) (improvement={improvement:.1f} grades, cand={cand_grade:.2f}->target={target_grade})")
 
         if severe:
             return False, 'local_sanity:' + ','.join(severe[:3])
 
-        # Check for mass content noun dropping during downgrade
+        raw_score = float(para_metrics.get('raw_score', measured_grade or 0.0) or 0.0)
+        display_delta = self._display_grade_delta_from_score(raw_score, target_grade)
+
+        # Check for mass content noun dropping during downgrade. For hard
+        # low-grade downgrades, do not throw away a target-band paragraph for a
+        # soft noun-drop signal unless the content loss is extreme; otherwise
+        # the pipeline snaps back to higher-grade rule text.
         if not going_up:
             content_nouns = self._extract_key_content_nouns(original_para)
             if content_nouns:
@@ -521,10 +546,24 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
                 drop_limit = 5 if improvement > 3.0 else 3
                 drop_ratio = 0.60 if improvement > 3.0 else 0.40
                 if len(dropped) >= drop_limit or len(dropped) / max(1, len(content_nouns)) > drop_ratio:
-                    return False, f'content_nouns_dropped:{",".join(dropped[:3])}'
+                    close_low_grade_hit = (
+                        target_grade <= 7
+                        and improvement > 2.0
+                        and (cand_dist <= 1.25 or display_delta <= TARGET_LOCK_DISPLAY_BAND_TOLERANCE)
+                    )
+                    extreme_content_loss = (
+                        len(dropped) >= max(8, int(len(content_nouns) * 0.85))
+                        or len(dropped) / max(1, len(content_nouns)) > 0.82
+                    )
+                    if close_low_grade_hit and not extreme_content_loss:
+                        print(
+                            "[para-usable] soft noun-drop accepted "
+                            f"(dropped={len(dropped)}/{len(content_nouns)}, "
+                            f"cand={cand_grade:.2f}->target={target_grade})"
+                        )
+                    else:
+                        return False, f'content_nouns_dropped:{",".join(dropped[:3])}'
 
-        raw_score = float(para_metrics.get('raw_score', measured_grade or 0.0) or 0.0)
-        display_delta = self._display_grade_delta_from_score(raw_score, target_grade)
         if going_up and target_grade < 13:
             hard_ceiling = float(target_grade) + 2.25
             if raw_score > hard_ceiling or display_delta > 2:
@@ -564,153 +603,225 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
             g, s, w = self._measure_text_metrics(text_out)
             return text_out, g, s, w
 
+        grade_gap = abs(float(target_grade) - source_grade)
+        skip_individual_retry = grade_gap > 6.0
+        hard_low_grade_downgrade = target_grade <= 7 and not going_up and grade_gap >= 3.0
+        utrecht_defence_fallback_candidate = (
+            hard_low_grade_downgrade
+            and self._should_apply_defence_target_fallback(
+                original_text=text,
+                target_grade=target_grade,
+                going_up=going_up,
+                final_metrics={'raw_score': source_grade},
+            )
+        )
+        paragraph_parallelism = self._env_int(
+            'CLARITYWORKS_PARAGRAPH_PARALLELISM',
+            2,
+            min_value=1,
+            max_value=4,
+        )
+        paragraph_batch_timeout = self._env_int(
+            'CLARITYWORKS_PARAGRAPH_BATCH_TIMEOUT_SECONDS',
+            45,
+            min_value=10,
+            max_value=180,
+        )
+        paragraph_llm_timeout = self._env_int(
+            'CLARITYWORKS_PARAGRAPH_LLM_TIMEOUT_SECONDS',
+            30,
+            min_value=5,
+            max_value=120,
+        )
+
+        # --- Phase 1: Rewrite paragraph 0 first (sequential) for glossary ---
+        initial_results = [None] * n_groups  # (text_out, g, s, w, failed)
+
         for i, group in enumerate(groups):
-            pct = (i / max(1, n_groups)) * 0.85
+            group_word_count = len(group['text'].split())
+            if group_word_count < 25:
+                print(f"[para-pipeline] group {i}: short group ({group_word_count} words), skipping LLM")
+                text_out, g, s, w = rule_fallback_for_group(group['text'], max_rounds=1)
+                initial_results[i] = (text_out, g, s, w, False)
+            elif i == 0:
+                self._emit_progress(
+                    progress_callback, 0.05,
+                    f'Rewriting paragraph 1 of {n_groups}...',
+                    None,
+                    rewrite_route='large_shift_llm',
+                    phase='paragraph_rewrite',
+                    current_paragraph=1,
+                    total_paragraphs=n_groups,
+                    llm_calls_used=self._llm_calls_made,
+                    llm_call_budget=self._llm_call_budget,
+                )
+                try:
+                    text_out, g, s, w = self._rewrite_single_paragraph(
+                        group['text'], target_grade, going_up, {}, 0, n_groups,
+                        request_timeout=paragraph_llm_timeout,
+                    )
+                    initial_results[0] = (text_out, g, s, w, False)
+                    if text_out != group['text']:
+                        glossary = self._build_paragraph_glossary(group['text'], text_out)
+                except Exception as exc:
+                    if self._is_rate_limit_error(exc):
+                        rate_limited = True
+                    initial_results[0] = (group['text'], 0, 0, 0, True)
+                self._emit_progress(
+                    progress_callback, 0.12,
+                    f'Paragraph 1 complete...',
+                    None,
+                    rewrite_route='large_shift_llm',
+                    phase='paragraph_complete',
+                    current_paragraph=1,
+                    total_paragraphs=n_groups,
+                    llm_calls_used=self._llm_calls_made,
+                    llm_call_budget=self._llm_call_budget,
+                )
+
+        # --- Phase 1b: Parallel LLM rewrites for paragraphs 1..N ---
+        parallel_indices = [
+            i for i in range(1, n_groups)
+            if initial_results[i] is None and not rate_limited
+        ]
+
+        if parallel_indices:
+            max_workers = min(len(parallel_indices), paragraph_parallelism)
+            completed_count = 0
+            batch_deadline = time.monotonic() + paragraph_batch_timeout
+
             self._emit_progress(
-                progress_callback,
-                pct,
-                f'Rewriting paragraph {i + 1} of {n_groups}...',
+                progress_callback, 0.15,
+                f'Rewriting paragraphs 2-{n_groups}...',
                 None,
                 rewrite_route='large_shift_llm',
                 phase='paragraph_rewrite',
-                current_paragraph=i + 1,
+                current_paragraph=2,
                 total_paragraphs=n_groups,
                 llm_calls_used=self._llm_calls_made,
                 llm_call_budget=self._llm_call_budget,
             )
 
-            # Change C: skip LLM for very short groups (headers, labels, metadata)
-            group_word_count = len(group['text'].split())
-            if group_word_count < 25:
-                print(f"[para-pipeline] group {i}: short group ({group_word_count} words), skipping LLM")
-                text_out, g, s, w = rule_fallback_for_group(group['text'], max_rounds=1)
-                if i == 0 and text_out != group['text']:
-                    glossary = self._build_paragraph_glossary(group['text'], text_out)
-                rewritten_texts.append(text_out)
-                continue
-
-            # Change B: guard initial LLM call — skip to rule fallback if budget already exhausted
-            if rate_limited or not self._llm_calls_remaining():
-                reason = 'rate limit reached' if rate_limited else 'no LLM budget remaining'
-                print(f"[para-pipeline] group {i}: {reason}, applying rule fallback directly")
-                text_out, g, s, w = rule_fallback_for_group(group['text'], max_rounds=2)
-                failed_paragraphs.append(i)
-                if i == 0 and text_out != group['text']:
-                    glossary = self._build_paragraph_glossary(group['text'], text_out)
-                rewritten_texts.append(text_out)
-                continue
-
+            executor = ThreadPoolExecutor(max_workers=max_workers)
             try:
-                text_out, g, s, w = self._rewrite_single_paragraph(
-                    group['text'], target_grade, going_up, glossary, i, n_groups,
-                )
-            except Exception as exc:
-                if not self._is_rate_limit_error(exc):
-                    raise
-                rate_limited = True
-                print(
-                    f"[para-pipeline] group {i}: Fireworks rate limit hit; "
-                    "using rule fallback for this and remaining paragraphs"
-                )
+                futures = {}
+                for i in parallel_indices:
+                    if not self._llm_calls_remaining():
+                        initial_results[i] = (groups[i]['text'], 0, 0, 0, True)
+                        continue
+                    future = executor.submit(
+                        self._rewrite_single_paragraph,
+                        groups[i]['text'], target_grade, going_up,
+                        glossary, i, n_groups,
+                        request_timeout=paragraph_llm_timeout,
+                        deadline=batch_deadline,
+                    )
+                    futures[future] = i
+
+                done, not_done = wait(futures.keys(), timeout=paragraph_batch_timeout)
+
+                for future in done:
+                    i = futures[future]
+                    try:
+                        text_out, g, s, w = future.result()
+                        initial_results[i] = (text_out, g, s, w, False)
+                    except Exception as exc:
+                        if self._is_rate_limit_error(exc):
+                            rate_limited = True
+                        initial_results[i] = (groups[i]['text'], 0, 0, 0, True)
+                        print(f"[para-pipeline] group {i}: parallel rewrite failed: {exc}")
+
+                    completed_count += 1
+                    pct = 0.15 + (completed_count / max(1, len(parallel_indices))) * 0.55
+                    self._emit_progress(
+                        progress_callback, pct,
+                        f'Rewriting paragraphs 2-{n_groups}...',
+                        None,
+                        rewrite_route='large_shift_llm',
+                        phase='paragraph_rewrite',
+                        current_paragraph=completed_count + 1,
+                        total_paragraphs=n_groups,
+                        llm_calls_used=self._llm_calls_made,
+                        llm_call_budget=self._llm_call_budget,
+                    )
+
+                for future in not_done:
+                    i = futures[future]
+                    future.cancel()
+                    initial_results[i] = (groups[i]['text'], 0, 0, 0, True)
+                    print(
+                        f"[para-pipeline] group {i}: parallel rewrite failed: "
+                        f"batch timeout after {paragraph_batch_timeout}s"
+                    )
+
+                    completed_count += 1
+                    pct = 0.15 + (completed_count / max(1, len(parallel_indices))) * 0.55
+                    self._emit_progress(
+                        progress_callback, pct,
+                        f'Rewriting paragraphs 2-{n_groups}...',
+                        None,
+                        rewrite_route='large_shift_llm',
+                        phase='paragraph_rewrite',
+                        current_paragraph=completed_count + 1,
+                        total_paragraphs=n_groups,
+                        llm_calls_used=self._llm_calls_made,
+                        llm_call_budget=self._llm_call_budget,
+                    )
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
+
+        # Fill in any remaining None slots (rate-limited before submission)
+        for i in range(n_groups):
+            if initial_results[i] is None:
+                initial_results[i] = (groups[i]['text'], 0, 0, 0, True)
+
+        # --- Phase 2: Sequential usability check + retry pass ---
+        for i, group in enumerate(groups):
+            text_out, g, s, w, did_fail = initial_results[i]
+
+            if did_fail:
                 text_out, g, s, w = rule_fallback_for_group(group['text'], max_rounds=2)
                 failed_paragraphs.append(i)
-                if i == 0 and text_out != group['text']:
-                    glossary = self._build_paragraph_glossary(group['text'], text_out)
                 rewritten_texts.append(text_out)
                 continue
 
             usable, unusable_reason = self._paragraph_rewrite_is_usable(
-                group['text'],
-                text_out,
-                target_grade,
-                going_up,
-                measured_grade=g,
+                group['text'], text_out, target_grade, going_up, measured_grade=g,
             )
-            if not usable:
-                print(f"[para-pipeline] group {i} rejected ({unusable_reason}); retrying once with metric feedback")
-                retry_text = ''
+            if not usable and not skip_individual_retry:
+                print(f"[para-pipeline] group {i} rejected ({unusable_reason}); retrying with metric feedback")
                 if not rate_limited and self._llm_calls_remaining():
                     try:
                         retry_text, retry_g, retry_s, retry_w = self._rewrite_single_paragraph(
-                            group['text'],
-                            target_grade,
-                            going_up,
-                            glossary,
-                            i,
-                            n_groups,
-                            metric_feedback={
-                                'grade': g,
-                                'syl': s,
-                                'wps': w,
-                                'unusable_reason': unusable_reason,
-                            },
+                            group['text'], target_grade, going_up, glossary, i, n_groups,
+                            metric_feedback={'grade': g, 'syl': s, 'wps': w, 'unusable_reason': unusable_reason},
+                            request_timeout=paragraph_llm_timeout,
                         )
                     except Exception as exc:
-                        if not self._is_rate_limit_error(exc):
-                            raise
-                        rate_limited = True
-                        print(
-                            f"[para-pipeline] group {i} retry hit Fireworks rate limit; "
-                            "applying rule fallback"
-                        )
-                        text_out, g, s, w = rule_fallback_for_group(group['text'], max_rounds=2)
-                        failed_paragraphs.append(i)
-                        repair_attempts[i] = repair_attempts.get(i, 0) + 1
+                        if self._is_rate_limit_error(exc):
+                            rate_limited = True
                         retry_text = ''
-                    if not retry_text:
-                        pass
                     else:
                         retry_usable, retry_reason = self._paragraph_rewrite_is_usable(
-                            group['text'],
-                            retry_text,
-                            target_grade,
-                            going_up,
-                            measured_grade=retry_g,
+                            group['text'], retry_text, target_grade, going_up, measured_grade=retry_g,
                         )
                         if retry_usable:
                             text_out, g, s, w = retry_text, retry_g, retry_s, retry_w
                             repair_attempts[i] = repair_attempts.get(i, 0) + 1
                         else:
-                            print(
-                                f"[para-pipeline] group {i} retry rejected ({retry_reason}); "
-                                "applying rule fallback"
-                            )
+                            print(f"[para-pipeline] group {i} retry rejected ({retry_reason}); rule fallback")
                             text_out, g, s, w = rule_fallback_for_group(group['text'], max_rounds=2)
                             failed_paragraphs.append(i)
                             repair_attempts[i] = repair_attempts.get(i, 0) + 1
-                elif not rate_limited:
-                    print(
-                        f"[para-pipeline] group {i} rejected ({unusable_reason}); "
-                        "applying rule fallback"
-                    )
-                    text_out, g, s, w = rule_fallback_for_group(group['text'], max_rounds=2)
-                    failed_paragraphs.append(i)
-                    repair_attempts[i] = repair_attempts.get(i, 0) + 1
                 else:
-                    print(
-                        f"[para-pipeline] group {i} rejected ({unusable_reason}) after rate limit; "
-                        "applying rule fallback"
-                    )
                     text_out, g, s, w = rule_fallback_for_group(group['text'], max_rounds=2)
                     failed_paragraphs.append(i)
                     repair_attempts[i] = repair_attempts.get(i, 0) + 1
-
-            pct = ((i + 1) / max(1, n_groups)) * 0.85
-            self._emit_progress(
-                progress_callback,
-                pct,
-                f'Paragraph {i + 1} complete (grade {g:.1f})...',
-                None,
-                rewrite_route='large_shift_llm',
-                phase='paragraph_complete',
-                current_paragraph=i + 1,
-                total_paragraphs=n_groups,
-                llm_calls_used=self._llm_calls_made,
-                llm_call_budget=self._llm_call_budget,
-            )
-
-            if i == 0 and text_out != group['text']:
-                glossary = self._build_paragraph_glossary(group['text'], text_out)
+            elif not usable:
+                print(f"[para-pipeline] group {i} rejected ({unusable_reason}); skipping retry (large gap), rule fallback")
+                text_out, g, s, w = rule_fallback_for_group(group['text'], max_rounds=2)
+                failed_paragraphs.append(i)
+                repair_attempts[i] = repair_attempts.get(i, 0) + 1
 
             rewritten_texts.append(text_out)
 
@@ -719,7 +830,7 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
         self._emit_progress(
             progress_callback,
             0.88,
-            'Checking document grade...',
+            'Reviewing rewritten text...',
             None,
             rewrite_route='large_shift_llm',
             phase='document_check',
@@ -736,7 +847,7 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
         band_lower, band_upper = self._get_target_band(target_grade)
 
         grade_gap = abs(float(target_grade) - source_grade)
-        max_repair_rounds = 1 if grade_gap <= 3.0 else (2 if grade_gap <= 6.0 else 3)
+        max_repair_rounds = 0 if utrecht_defence_fallback_candidate else (1 if grade_gap <= 3.0 else (2 if grade_gap <= 6.0 else 3))
         for repair_round in range(max_repair_rounds):
             if distance <= 0:
                 break
@@ -771,10 +882,10 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
             self._emit_progress(
                 progress_callback,
                 0.88 + repair_round * 0.03,
-                f'Repairing paragraph {worst_idx + 1}...',
+                'Reviewing rewritten text...',
                 None,
                 rewrite_route='large_shift_llm',
-                phase='paragraph_repair',
+                phase='document_check',
                 current_paragraph=worst_idx + 1,
                 total_paragraphs=n_groups,
                 llm_calls_used=self._llm_calls_made,
@@ -787,6 +898,7 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
                 repaired, rg, rs, rw = self._rewrite_single_paragraph(
                     groups[worst_idx]['text'], target_grade, going_up, glossary,
                     worst_idx, n_groups, metric_feedback=feedback,
+                    request_timeout=paragraph_llm_timeout,
                 )
             except Exception as exc:
                 if not self._is_rate_limit_error(exc):
@@ -826,7 +938,102 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
 
         far_miss = distance > 2.0
         fallback_used = False
-        if far_miss and not rate_limited and self._llm_calls_remaining():
+        low_grade_rescue_used = False
+        if far_miss and utrecht_defence_fallback_candidate:
+            print(f"[para-pipeline] distance {distance:.2f} > 2.0, deferring to defence fallback")
+        elif far_miss and hard_low_grade_downgrade and not rate_limited and self._llm_calls_remaining():
+            print(f"[para-pipeline] distance {distance:.2f} > 2.0, attempting low-grade rescue")
+            rescue_timeout = self._env_int(
+                'CLARITYWORKS_LOW_GRADE_RESCUE_TIMEOUT_SECONDS',
+                35,
+                min_value=5,
+                max_value=120,
+            )
+            rescue_candidate = {
+                'text': assembled,
+                'raw_score': doc_grade,
+                'target_distance': distance,
+                'validation_flags': [],
+                'selection_path': ['paragraph_pipeline'],
+            }
+            try:
+                policy = self._get_target_policy(target_grade, going_up, source_grade=source_grade)
+                rescue_candidates = self._target_contract_rescue_candidates(
+                    original_text=text,
+                    selected_candidate=rescue_candidate,
+                    top_candidates=[rescue_candidate],
+                    target_grade=target_grade,
+                    source_grade=source_grade,
+                    going_up=going_up,
+                    mode=mode,
+                    policy=policy,
+                    request_timeout=rescue_timeout,
+                )
+            except Exception as exc:
+                rescue_candidates = []
+                print(f"[para-pipeline] low-grade rescue failed: {exc}")
+
+            scored_rescues = []
+            for candidate in rescue_candidates:
+                candidate_text = candidate.get('text') or ''
+                if not candidate_text.strip():
+                    continue
+                scored = self._score_candidate(
+                    original_text=text,
+                    candidate_text=candidate_text,
+                    target_grade=target_grade,
+                    mode=mode,
+                    source_grade=source_grade,
+                    policy=policy,
+                )
+                blocking = self._candidate_blocking_flags(scored)
+                scored_rescues.append((candidate_text, scored, blocking))
+
+            usable_rescues = []
+            for item in scored_rescues:
+                _candidate_text, scored, blocking = item
+                rescue_distance = scored.get('target_distance', 999)
+                rescue_raw = float(scored.get('raw_score', 99) or 99)
+                rescue_display_delta = self._display_grade_delta_from_score(
+                    rescue_raw,
+                    target_grade,
+                )
+                strong_improvement = rescue_distance + 1.0 < distance
+                not_major_undershoot = target_grade <= 3 or rescue_raw >= band_lower - 1.0
+                if (
+                    not blocking
+                    and rescue_distance < distance
+                    and (
+                        rescue_display_delta <= TARGET_LOCK_DISPLAY_BAND_TOLERANCE
+                        or (strong_improvement and not_major_undershoot)
+                    )
+                ):
+                    usable_rescues.append(item)
+            if usable_rescues:
+                rescue_text, rescue_metrics, _blocking = min(
+                    usable_rescues,
+                    key=lambda item: (
+                        item[1].get('target_distance', 999),
+                        item[1].get('candidate_score', 999),
+                    ),
+                )
+                rescue_text = self._restore_paragraph_shape(text, rescue_text)
+                rescue_chunks = [chunk['raw'].strip() for chunk in self._extract_paragraph_chunks(rescue_text)]
+                if len(rescue_chunks) == n_groups:
+                    rewritten_texts = rescue_chunks
+                    assembled = self._assemble_paragraphs(groups, rewritten_texts)
+                else:
+                    assembled = rescue_text.strip()
+                doc_grade, doc_syl, doc_wps = self._measure_text_metrics(assembled)
+                distance = self._distance_to_target_band(doc_grade, target_grade)
+                far_miss = distance > 2.0
+                fallback_used = True
+                low_grade_rescue_used = True
+                print(
+                    f"[para-pipeline] low-grade rescue selected: "
+                    f"grade={doc_grade:.1f}, distance={distance:.2f}"
+                )
+        elif far_miss and not rate_limited and self._llm_calls_remaining():
             print(f"[para-pipeline] distance {distance:.2f} > 2.0, attempting whole-doc fallback")
             fallback_feedback = {'raw_score': doc_grade, 'target_distance': distance}
             try:
@@ -845,9 +1052,18 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
                     fb_distance = self._distance_to_target_band(fb_grade, target_grade)
                     print(f"[para-pipeline] whole-doc fallback: grade={fb_grade:.1f}, distance={fb_distance:.2f}")
                     if fb_distance < distance:
-                        assembled = fallback_result
-                        doc_grade, doc_syl, doc_wps = fb_grade, fb_syl, fb_wps
-                        distance = fb_distance
+                        fallback_result = self._restore_paragraph_shape(text, fallback_result)
+                        fallback_chunks = [
+                            chunk['raw'].strip()
+                            for chunk in self._extract_paragraph_chunks(fallback_result)
+                        ]
+                        if len(fallback_chunks) == n_groups:
+                            rewritten_texts = fallback_chunks
+                            assembled = self._assemble_paragraphs(groups, rewritten_texts)
+                        else:
+                            assembled = fallback_result
+                        doc_grade, doc_syl, doc_wps = self._measure_text_metrics(assembled)
+                        distance = self._distance_to_target_band(doc_grade, target_grade)
                         far_miss = distance > 2.0
                         fallback_used = True
             except Exception as exc:
@@ -880,6 +1096,7 @@ Rewrite this paragraph to correct the grade level. Move the metrics toward the T
                 'distance': round(distance, 2),
                 'repair_rounds': repair_rounds_used,
                 'paragraph_pipeline_far_miss': far_miss,
+                'low_grade_rescue_after_paragraph_pipeline': low_grade_rescue_used,
                 'paragraph_pipeline_failed_paragraphs': sorted(set(failed_paragraphs)),
                 'paragraph_pipeline_rate_limited': rate_limited,
                 'fallback_used': fallback_used,

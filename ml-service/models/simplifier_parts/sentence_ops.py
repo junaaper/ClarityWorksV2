@@ -443,6 +443,31 @@ class SentenceOpsMixin:
         subjects = [token for token in doc if token.dep_ in ('nsubj', 'nsubjpass', 'expl')]
         return len(finite_verbs) >= 2 and len(subjects) >= 2
 
+    _ADJ_SUFFIXES = ('ical', 'ional', 'ative', 'ible', 'able', 'ious', 'eous',
+                      'ular', 'iful', 'rous', 'ient', 'iant', 'uous', 'ive',
+                      'ent', 'ant', 'ous')
+
+    def _ends_with_dangling_modifier(self, text):
+        """Catch sentences ending with determiner+adjective but no noun,
+        e.g. 'interested in the ethical.' or 'a comprehensive.'
+        SpaCy sometimes tags these adjectives as NOUN in pobj position,
+        so we also check for adjective-like suffixes after a determiner."""
+        doc = nlp(text)
+        alpha_tokens = [t for t in doc if t.is_alpha]
+        if len(alpha_tokens) < 3:
+            return False
+        last = alpha_tokens[-1]
+        second_last = alpha_tokens[-2]
+        is_det = second_last.pos_ == 'DET' or second_last.lower_ in (
+            'the', 'a', 'an', 'this', 'that', 'these', 'those')
+        if not is_det:
+            return False
+        if last.pos_ == 'ADJ':
+            return True
+        if last.lower_.endswith(self._ADJ_SUFFIXES):
+            return True
+        return False
+
     def _collect_invalid_sentences(self, text):
         invalid = []
         if not text or not text.strip():
@@ -456,6 +481,10 @@ class SentenceOpsMixin:
             word_count = len([token for token in sent if token.is_alpha])
 
             if self._ends_with_bad_fragment_tail(sentence_text) and word_count <= 12:
+                invalid.append(sentence_text)
+                continue
+
+            if self._ends_with_dangling_modifier(sentence_text):
                 invalid.append(sentence_text)
                 continue
 

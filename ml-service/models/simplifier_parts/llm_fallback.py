@@ -157,6 +157,9 @@ REWRITTEN TEXT ({grade_label}):"""
                     target_metrics=metrics,
                     source_grade=self._measure_text_metrics(reference_text)[0] if reference_text else None,
                 )
+                domain_block = self._domain_term_paraphrase_instructions(
+                    text_to_rewrite, target_grade
+                )
 
                 return f"""Rewrite the following text at exactly {grade_label} reading level.
 
@@ -182,7 +185,7 @@ RULES:
 9. NAMES & ACRONYMS: Keep all proper nouns and abbreviations exactly as written.
 10. NO REPETITION: Each idea appears once only. Do NOT generate new content beyond what exists in the original.
 11. OUTPUT: Write ONLY the simplified text. No labels or commentary.{metric_hint}{reference_block}
-{low_grade_block}
+{low_grade_block}{domain_block}
 
 TEXT TO REWRITE:
 {text_to_rewrite}

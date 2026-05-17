@@ -475,7 +475,15 @@ BAD_FRAGMENT_ENDINGS = {
     'or', 'rather', 'that', 'the', 'then', 'to', 'while', 'with',
     'also', 'however', 'instead', 'therefore', 'moreover', 'furthermore',
     'additionally', 'still', 'can', 'could', 'may', 'might', 'must',
-    'shall', 'should', 'will', 'would'
+    'shall', 'should', 'will', 'would',
+    # Adjectives that signal a dangling modifier when ending a sentence
+    # (e.g. "interested in the ethical." missing its noun)
+    'ethical', 'social', 'political', 'economic', 'cultural', 'environmental',
+    'educational', 'additional', 'financial', 'professional', 'traditional',
+    'personal', 'national', 'international', 'historical', 'practical',
+    'technical', 'critical', 'fundamental', 'substantial', 'essential',
+    'potential', 'institutional', 'organizational', 'computational',
+    'comprehensive', 'significant', 'responsible', 'particular',
 }
 ALLOWED_CARRY_REPAIR_MARKERS = {'and', 'but', 'so', 'yet'}
 BAD_FRAGMENT_OPENING_PAIRS = {
@@ -674,7 +682,7 @@ class BaseSimplifierMixin:
             self.llm_client = OpenAI(
                 base_url="https://api.fireworks.ai/inference/v1",
                 api_key=os.getenv('FIREWORKS_API_KEY'),
-                timeout=45.0,
+                timeout=120.0,
             )
 
         # Grade-specific constraints derived from GRADE_TARGET_METRICS
@@ -700,6 +708,7 @@ class BaseSimplifierMixin:
         )
         self._llm_call_budget = None
         self._llm_calls_made = 0
+        self._llm_budget_lock = threading.Lock()
 
     @staticmethod
     def _env_int(name, default, min_value=None, max_value=None):
@@ -747,9 +756,18 @@ class BaseSimplifierMixin:
             progress_callback(pct, message, eta)
 
     def _llm_calls_remaining(self, reserve=0):
-        if self._llm_call_budget is None:
+        with self._llm_budget_lock:
+            if self._llm_call_budget is None:
+                return True
+            return self._llm_calls_made + int(reserve or 0) < self._llm_call_budget
+
+    def _try_consume_llm_call(self):
+        """Atomically check budget and increment call counter. Returns True if allowed."""
+        with self._llm_budget_lock:
+            if self._llm_call_budget is not None and self._llm_calls_made >= self._llm_call_budget:
+                return False
+            self._llm_calls_made += 1
             return True
-        return self._llm_calls_made + int(reserve or 0) < self._llm_call_budget
 
     def _is_hard_llm_jump(self, source_grade, target_grade):
         return target_grade >= 13 or abs(float(target_grade) - float(source_grade)) >= 3.0
@@ -824,10 +842,16 @@ class BaseSimplifierMixin:
             if source_grade is not None else
             "A result around Grade 8-12 is still a failure.\n"
         )
+        grade3_note = (
+            "- For Grade 3, aim near the upper Grade 3 band: simple and clear, but not babyish, choppy, or repetitive.\n"
+            if target_grade <= 3 else
+            ""
+        )
         return f"""
 LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
 - This must read like {grade_label} text for a student, not like a light high-school rewrite.
 - {source_note}- Use mostly short, common words. Replace abstract/academic words with plain words.
+{grade3_note}- Keep concrete topic words when they are important; explain hard ideas in simple words instead of deleting them.
 - Split dense ideas into short complete sentences. Do not use semicolons.
 - Aim for {metrics['min_wps']}-{metrics['max_wps']} words per sentence, about {metrics['target_wps']} on average.
 - Aim for about {metrics['target_syl']:.2f} syllables per word.
@@ -835,6 +859,64 @@ LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
 - You may rewrite whole paragraphs inside the same scope; do not stay sentence-by-sentence conservative.
 - It is acceptable to sound simple. It is not acceptable to remain Grade 8-12 academic prose.
 - Prefer "idea", "proof", "study", "question", "wrong", "true", "people", "trust", and "change" over academic nouns.
+"""
+
+    def _domain_term_paraphrase_instructions(self, text, target_grade):
+        """When downgrading to grade ≤ 10, detect domain-specific multi-syllable
+        terms and instruct the LLM to paraphrase them into plain language."""
+        if target_grade > 10:
+            return ''
+
+        DOMAIN_PARAPHRASES = {
+            'artificial intelligence': 'smart computer programs',
+            'machine learning': 'teaching computers to learn from data',
+            'natural language processing': 'how computers understand language',
+            'deep learning': 'advanced computer learning',
+            'neural network': 'a computer system that learns like a brain',
+            'neural networks': 'computer systems that learn like brains',
+            'algorithm': 'a set of steps a computer follows',
+            'algorithms': 'sets of steps a computer follows',
+            'computational': 'computer-based',
+            'accountable': 'responsible',
+            'accountability': 'being responsible',
+            'transparent': 'open and clear',
+            'transparency': 'openness',
+            'interdisciplinary': 'combining different subjects',
+            'multidisciplinary': 'combining different subjects',
+            'autonomous': 'self-running',
+            'autonomously': 'on its own',
+            'sophisticat': 'advanced',
+            'comprehensive': 'complete',
+            'implications': 'effects',
+            'methodologies': 'methods',
+            'methodology': 'method',
+            'infrastructure': 'basic systems',
+            'sustainability': 'long-term health',
+            'sustainable': 'long-lasting',
+            'innovation': 'new ideas',
+            'innovative': 'new and creative',
+            'stakeholders': 'people involved',
+            'optimization': 'improvement',
+            'collaborative': 'working together',
+            'collaboration': 'working together',
+        }
+
+        text_lower = text.lower()
+        found = []
+        for term, plain in DOMAIN_PARAPHRASES.items():
+            if term in text_lower:
+                found.append(f'  "{term}" → "{plain}"')
+
+        if not found:
+            return ''
+
+        mappings = '\n'.join(found)
+        grade_label = self._target_grade_label(target_grade)
+        return f"""
+DOMAIN TERM SIMPLIFICATION:
+When simplifying to {grade_label}, paraphrase technical terms that a student at this level wouldn't know. Use plain descriptions:
+{mappings}
+Keep the first mention descriptive, then use short forms after. Replace every occurrence — do NOT leave the original jargon in the text.
 """
 
     def _register_local_nltk_data_path(self):
@@ -857,11 +939,11 @@ LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
                 print("Warning: NLTK WordNet corpus not found. Falling back to curated maps and non-WordNet rules.")
                 return False
 
-    def _llm_chat(self, messages, temperature=0, max_tokens=4000, max_retries=3):
+    def _llm_chat(self, messages, temperature=0, max_tokens=4000, max_retries=3, request_timeout=None):
         """Fireworks AI API call with automatic retry on rate-limit (429) errors."""
         if not self.llm_client:
             return None
-        if self._llm_call_budget is not None and self._llm_calls_made >= self._llm_call_budget:
+        if not self._try_consume_llm_call():
             print("[fireworks] LLM call budget exhausted for this request; using deterministic fallback.")
             return None
         if self.rate_limited_llm:
@@ -872,10 +954,12 @@ LOW/MIDDLE-GRADE DOWNGRADE REQUIREMENTS:
                 f"{max_tokens} -> {FIREWORKS_NON_STREAM_MAX_TOKENS}"
             )
             max_tokens = FIREWORKS_NON_STREAM_MAX_TOKENS
-        self._llm_calls_made += 1
         last_err = None
+        client_options = {'max_retries': 0}
+        if request_timeout is not None:
+            client_options['timeout'] = float(request_timeout)
         request_client = (
-            self.llm_client.with_options(max_retries=0)
+            self.llm_client.with_options(**client_options)
             if hasattr(self.llm_client, 'with_options') else
             self.llm_client
         )

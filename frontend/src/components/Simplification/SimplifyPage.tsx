@@ -1537,7 +1537,7 @@ const SimplifyPage: React.FC = () => {
     ? ({ small_shift_fast: 'Local Rule-Based', medium_shift_controlled: 'Hybrid', large_shift_llm: 'Paragraph Rewrite', paragraph_rewrite: 'Paragraph Rewrite' } as Record<string, string>)[progressMeta.rewriteRoute] ?? progressMeta.rewriteRoute.replace(/_/g, ' ')
     : 'preparing rewrite';
   const progressPhaseLabel = progressMeta.phase
-    ? ({ route: 'Selecting strategy', analyze: 'Analyzing text', diff: 'Computing changes', sanity: 'Verifying quality', paragraph_rewrite: 'Rewriting paragraph', paragraph_complete: 'Paragraph done', document_check: 'Checking document', paragraph_repair: 'Polishing paragraph' } as Record<string, string>)[progressMeta.phase] ?? progressMeta.phase.replace(/_/g, ' ')
+    ? ({ route: 'Preparing rewrite', analyze: 'Analyzing text', diff: 'Computing changes', sanity: 'Verifying quality', paragraph_rewrite: 'Rewriting paragraphs', paragraph_complete: 'Rewriting paragraphs', document_check: 'Reviewing rewritten text', paragraph_repair: 'Reviewing rewritten text' } as Record<string, string>)[progressMeta.phase] ?? progressMeta.phase.replace(/_/g, ' ')
     : 'starting';
   const elapsedSeconds = progressStartedAt
     ? Math.max(0, Math.round((progressNow - progressStartedAt) / 1000))

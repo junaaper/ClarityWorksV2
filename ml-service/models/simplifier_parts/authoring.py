@@ -9,7 +9,7 @@ class AuthoringMixin:
         policy = self._get_target_policy(target_grade, going_up, source_grade=source_grade)
 
         if progress_callback:
-            progress_callback(0.10, 'Analyzing text...', None)
+            progress_callback(0.10, 'Building rewrite candidates...', None)
 
         rule_selection = self._select_rewrite_candidate(text, target_grade, mode)
         if prefer_rule_based or not self.llm_client or direction == 0:
@@ -35,7 +35,7 @@ class AuthoringMixin:
             })
 
         if progress_callback:
-            progress_callback(0.25, 'Exploring rewrites...', None)
+            progress_callback(0.25, 'Building rewrite candidates...', None)
 
         llm_candidates = self._generate_llm_candidates(
             original_text=text,
@@ -61,7 +61,7 @@ class AuthoringMixin:
             }
 
         if progress_callback:
-            progress_callback(0.55, 'Evaluating results...', None)
+            progress_callback(0.55, 'Checking target fit...', None)
 
         all_candidates = rule_candidates + llm_candidates
         target_repair_candidates = self._target_lock_repair_candidates(
@@ -102,7 +102,7 @@ class AuthoringMixin:
         selected = self._select_preferred_candidate(ranked, target_grade=target_grade)
 
         if progress_callback:
-            progress_callback(0.75, 'Refining...', None)
+            progress_callback(0.75, 'Selecting final rewrite...', None)
 
         target_contract_candidates = []
         post_contract_repair_candidates = []
@@ -601,6 +601,7 @@ REPAIRED REWRITE:"""
         going_up,
         mode,
         policy,
+        request_timeout=None,
     ):
         if not self._llm_calls_remaining():
             return []
@@ -689,6 +690,7 @@ OTHER NEARER/BLOCKED CONTEXT:
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.28 if (not going_up and target_grade <= 7) else 0.18,
                 max_tokens=4096,
+                request_timeout=request_timeout,
             )
         except Exception as exc:
             if not self._is_timeout_error(exc):

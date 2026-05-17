@@ -207,6 +207,11 @@ class DiffingMixin:
 
     def _get_review_scope(self, original_display, replacement_display, change_type):
         if change_type in ('word_replacement', 'word_upgrade'):
+            original_stats = self._fragment_stats(original_display)
+            replacement_stats = self._fragment_stats(replacement_display)
+            max_words = max(original_stats['word_count'], replacement_stats['word_count'])
+            if max_words > 15:
+                return 'sentence'
             return 'word'
 
         if '\n\n' in (original_display or '') or '\n\n' in (replacement_display or ''):
