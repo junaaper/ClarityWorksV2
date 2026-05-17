@@ -1117,6 +1117,92 @@ def test_explanation_items_reject_function_word_replacements():
     )
 
 
+def test_explanation_items_reject_proper_name_pairings():
+    simplifier = TextSimplifier()
+    items = simplifier._extract_explanation_items(
+        (
+            "Franz Kafka's The Metamorphosis explores change, alienation, and familial dynamics. "
+            "The novella shows the transformation of Gregor Samsa, a traveling salesman."
+        ),
+        (
+            "Franz Kafka wrote The Metamorphosis to explore change. "
+            "The novella tells of Gregor Samsa, a salesman."
+        ),
+        going_up=False,
+        max_items=20,
+    )
+
+    pairs = {
+        (item.get("before", ""), item.get("after", ""))
+        for item in items
+        if item.get("before") and item.get("after")
+    }
+    protected_words = {"Franz", "Kafka", "The", "Metamorphosis", "Gregor", "Samsa"}
+    assert_true(
+        ("familial", "Samsa") not in pairs,
+        f"Proper-name evidence should not be paired with content words, got {pairs}.",
+    )
+    assert_true(
+        all(before not in protected_words and after not in protected_words for before, after in pairs),
+        f"Book titles and protagonist names should not become word replacement evidence: {pairs}.",
+    )
+
+
+def test_explanation_items_reject_distant_financial_to_nature_pairing():
+    simplifier = TextSimplifier()
+    items = simplifier._extract_explanation_items(
+        (
+            "Gregor bears the financial burden of his family without complaint. "
+            "The nature of his work leaves him with little time for meaningful connections."
+        ),
+        (
+            "Gregor bears the financial burden for his family. "
+            "The nature of his work leaves him with little time for meaningful connections."
+        ),
+        going_up=False,
+        max_items=20,
+    )
+
+    pairs = {
+        (item.get("before", "").lower(), item.get("after", "").lower())
+        for item in items
+        if item.get("before") and item.get("after")
+    }
+    assert_true(
+        ("financial", "nature") not in pairs,
+        f"Distant paragraph words should not be paired as replacements: {pairs}.",
+    )
+
+
+def test_explanation_items_include_local_offsets_for_clean_pair():
+    simplifier = TextSimplifier()
+    items = simplifier._extract_explanation_items(
+        "The costly transformation was difficult.",
+        "The cheap change was hard.",
+        going_up=False,
+        max_items=10,
+    )
+
+    anchored = [
+        item for item in items
+        if item.get("before") == "transformation" and item.get("after") == "change"
+    ]
+    assert_true(anchored, f"Expected a clean local anchored pair, got {items}.")
+    item = anchored[0]
+    assert_true(
+        all(isinstance(item.get(key), int) for key in ("original_start", "original_end", "preview_start", "preview_end")),
+        f"Expected explanation item offsets, got {item}.",
+    )
+    assert_true(
+        "The costly transformation was difficult."[item["original_start"]:item["original_end"]] == "transformation",
+        f"Original offsets should point at the before word: {item}.",
+    )
+    assert_true(
+        "The cheap change was hard."[item["preview_start"]:item["preview_end"]] == "change",
+        f"Preview offsets should point at the after word: {item}.",
+    )
+
+
 def test_paragraph_topic_shift_is_a_hard_safety_flag():
     simplifier = TextSimplifier()
     original = (
@@ -1179,5 +1265,8 @@ if __name__ == "__main__":
     test_long_grade12_exact_hit_uses_fast_broad_patch_without_polish_or_display_scan()
     test_authoring_progress_uses_target_fit_messages()
     test_explanation_items_reject_function_word_replacements()
+    test_explanation_items_reject_proper_name_pairings()
+    test_explanation_items_reject_distant_financial_to_nature_pairing()
+    test_explanation_items_include_local_offsets_for_clean_pair()
     test_paragraph_topic_shift_is_a_hard_safety_flag()
     print("Hard downgrade selection checks passed.")

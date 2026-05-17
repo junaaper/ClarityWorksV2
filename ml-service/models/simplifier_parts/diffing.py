@@ -315,6 +315,86 @@ class DiffingMixin:
         semicolons = len(re.findall(r';', text))
         return sentence_count + len(subordinators) + commas + semicolons
 
+    @staticmethod
+    def _evidence_lookup(token):
+        return re.sub(r"[^A-Za-z0-9]", '', token or '').lower()
+
+    @classmethod
+    def _collect_protected_evidence_terms(cls, *texts):
+        terms = set()
+        for text in texts:
+            for match in re.finditer(r"\b[A-Z][A-Za-z]+(?:['-][A-Za-z]+)?\b", text or ''):
+                lookup = cls._evidence_lookup(match.group(0))
+                if lookup:
+                    terms.add(lookup)
+            for match in re.finditer(r"\b[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)+\b", text or ''):
+                for word in re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", match.group(0)):
+                    lookup = cls._evidence_lookup(word)
+                    if lookup:
+                        terms.add(lookup)
+        return terms
+
+    @classmethod
+    def _is_protected_evidence_token(cls, token, protected_terms):
+        lookup = cls._evidence_lookup(token)
+        if not lookup:
+            return True
+        if lookup in protected_terms:
+            return True
+        return bool(token and token[0].isupper())
+
+    @staticmethod
+    def _words_are_related(word_a, word_b):
+        import difflib as _difflib
+
+        a = re.sub(r"[^a-z]", '', (word_a or '').lower())
+        b = re.sub(r"[^a-z]", '', (word_b or '').lower())
+
+        if not a or not b:
+            return False
+        if a == b:
+            return True
+
+        if _difflib.SequenceMatcher(None, a, b, autojunk=False).ratio() >= 0.6:
+            return True
+
+        if len(a) >= 4 and len(b) >= 4 and (a in b or b in a):
+            return True
+
+        doc = nlp(f"{a} {b}")
+        alpha_tokens = [t for t in doc if t.is_alpha]
+        if len(alpha_tokens) >= 2 and alpha_tokens[0].lemma_.lower() == alpha_tokens[1].lemma_.lower():
+            return True
+
+        synsets_a = wn.synsets(a)
+        synsets_b = wn.synsets(b)
+
+        if not synsets_a and not synsets_b:
+            return True
+
+        synsets_a_set = set(synsets_a)
+        synsets_b_set = set(synsets_b)
+
+        if synsets_a_set & synsets_b_set:
+            return True
+
+        lemmas_b = {lem.name().lower() for s in synsets_b for lem in s.lemmas()}
+        if a in lemmas_b:
+            return True
+        lemmas_a = {lem.name().lower() for s in synsets_a for lem in s.lemmas()}
+        if b in lemmas_a:
+            return True
+
+        hypernyms_a = {h for s in synsets_a_set for h in s.hypernyms()}
+        hypernyms_b = {h for s in synsets_b_set for h in s.hypernyms()}
+        if hypernyms_a & hypernyms_b:
+            return True
+
+        if hypernyms_a & synsets_b_set or hypernyms_b & synsets_a_set:
+            return True
+
+        return False
+
     def _extract_key_word_swaps(self, original_display, replacement_display, max_swaps=5):
         """
         Find clean single-word substitutions between two spans via word-level
@@ -330,6 +410,7 @@ class DiffingMixin:
         replacement_tokens = re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", replacement_display)
         if not original_tokens or not replacement_tokens:
             return []
+        protected_terms = self._collect_protected_evidence_terms(original_display, replacement_display)
 
         matcher = difflib.SequenceMatcher(
             None,
@@ -354,12 +435,20 @@ class DiffingMixin:
 
             if before_lower == after_lower:
                 continue
+            if (
+                self._is_protected_evidence_token(before, protected_terms) or
+                self._is_protected_evidence_token(after, protected_terms)
+            ):
+                continue
 
             before_freq = zipf_frequency(before_lower, 'en')
             after_freq = zipf_frequency(after_lower, 'en')
 
             # Skip function-word churn (e.g. "the" <-> "a") — not a meaningful swap.
             if before_freq >= 6.5 and after_freq >= 6.5:
+                continue
+
+            if not self._words_are_related(before_lower, after_lower):
                 continue
 
             key = (before_lower, after_lower)
@@ -387,15 +476,28 @@ class DiffingMixin:
         """
         import difflib
 
-        original_tokens = re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", original_display or '')
-        replacement_tokens = re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", replacement_display or '')
+        def tokenize_with_offsets(text):
+            tokens = []
+            for match in re.finditer(r"[A-Za-z]+(?:['-][A-Za-z]+)*", text or ''):
+                raw = match.group(0)
+                tokens.append({
+                    'text': raw,
+                    'lookup': self._evidence_lookup(raw),
+                    'start': match.start(),
+                    'end': match.end(),
+                })
+            return tokens
+
+        original_tokens = tokenize_with_offsets(original_display)
+        replacement_tokens = tokenize_with_offsets(replacement_display)
         if not original_tokens or not replacement_tokens:
             return []
+        protected_terms = self._collect_protected_evidence_terms(original_display, replacement_display)
 
         matcher = difflib.SequenceMatcher(
             None,
-            [token.lower() for token in original_tokens],
-            [token.lower() for token in replacement_tokens],
+            [token['lookup'] for token in original_tokens],
+            [token['lookup'] for token in replacement_tokens],
             autojunk=False,
         )
 
@@ -415,7 +517,7 @@ class DiffingMixin:
         }
 
         def token_stats(token):
-            lookup = re.sub(r"[^\w]", '', token or '').lower()
+            lookup = token.get('lookup') if isinstance(token, dict) else self._evidence_lookup(token)
             return {
                 'lookup': lookup,
                 'frequency': zipf_frequency(lookup, 'en') if lookup else 0.0,
@@ -431,11 +533,19 @@ class DiffingMixin:
                 return None
             if (before_stats['lookup'], after_stats['lookup']) in seen_pairs:
                 return None
+            if (
+                self._is_protected_evidence_token(before['text'], protected_terms) or
+                self._is_protected_evidence_token(after['text'], protected_terms)
+            ):
+                return None
             if before_stats['lookup'] in function_words or after_stats['lookup'] in function_words:
                 return None
             # Skip tiny function-word churn. It is visible, but it is not the
             # old explanation users found valuable.
             if before_stats['frequency'] >= 6.2 and after_stats['frequency'] >= 6.2:
+                return None
+
+            if not DiffingMixin._words_are_related(before_stats['lookup'], after_stats['lookup']):
                 return None
 
             freq_delta = before_stats['frequency'] - after_stats['frequency']
@@ -450,16 +560,20 @@ class DiffingMixin:
 
             return {
                 'kind': 'word_upgrade' if going_up else 'word_replacement',
-                'before': before,
-                'after': after,
+                'before': before['text'],
+                'after': after['text'],
                 'frequency_before': round(before_stats['frequency'], 2),
                 'frequency_after': round(after_stats['frequency'], 2),
                 'syllables_before': before_stats['syllables'],
                 'syllables_after': after_stats['syllables'],
+                'original_start': before['start'],
+                'original_end': before['end'],
+                'preview_start': after['start'],
+                'preview_end': after['end'],
                 'impact': round(impact, 2),
                 'text': self._format_explanation_item(
-                    before,
-                    after,
+                    before['text'],
+                    after['text'],
                     before_stats['frequency'],
                     after_stats['frequency'],
                     before_stats['syllables'],
@@ -476,7 +590,7 @@ class DiffingMixin:
             if tag == 'insert':
                 inserted = [
                     token for token in replacement_tokens[j1:j2]
-                    if token.lower() in {
+                    if token['lookup'] in {
                         'consequently', 'subsequently', 'therefore', 'however',
                         'furthermore', 'moreover', 'although', 'during', 'while'
                     }
@@ -487,8 +601,10 @@ class DiffingMixin:
                     items.append({
                         'kind': 'connector_added',
                         'before': '',
-                        'after': token,
-                        'text': f"Added connector '{token}' to make relationships between ideas more explicit.",
+                        'after': token['text'],
+                        'preview_start': token['start'],
+                        'preview_end': token['end'],
+                        'text': f"Added connector '{token['text']}' to make relationships between ideas more explicit.",
                     })
                 continue
             if tag != 'replace':
@@ -497,35 +613,34 @@ class DiffingMixin:
             before_block = original_tokens[i1:i2]
             after_block = replacement_tokens[j1:j2]
             candidates = []
-            used_after = set()
+            before_count = len(before_block)
+            after_count = len(after_block)
+            if before_count > 4 or after_count > 4 or abs(before_count - after_count) > 2:
+                continue
 
-            if len(before_block) == len(after_block):
+            if before_count == after_count:
                 for before, after in zip(before_block, after_block):
                     item = is_useful_pair(before, after)
                     if item:
                         candidates.append(item)
             else:
-                for before in before_block:
-                    best_item = None
-                    best_index = None
-                    for after_index, after in enumerate(after_block):
-                        if after_index in used_after:
+                used_after = set()
+                for before_offset, before in enumerate(before_block):
+                    local_offsets = [before_offset, before_offset - 1, before_offset + 1]
+                    for after_offset in local_offsets:
+                        if after_offset < 0 or after_offset >= after_count or after_offset in used_after:
                             continue
-                        item = is_useful_pair(before, after)
-                        if not item:
-                            continue
-                        if best_item is None or item['impact'] > best_item['impact']:
-                            best_item = item
-                            best_index = after_index
-                    if best_item:
-                        used_after.add(best_index)
-                        candidates.append(best_item)
+                        item = is_useful_pair(before, after_block[after_offset])
+                        if item:
+                            used_after.add(after_offset)
+                            candidates.append(item)
+                            break
 
             candidates.sort(key=lambda item: item.get('impact', 0), reverse=True)
             for item in candidates:
                 if len(items) >= max_items:
                     break
-                seen_pairs.add((item['before'].lower(), item['after'].lower()))
+                seen_pairs.add((self._evidence_lookup(item['before']), self._evidence_lookup(item['after'])))
                 items.append(item)
 
         return items
@@ -590,13 +705,35 @@ class DiffingMixin:
             )
 
             for item in explanation_items:
-                word_before = item['before']
-                word_after = item['after']
-                word_pos = orig_para.lower().find(word_before.lower())
-                preview_pos = new_para.lower().find(word_after.lower())
+                word_before = item.get('before') or ''
+                word_after = item.get('after') or ''
+                if not word_before or not word_after:
+                    continue
 
-                abs_start = orig_start + (word_pos if word_pos != -1 else 0)
-                abs_preview = new_start + (preview_pos if preview_pos != -1 else 0)
+                rel_start = item.get('original_start')
+                rel_end = item.get('original_end')
+                rel_preview_start = item.get('preview_start')
+                rel_preview_end = item.get('preview_end')
+
+                if isinstance(rel_start, int) and isinstance(rel_end, int) and rel_end > rel_start:
+                    abs_start = orig_start + rel_start
+                    abs_end = orig_start + rel_end
+                else:
+                    word_pos = orig_para.lower().find(word_before.lower())
+                    abs_start = orig_start + (word_pos if word_pos != -1 else 0)
+                    abs_end = abs_start + len(word_before)
+
+                if (
+                    isinstance(rel_preview_start, int) and
+                    isinstance(rel_preview_end, int) and
+                    rel_preview_end > rel_preview_start
+                ):
+                    abs_preview = new_start + rel_preview_start
+                    abs_preview_end = new_start + rel_preview_end
+                else:
+                    preview_pos = new_para.lower().find(word_after.lower())
+                    abs_preview = new_start + (preview_pos if preview_pos != -1 else 0)
+                    abs_preview_end = abs_preview + len(word_after)
 
                 reason = self._format_explanation_item(
                     word_before, word_after,
@@ -613,9 +750,9 @@ class DiffingMixin:
                     'replacement_text': word_after,
                     'position': abs_start,
                     'start': abs_start,
-                    'end': abs_start + len(word_before),
+                    'end': abs_end,
                     'preview_start': abs_preview,
-                    'preview_end': abs_preview + len(word_after),
+                    'preview_end': abs_preview_end,
                     'review_scope': 'word',
                     'direction': 'up' if going_up else 'down',
                     'quality_score': 0.8,
@@ -632,8 +769,13 @@ class DiffingMixin:
                         'frequency_after': item.get('frequency_after', 0),
                         'syllables_before': item.get('syllables_before', 0),
                         'syllables_after': item.get('syllables_after', 0),
+                        'original_start': rel_start,
+                        'original_end': rel_end,
+                        'preview_start': rel_preview_start,
+                        'preview_end': rel_preview_end,
                         'candidate_score': candidate_score,
                     },
+                    'explanation_items': [item],
                     'candidate_score': candidate_score,
                     'reason': reason,
                     'id': change_id,
@@ -951,11 +1093,12 @@ class DiffingMixin:
         original_word = self._extract_single_word(original_display)
         replacement_word = self._extract_single_word(replacement_display)
         if original_word and replacement_word and original_word.lower() != replacement_word.lower():
-            return (
-                'word_upgrade'
-                if self._infer_patch_direction(original_display, replacement_display, going_up)
-                else 'word_replacement'
-            )
+            if self._words_are_related(original_word, replacement_word):
+                return (
+                    'word_upgrade'
+                    if self._infer_patch_direction(original_display, replacement_display, going_up)
+                    else 'word_replacement'
+                )
 
         original_sentences = len(re.findall(r'[.!?]+', original_display or ''))
         replacement_sentences = len(re.findall(r'[.!?]+', replacement_display or ''))

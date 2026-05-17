@@ -17,12 +17,14 @@ import RAGUpload from './components/RAG/RAGUpload';
 import RAGQuery from './components/RAG/RAGQuery';
 import ComparePage from './components/Compare/ComparePage';
 import BatchPage from './components/Batch/BatchPage';
+import PresentationPage from './components/Presentation/PresentationPage';
 
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          <Route path="/presentation" element={<PresentationPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/" element={<Layout />}>

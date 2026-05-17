@@ -171,6 +171,10 @@ export interface SimplificationExplanationItem {
   frequency_after?: number;
   syllables_before?: number;
   syllables_after?: number;
+  original_start?: number;
+  original_end?: number;
+  preview_start?: number;
+  preview_end?: number;
   text: string;
 }
 

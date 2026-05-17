@@ -320,10 +320,22 @@ const normalizeEvidenceWord = (word: string) => {
   return normalized;
 };
 
+const isLikelyProperEvidenceWord = (word: string): boolean => {
+  const trimmed = word.trim();
+  if (!trimmed) return true;
+  if (trimmed.includes(' ')) {
+    return trimmed.split(/\s+/).some((part) => isLikelyProperEvidenceWord(part));
+  }
+  const normalized = normalizeEvidenceWord(trimmed);
+  if (!normalized || FRONTEND_EVIDENCE_STOP_WORDS.has(normalized)) return false;
+  return /^[A-Z][a-z]+(?:['-][A-Za-z]+)?$/.test(trimmed) || /^[A-Z]{2,}$/.test(trimmed);
+};
+
 const isUsefulEvidenceWord = (word: string) => {
   const normalized = normalizeEvidenceWord(word);
   return (
     normalized.length > 2 &&
+    !isLikelyProperEvidenceWord(word) &&
     !FRONTEND_EVIDENCE_STOP_WORDS.has(normalized) &&
     !FRONTEND_EVIDENCE_GENERIC_WORDS.has(normalized)
   );
@@ -370,7 +382,7 @@ const evidenceBelongsToParagraph = (
   const hasBefore = paragraphHasWord(originalParagraph, item.before);
   const hasAfter = paragraphHasWord(rewrittenParagraph, item.after);
   if (item.before && item.after) {
-    return hasBefore || hasAfter;
+    return hasBefore && hasAfter;
   }
   if (item.after) {
     return hasAfter;
@@ -447,13 +459,15 @@ const extractDiffEvidence = (original: string, rewritten: string): ExplanationIt
 
   for (const block of blocks) {
     if (!block.before.length || !block.after.length) continue;
-    if (block.before.length > 8 || block.after.length > 8) continue;
+    if (block.before.length > 4 || block.after.length > 4) continue;
+    if (Math.abs(block.before.length - block.after.length) > 2) continue;
 
-    const beforeWords = block.before.filter((token) => isUsefulEvidenceWord(token.text));
-    const afterWords = block.after.filter((token) => isUsefulEvidenceWord(token.text));
-    const pairCount = Math.min(beforeWords.length, afterWords.length, 2);
+    const pairCount = Math.min(block.before.length, block.after.length, 2);
     for (let index = 0; index < pairCount; index += 1) {
-      const item = makeFrontendEvidenceItem(beforeWords[index].text, afterWords[index].text);
+      const beforeToken = block.before[index];
+      const afterToken = block.after[index];
+      if (!beforeToken || !afterToken) continue;
+      const item = makeFrontendEvidenceItem(beforeToken.text, afterToken.text);
       if (item) items.push(item);
     }
   }
@@ -954,7 +968,55 @@ const getRenderedRange = (
 
 const rangesOverlap = (a: ChangeRange, b: ChangeRange) => a.start < b.end && a.end > b.start;
 
+const snapToWordBoundaries = (range: ChangeRange, text: string): ChangeRange => {
+  let { start, end } = range;
+  while (start > 0 && /\w/.test(text[start]) && /\w/.test(text[start - 1])) start--;
+  while (end < text.length && /\w/.test(text[end - 1]) && /\w/.test(text[end])) end++;
+  return { start, end };
+};
+
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const getAnchoredEvidenceRange = (
+  text: string,
+  container: ChangeRange,
+  item: ExplanationItem
+): ChangeRange | null => {
+  if (
+    typeof item.preview_start !== 'number' ||
+    typeof item.preview_end !== 'number' ||
+    item.preview_end <= item.preview_start
+  ) {
+    return null;
+  }
+
+  const absoluteRange = { start: item.preview_start, end: item.preview_end };
+  const after = (item.after || '').trim().toLowerCase();
+  const matchesAfter = (range: ChangeRange) =>
+    !after || text.slice(range.start, range.end).trim().toLowerCase() === after;
+
+  if (
+    absoluteRange.start >= container.start &&
+    absoluteRange.end <= container.end &&
+    matchesAfter(absoluteRange)
+  ) {
+    return absoluteRange;
+  }
+
+  const relativeRange = {
+    start: container.start + item.preview_start,
+    end: container.start + item.preview_end,
+  };
+  if (
+    relativeRange.start >= container.start &&
+    relativeRange.end <= container.end &&
+    matchesAfter(relativeRange)
+  ) {
+    return relativeRange;
+  }
+
+  return null;
+};
 
 const findEvidenceRange = (
   text: string,
@@ -962,6 +1024,11 @@ const findEvidenceRange = (
   item: ExplanationItem,
   usedRanges: ChangeRange[]
 ): ChangeRange | null => {
+  const anchoredRange = getAnchoredEvidenceRange(text, container, item);
+  if (anchoredRange && !usedRanges.some((used) => rangesOverlap(used, anchoredRange))) {
+    return anchoredRange;
+  }
+
   const needle = (item.after || '').trim();
   if (!needle || needle.length > 80) return null;
 
@@ -991,6 +1058,8 @@ const countEvidenceMatches = (
   container: ChangeRange,
   item: ExplanationItem
 ) => {
+  if (getAnchoredEvidenceRange(text, container, item)) return 1;
+
   const needle = (item.after || '').trim();
   if (!needle || needle.length > 80) return 0;
   const segment = text.slice(container.start, container.end);
@@ -1414,14 +1483,14 @@ const SimplifyPage: React.FC = () => {
         .sort((a, b) => (b.preview_start ?? 0) - (a.preview_start ?? 0));
 
       let rebuilt = serverText;
-      const shifts: { pos: number; delta: number }[] = [];
+      const shifts: { pos: number; delta: number; changeId: number }[] = [];
 
       for (const c of denied) {
         const ps = c.preview_start!;
         const pe = c.preview_end!;
         const origSlice = originalText.slice(c.start, c.end);
         rebuilt = rebuilt.slice(0, ps) + origSlice + rebuilt.slice(pe);
-        shifts.push({ pos: ps, delta: origSlice.length - (pe - ps) });
+        shifts.push({ pos: ps, delta: origSlice.length - (pe - ps), changeId: c.id });
       }
 
       shifts.sort((a, b) => a.pos - b.pos);
@@ -1431,6 +1500,7 @@ const SimplifyPage: React.FC = () => {
         let ps = c.preview_start;
         let pe = c.preview_end;
         for (const s of shifts) {
+          if (s.changeId === c.id) continue;
           if (s.pos <= ps) { ps += s.delta; pe += s.delta; }
           else if (s.pos < pe) { pe += s.delta; }
         }
@@ -1650,6 +1720,7 @@ const SimplifyPage: React.FC = () => {
                 onClick={enterInteractiveMode}
                 disabled={!canUseInteractive}
                 className="px-3.5 py-1.5 rounded text-[12px] font-semibold transition-colors"
+                title={!canUseInteractive ? 'Generate a rewrite in Auto mode first' : undefined}
                 style={{
                   background: mode === 'interactive' ? 'var(--surface-raised)' : 'transparent',
                   color: !canUseInteractive ? 'var(--text-4)' : mode === 'interactive' ? 'var(--p-900)' : 'var(--text-2)',
@@ -1810,7 +1881,7 @@ const SimplifyPage: React.FC = () => {
             border: '1px solid color-mix(in srgb, var(--err-500) 18%, transparent)',
           }}
         >
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-1">
             <span className="cw-eyebrow" style={{ color: 'var(--err-700)' }}>
               Original{originalGrade ? ` · ${originalGrade}` : ''}
             </span>
@@ -1820,6 +1891,11 @@ const SimplifyPage: React.FC = () => {
               </span>
             )}
           </div>
+          {originalText && (
+            <div className="cw-eyebrow mb-3" style={{ color: 'var(--err-700)' }}>
+              {originalText.trim().split(/\s+/).length} words · {originalText.length} characters
+            </div>
+          )}
           <div
             className="whitespace-pre-wrap"
             style={{ color: 'var(--text-1)', fontSize: 13.5, lineHeight: 1.65, fontFamily: 'var(--font-serif)' }}
@@ -1838,7 +1914,7 @@ const SimplifyPage: React.FC = () => {
             border: '1px solid color-mix(in srgb, var(--s-500) 22%, transparent)',
           }}
         >
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-1">
             <span className="cw-eyebrow" style={{ color: 'var(--s-700)' }}>
               Rewritten · {targetGrade === 13 ? 'College' : `Grade ${targetGrade}`}
             </span>
@@ -1848,6 +1924,11 @@ const SimplifyPage: React.FC = () => {
               </span>
             )}
           </div>
+          {simplifiedText && (
+            <div className="cw-eyebrow mb-3" style={{ color: 'var(--s-700)' }}>
+              {simplifiedText.trim().split(/\s+/).length} words · {simplifiedText.length} characters
+            </div>
+          )}
           {simplifiedText ? (
             <div
               style={{ color: 'var(--text-1)', fontSize: 13.5, lineHeight: 1.65, fontFamily: 'var(--font-serif)' }}
@@ -2093,7 +2174,9 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
     .filter((c) => c.review_scope === 'sentence' || c.review_scope === 'paragraph')
     .map((c): Segment | null => {
       const r = getRenderedRange(c, ranges, text.length);
-      return r ? { ...r, change: c, scope: 'sentence' as const } : null;
+      if (!r) return null;
+      const snapped = snapToWordBoundaries(r, text);
+      return { ...snapped, change: c, scope: 'sentence' as const };
     })
     .filter((h): h is Segment => Boolean(h && h.end > h.start))
     .sort((a, b) => a.start - b.start);
@@ -2123,9 +2206,11 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
   const topLevelWordHighlights: Segment[] = accepted
     .filter((c) => c.review_scope === 'word' || !c.review_scope)
     .map((c): Segment | null => {
-      const renderedRange = getRenderedRange(c, ranges, text.length);
-      const fallbackRange = renderedRange ?? getRenderedRange(c, ranges, text.length, true);
-      if (!fallbackRange) return null;
+      const rawRange = getRenderedRange(c, ranges, text.length);
+      const rawFallback = rawRange ?? getRenderedRange(c, ranges, text.length, true);
+      if (!rawFallback) return null;
+      const renderedRange = rawRange ? snapToWordBoundaries(rawRange, text) : null;
+      const fallbackRange = snapToWordBoundaries(rawFallback, text);
       const embedded = sentenceHighlights.some((sentence) => rangesOverlap(fallbackRange, sentence));
       if (!renderedRange && !embedded) return null;
       return {
@@ -2440,13 +2525,13 @@ const HighlightedText: React.FC<HighlightedTextProps> = ({
           ? 'bg-amber-400 text-amber-900'
           : isDenied
             ? 'bg-red-300 text-red-900'
-            : 'bg-green-400 text-green-900';
+            : 'bg-blue-300 text-blue-900';
       } else {
         highlightClass += isPending
           ? 'bg-amber-100 text-amber-800 border-b-2 border-amber-400'
           : isDenied
             ? 'bg-red-100 text-red-800 border-b-2 border-red-400'
-            : 'bg-green-200 text-green-800';
+            : 'bg-blue-100 text-blue-800';
       }
 
       parts.push(
